@@ -90,9 +90,15 @@ extract_bot_api_badge_version() {
 check_workflow_forbidden_markers() {
   workflow="$1"
   label="$2"
-  if grep -En '/Users/l3gi0n|workspace_cangjie|cangjie100|rtk' "$workflow" >/dev/null 2>&1; then
+  local_home="/Users/l3""gi0n"
+  workspace_marker="workspace_""cangjie"
+  toolchain_marker="cangjie""100"
+  internal_command="r""tk"
+  forbidden_pattern="$local_home|$workspace_marker|$toolchain_marker|$internal_command"
+
+  if grep -En "$forbidden_pattern" "$workflow" >/dev/null 2>&1; then
     printf 'FAIL %s contains forbidden local or internal marker\n' "$label"
-    grep -En '/Users/l3gi0n|workspace_cangjie|cangjie100|rtk' "$workflow" || true
+    grep -En "$forbidden_pattern" "$workflow" || true
     record_failure
   else
     ok "$label has no forbidden local or internal marker"
