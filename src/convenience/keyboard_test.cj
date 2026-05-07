@@ -6,6 +6,38 @@ import std.unittest.*
 @Test
 public class KeyboardBuilderTest {
     @TestCase
+    public func upstreamKeyboard001TakesInitialButtonsGolden(): Unit {
+        let rows = ArrayList<ArrayList<KeyboardButton>>()
+        let row = ArrayList<KeyboardButton>()
+        row.add(Keyboard.textButton("button"))
+        rows.add(row)
+
+        @Expect(
+            Keyboard(rows).toJSON(),
+            "{\"keyboard\":[[{\"text\":\"button\"}]]}"
+        )
+    }
+
+    @TestCase
+    public func upstreamKeyboard002CreatesRowsAndColumnsGolden(): Unit {
+        let rows = ArrayList<ArrayList<KeyboardButton>>()
+        let row = ArrayList<KeyboardButton>()
+        row.add(Keyboard.textButton("0"))
+        rows.add(row)
+
+        let keyboard = Keyboard(rows)
+            .add(Keyboard.textButton("1"), Keyboard.textButton("2"))
+            .row()
+            .add(Keyboard.textButton("3"), Keyboard.textButton("4"))
+            .add(Keyboard.textButton("5"))
+
+        @Expect(
+            keyboard.toJSON(),
+            "{\"keyboard\":[[{\"text\":\"0\"},{\"text\":\"1\"},{\"text\":\"2\"}],[{\"text\":\"3\"},{\"text\":\"4\"},{\"text\":\"5\"}]]}"
+        )
+    }
+
+    @TestCase
     public func keyboardBuildsRowsStylesAndReplyOptions(): Unit {
         let keyboard = Keyboard()
             .text("A")
@@ -23,6 +55,42 @@ public class KeyboardBuilderTest {
         @Expect(
             keyboard.toJSON(),
             "{\"keyboard\":[[{\"text\":\"A\"},{\"text\":\"B\"}],[{\"text\":\"Phone\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"icon-contact\",\"request_contact\":true}]],\"is_persistent\":true,\"selective\":false,\"one_time_keyboard\":true,\"resize_keyboard\":true,\"input_field_placeholder\":\"Pick\"}"
+        )
+    }
+
+    @TestCase
+    public func upstreamKeyboard003ReplyMarkupOptionsStartUnsetThenSetGolden(): Unit {
+        let keyboard = Keyboard()
+        @Expect(keyboard.toJSON(), "{\"keyboard\":[[]]}")
+
+        keyboard
+            .persistent()
+            .selected(false)
+            .oneTime(true)
+            .resized(false)
+            .placeholder("placeholder")
+
+        @Expect(
+            keyboard.toJSON(),
+            "{\"keyboard\":[[]],\"is_persistent\":true,\"selective\":false,\"one_time_keyboard\":true,\"resize_keyboard\":false,\"input_field_placeholder\":\"placeholder\"}"
+        )
+    }
+
+    @TestCase
+    public func upstreamKeyboard004CreatedFromDataSourcesGolden(): Unit {
+        let rows = ArrayList<ArrayList<String>>()
+        let first = ArrayList<String>()
+        first.add("a")
+        first.add("b")
+        let second = ArrayList<String>()
+        second.add("c")
+        second.add("d")
+        rows.add(first)
+        rows.add(second)
+
+        @Expect(
+            Keyboard.from(rows).toJSON(),
+            "{\"keyboard\":[[{\"text\":\"a\"},{\"text\":\"b\"}],[{\"text\":\"c\"},{\"text\":\"d\"}]]}"
         )
     }
 
@@ -146,6 +214,43 @@ public class KeyboardBuilderTest {
 @Test
 public class InlineKeyboardBuilderTest {
     @TestCase
+    public func upstreamInlineKeyboard001TakesInitialButtonsGolden(): Unit {
+        let rows = ArrayList<ArrayList<InlineKeyboardButton>>()
+        let first = ArrayList<InlineKeyboardButton>()
+        first.add(InlineKeyboard.textButton("text", "data"))
+        let second = ArrayList<InlineKeyboardButton>()
+        second.add(InlineKeyboard.textButton("text", "data"))
+        second.add(InlineKeyboard.textButton("text", "data"))
+        rows.add(first)
+        rows.add(second)
+
+        @Expect(
+            InlineKeyboard(rows).toJSON(),
+            "{\"inline_keyboard\":[[{\"text\":\"text\",\"callback_data\":\"data\"}],[{\"text\":\"text\",\"callback_data\":\"data\"},{\"text\":\"text\",\"callback_data\":\"data\"}]]}"
+        )
+    }
+
+    @TestCase
+    public func upstreamInlineKeyboard002CreatesRowsAndColumnsGolden(): Unit {
+        let rows = ArrayList<ArrayList<InlineKeyboardButton>>()
+        let row = ArrayList<InlineKeyboardButton>()
+        row.add(InlineKeyboard.textButton("text", "data"))
+        rows.add(row)
+
+        let button = InlineKeyboard.textButton("text", "data")
+        let keyboard = InlineKeyboard(rows)
+            .add(button, button)
+            .row()
+            .add(button, button)
+            .add(button)
+
+        @Expect(
+            keyboard.toJSON(),
+            "{\"inline_keyboard\":[[{\"text\":\"text\",\"callback_data\":\"data\"},{\"text\":\"text\",\"callback_data\":\"data\"},{\"text\":\"text\",\"callback_data\":\"data\"}],[{\"text\":\"text\",\"callback_data\":\"data\"},{\"text\":\"text\",\"callback_data\":\"data\"},{\"text\":\"text\",\"callback_data\":\"data\"}]]}"
+        )
+    }
+
+    @TestCase
     public func inlineKeyboardBuildsRowsStylesAndActions(): Unit {
         let keyboard = InlineKeyboard()
             .text("A", "a")
@@ -158,6 +263,36 @@ public class InlineKeyboardBuilderTest {
         @Expect(
             keyboard.toJSON(),
             "{\"inline_keyboard\":[[{\"text\":\"A\",\"callback_data\":\"a\"},{\"text\":\"Docs\",\"url\":\"https://example.test\"}],[{\"text\":\"Copy\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"icon-copy\",\"copy_text\":{\"text\":\"value\"}}]]}"
+        )
+    }
+
+    @TestCase
+    public func upstreamInlineKeyboard003CreatedFromDataSourcesGolden(): Unit {
+        let rows = ArrayList<ArrayList<InlineKeyboardButton>>()
+        let first = ArrayList<InlineKeyboardButton>()
+        first.add(InlineKeyboard.textButton("a"))
+        first.add(InlineKeyboard.textButton("b"))
+        let second = ArrayList<InlineKeyboardButton>()
+        second.add(InlineKeyboard.textButton("c"))
+        second.add(InlineKeyboard.textButton("d"))
+        rows.add(first)
+        rows.add(second)
+
+        let keyboard = InlineKeyboard().text("button")
+        let clone = InlineKeyboard.from(keyboard)
+        clone.text("copy")
+
+        @Expect(
+            InlineKeyboard.from(rows).toJSON(),
+            "{\"inline_keyboard\":[[{\"text\":\"a\",\"callback_data\":\"a\"},{\"text\":\"b\",\"callback_data\":\"b\"}],[{\"text\":\"c\",\"callback_data\":\"c\"},{\"text\":\"d\",\"callback_data\":\"d\"}]]}"
+        )
+        @Expect(
+            keyboard.toJSON(),
+            "{\"inline_keyboard\":[[{\"text\":\"button\",\"callback_data\":\"button\"}]]}"
+        )
+        @Expect(
+            clone.toJSON(),
+            "{\"inline_keyboard\":[[{\"text\":\"button\",\"callback_data\":\"button\"},{\"text\":\"copy\",\"callback_data\":\"copy\"}]]}"
         )
     }
 

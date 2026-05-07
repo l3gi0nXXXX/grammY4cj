@@ -24,6 +24,10 @@ public class APIConstants {
         object.addObject("ALL_CHAT_PERMISSIONS", this.ALL_CHAT_PERMISSIONS)
         object.toJSON()
     }
+
+    public func isFrozen(): Bool {
+        true
+    }
 }
 
 public let API_CONSTANTS: APIConstants = APIConstants(23, 8)
