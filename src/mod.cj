@@ -136,6 +136,7 @@ public import grammy4cj.core.ApiCallFn
 public import grammy4cj.core.Api
 public import grammy4cj.core.ApiBuildUrl
 public import grammy4cj.core.ApiWrapperSchemaTrace
+public import grammy4cj.core.BaseFetchConfig
 public import grammy4cj.core.ApiClient
 public import grammy4cj.core.ApiClientOptions
 public import grammy4cj.core.CancelController
@@ -187,7 +188,6 @@ public import grammy4cj.filter.filterPredicateCacheSize
 public import grammy4cj.filter.matchFilter
 public import grammy4cj.filter.parse
 public import grammy4cj.filter.parseFilterQuery
-public import grammy4cj.platform.BaseFetchConfig
 public import grammy4cj.platform.ByteIterator
 public import grammy4cj.platform.ByteStream
 public import grammy4cj.platform.DEFAULT_WEBHOOK_ADAPTER

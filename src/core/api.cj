@@ -1,7 +1,5 @@
 package grammy4cj.core
 
-import grammy4cj.platform.BaseFetchConfig
-
 public type ApiBuildUrl = (String, String, String, String) -> String
 public type WebhookReplyPredicate = (String) -> Bool
 

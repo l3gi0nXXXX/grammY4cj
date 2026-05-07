@@ -397,7 +397,7 @@ public class ContextShortcutTest {
         ))
         let inlinePayload = inlineCtx.editMessageText("inline-edited")
 
-        @Expect(methodName(inlinePayload), "editMessageTextInline")
+        @Expect(methodName(inlinePayload), "editMessageText")
         @Expect(payloadBody(inlinePayload).contains("\"inline_message_id\":\"inline-902\""), true)
         @Expect(payloadBody(inlinePayload).contains("\"text\":\"inline-edited\""), true)
     }

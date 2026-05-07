@@ -1,5 +1,9 @@
 package grammy4cj.platform
 
+import grammy4cj.core.BaseFetchConfig as CoreBaseFetchConfig
+
+public type BaseFetchConfig = CoreBaseFetchConfig
+
 public let DEFAULT_WEBHOOK_ADAPTER: String = "callback"
 
 public class PlatformHttpRequest {
@@ -23,29 +27,6 @@ public class PlatformHttpResponse {
     public init(status: Int64, body: String) {
         this.status = status
         this.body = body
-    }
-}
-
-public class BaseFetchConfig {
-    public let apiRoot: String
-    public let agentKind: String
-    public let keepAlive: Bool
-    public let compress: Bool
-    public let isEmpty: Bool
-
-    public init(apiRoot: String, agentKind: String, keepAlive: Bool, compress: Bool, isEmpty: Bool) {
-        this.apiRoot = apiRoot
-        this.agentKind = agentKind
-        this.keepAlive = keepAlive
-        this.compress = compress
-        this.isEmpty = isEmpty
-    }
-
-    public func summary(): String {
-        if (this.isEmpty) {
-            return "empty"
-        }
-        this.agentKind + ":keepAlive=" + boolString(this.keepAlive) + ":compress=" + boolString(this.compress)
     }
 }
 

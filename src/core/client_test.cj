@@ -3,7 +3,6 @@ package grammy4cj.core
 import grammy4cj.types.ApiResponse
 import grammy4cj.types.InputFile
 import grammy4cj.types.ResponseParameters
-import grammy4cj.platform.BaseFetchConfig
 import std.collection.ArrayList
 import std.unittest.*
 
