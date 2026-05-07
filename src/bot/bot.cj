@@ -2,10 +2,16 @@ package grammy4cj.bot
 
 import std.collection.ArrayList
 
+import grammy4cj.composer.BotError
+import grammy4cj.composer.Composer
+import grammy4cj.composer.MiddlewareFn
+import grammy4cj.composer.run
+import grammy4cj.context.Context
 import grammy4cj.core.Api
 import grammy4cj.core.ApiClientOptions
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
+import grammy4cj.filter.expandedFilterQueries
 import grammy4cj.types.Update
 import grammy4cj.types.UserFromGetMe
 
@@ -71,13 +77,16 @@ public class Bot {
     public let token: String
     public let api: Api
     public let apiBoundary: BotApiBoundary
+    private let composer: Composer = Composer()
     private let runtime: BotRuntime
     private let clock: BotClock
     private let retry: BotRetryConfig
     private var updateHandler: BotUpdateHandler
+    private var errorHandler: Option<BotErrorHandler> = None<BotErrorHandler>
     private var me: Option<UserFromGetMe>
     private var initInFlight: Bool = false
     private var pollingRunning: Bool = false
+    private var middlewareLocked: Bool = false
     private var lastTriedUpdate: Int64 = 0
     private let observedTypes = ArrayList<String>()
     private let warnings = ArrayList<String>()
@@ -165,6 +174,57 @@ public class Bot {
         this.updateHandler = handler
     }
 
+    public func `catch`(handler: BotErrorHandler): Unit {
+        this.errorHandler = Some(handler)
+    }
+
+    public func middleware(): MiddlewareFn {
+        this.composer.middleware()
+    }
+
+    public func use(middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.use(middleware)
+    }
+
+    public func use(middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.use(middleware)
+    }
+
+    public func on(query: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeFilterQuery(query)
+        this.composer.on(query)
+    }
+
+    public func on(query: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeFilterQuery(query)
+        this.composer.on(query, middleware)
+    }
+
+    public func on(queries: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeFilterQueries(queries)
+        this.composer.on(queries)
+    }
+
+    public func on(queries: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeFilterQueries(queries)
+        this.composer.on(queries, middleware)
+    }
+
+    public func reaction(reaction: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.filter(
+            { ctx: Context => ctx.hasReaction(reaction) },
+            middleware
+        )
+    }
+
     public func observeUpdateType(updateType: String): Unit {
         if (!arrayContains(this.observedTypes.toArray(), updateType)) {
             this.observedTypes.add(updateType)
@@ -183,12 +243,16 @@ public class Bot {
         if (!this.isInited()) {
             throw BotConfigError("Bot not initialized! Call bot.init() or pass botInfo to BotConfig.")
         }
-        let apiForUpdate = this.apiBoundary.copyForUpdate()
-        let ctx = BotUpdateContextBoundary(update, apiForUpdate, this.botInfo)
+        let ctx = Context(update, Api(this.token, this.api.config), this.botInfo)
         try {
-            this.updateHandler.handle(ctx)
+            run(this.composer, ctx)
+            let apiForUpdate = this.apiBoundary.copyForUpdate()
+            let boundary = BotUpdateContextBoundary(update, apiForUpdate, this.botInfo)
+            this.updateHandler.handle(boundary)
+        } catch (e: BotError) {
+            throw e
         } catch (e: Exception) {
-            throw BotUpdateError(update.updateId, "Error in middleware while handling update ${update.updateId}: ${e.message}")
+            throw BotError(e, ctx)
         }
     }
 
@@ -247,6 +311,7 @@ public class Bot {
     private func loop(options: PollingOptions): Unit {
         var includeAllowedUpdates = true
         var cycles: Int64 = 0
+        this.middlewareLocked = true
         try {
             while (this.pollingRunning && cycles < options.maxFetchCycles) {
                 let allowed = if (includeAllowedUpdates) {
@@ -277,7 +342,11 @@ public class Bot {
     private func handleUpdates(updates: Array<Update>): Unit {
         for (update in updates) {
             this.lastTriedUpdate = update.updateId
-            this.handleUpdate(update)
+            try {
+                this.handleUpdate(update)
+            } catch (e: BotError) {
+                this.handleMiddlewareError(e)
+            }
         }
     }
 
@@ -405,6 +474,35 @@ public class Bot {
             }
         }
     }
+
+    private func handleMiddlewareError(error: BotError): Unit {
+        match (this.errorHandler) {
+            case Some(handler) => handler.handle(error)
+            case None =>
+                if (this.pollingRunning) {
+                    this.stop()
+                }
+                throw error
+        }
+    }
+
+    private func assertMiddlewareRegistrationAllowed(): Unit {
+        if (this.middlewareLocked) {
+            throw BotConfigError("Cannot register middleware after the bot has started polling.")
+        }
+    }
+
+    private func observeFilterQuery(query: String): Unit {
+        for (path in expandedFilterQueries(query)) {
+            this.observeUpdateType(firstFilterSegment(path))
+        }
+    }
+
+    private func observeFilterQueries(queries: Array<String>): Unit {
+        for (path in expandedFilterQueries(queries)) {
+            this.observeUpdateType(firstFilterSegment(path))
+        }
+    }
 }
 
 private func arrayContains(values: Array<String>, needle: String): Bool {
@@ -414,4 +512,11 @@ private func arrayContains(values: Array<String>, needle: String): Bool {
         }
     }
     false
+}
+
+private func firstFilterSegment(path: String): String {
+    match (path.indexOf(":")) {
+        case Some(index) => path[0..index]
+        case None => path
+    }
 }
