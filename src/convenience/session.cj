@@ -96,7 +96,7 @@ public class MemorySessionStorage<T> <: StorageAdapter<T> {
     }
 
     public func has(key: String): Bool {
-        match (this.read(key)) {
+        match (this.storage.get(key)) {
             case Some(_) => true
             case None => false
         }
@@ -111,15 +111,7 @@ public class MemorySessionStorage<T> <: StorageAdapter<T> {
         for ((key, _) in this.storage) {
             keys.add(key)
         }
-
-        let live = ArrayList<String>()
-        for (key in keys) {
-            match (this.read(key)) {
-                case Some(_) => live.add(key)
-                case None => ()
-            }
-        }
-        live.toArray()
+        keys.toArray()
     }
 
     public func readAllValues(): Array<T> {
@@ -491,8 +483,17 @@ public func lazySession<T>(options: SessionOptions<T>): LazySessionMiddleware<T>
     LazySessionMiddleware<T>(options)
 }
 
+public func lazySession<A, B>(options: MultiSessionOptions2<A, B>): LazySessionMiddleware<A> {
+    throw Exception("Cannot use lazy multi sessions!")
+}
+
 public func defaultGetSessionKey(ctx: Context): Option<String> {
-    Some(ctx.updateId().toString())
+    let chatId = ctx.chatId
+    if (chatId == 0) {
+        None<String>
+    } else {
+        Some(chatId.toString())
+    }
 }
 
 private func sessionKeyValue(key: Option<String>): String {

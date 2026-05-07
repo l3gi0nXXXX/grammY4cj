@@ -2,7 +2,7 @@ package grammy4cj.convenience
 
 import grammy4cj.context.Context
 import grammy4cj.core.Api
-import grammy4cj.types.{Update, UserFromGetMe}
+import grammy4cj.types.{Chat, Message, Update, UserFromGetMe}
 import std.collection.{ArrayList, HashMap}
 import std.unittest.*
 
@@ -71,6 +71,10 @@ private class CountingStorage<T> <: StorageAdapter<T> {
 }
 
 private func testCtx(updateId: Int64): Context {
+    Context(Update.withMessage(updateId, Message(1, Chat(updateId, "private"), "")), Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
+}
+
+private func noChatCtx(updateId: Int64): Context {
     Context(Update(updateId), Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
 }
 
@@ -78,6 +82,13 @@ private func stringValue(value: Option<String>): String {
     match (value) {
         case Some(v) => v
         case None => ""
+    }
+}
+
+private func intValue(value: Option<Int64>): Int64 {
+    match (value) {
+        case Some(v) => v
+        case None => -1
     }
 }
 
@@ -198,6 +209,21 @@ public class MemorySessionStorageTest {
     }
 
     @TestCase
+    public func memoryStorageHasAndReadAllKeysKeepExpiredUntilRead(): Unit {
+        let clock = TestClock(1000)
+        let storage = MemorySessionStorage<String>(10, { => clock.nowMillis })
+
+        storage.write("expired", "value")
+        clock.nowMillis = 1011
+
+        @Expect(storage.has("expired"), true)
+        @Expect(storage.readAllKeys().size, 1)
+        @Expect(stringValue(storage.read("expired")), "")
+        @Expect(storage.has("expired"), false)
+        @Expect(storage.readAllKeys().size, 0)
+    }
+
+    @TestCase
     public func memoryStorageEnumeratesAllLiveData(): Unit {
         let storage = MemorySessionStorage<String>()
 
@@ -236,8 +262,9 @@ public class MemorySessionStorageTest {
 @Test
 public class SessionMiddlewareTest {
     @TestCase
-    public func defaultKeyUsesUpdateIdUntilChatContextLands(): Unit {
+    public func defaultKeyUsesChatIdAndSkipsNoChatUpdates(): Unit {
         @Expect(stringValue(defaultGetSessionKey(testCtx(7))), "7")
+        @Expect(stringValue(defaultGetSessionKey(noChatCtx(8))), "")
     }
 
     @TestCase
@@ -259,6 +286,36 @@ public class SessionMiddlewareTest {
         })
 
         @Expect(storage.has("7"), false)
+    }
+
+    @TestCase
+    public func sessionDoesPrimitiveIoAndDeletes(): Unit {
+        let storage = CountingStorage<Int64>()
+        storage.write("8", 0)
+        storage.readCount = 0
+        storage.writeCount = 0
+        storage.deleteCount = 0
+        let middleware = session<Int64>(SessionOptions<Int64>(storage))
+
+        middleware.handle(testCtx(8), { ctx: SessionContext<Int64> =>
+            if (ctx.session() == 0) {
+                ctx.setSession(1)
+            } else {
+                ctx.deleteSession()
+            }
+        })
+        middleware.handle(testCtx(8), { ctx: SessionContext<Int64> =>
+            if (ctx.session() == 0) {
+                ctx.setSession(1)
+            } else {
+                ctx.deleteSession()
+            }
+        })
+
+        @Expect(storage.readCount, 2)
+        @Expect(storage.writeCount, 1)
+        @Expect(storage.deleteCount, 1)
+        @Expect(intValue(storage.inner.read("8")), -1)
     }
 
     @TestCase
@@ -503,10 +560,52 @@ public class MultiSessionMiddlewareTest {
         @Expect(first.writeCount, 0)
         @Expect(second.writeCount, 0)
     }
+
+    @TestCase
+    public func multiSessionThrowsWhenWritingEmptySlotKey(): Unit {
+        let first = CountingStorage<CounterSession>()
+        let second = CountingStorage<CounterSession>()
+        let middleware = multiSession<CounterSession, CounterSession>(
+            MultiSessionOptions2<CounterSession, CounterSession>(
+                SessionOptions<CounterSession>(
+                    "",
+                    Some({ => CounterSession(0) }),
+                    first,
+                    { _ctx: Context => None<String> },
+                ),
+                SessionOptions<CounterSession>({ => CounterSession(0) }, second),
+            ),
+        )
+
+        let threw = throwsException({ =>
+            middleware.handle(testCtx(34), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
+                ctx.first.setSession(CounterSession(3))
+            })
+        })
+
+        @Expect(threw, true)
+        @Expect(first.readCount, 0)
+        @Expect(first.writeCount, 0)
+        @Expect(second.writeCount, 0)
+    }
 }
 
 @Test
 public class LazySessionMiddlewareTest {
+    @TestCase
+    public func lazySessionRejectsMultiSessionOptions(): Unit {
+        let options = MultiSessionOptions2<CounterSession, CounterSession>(
+            SessionOptions<CounterSession>({ => CounterSession(0) }),
+            SessionOptions<CounterSession>({ => CounterSession(0) }),
+        )
+
+        let threw = throwsException({ =>
+            let _middleware = lazySession<CounterSession, CounterSession>(options)
+        })
+
+        @Expect(threw, true)
+    }
+
     @TestCase
     public func lazySessionSkipsStorageReadUntilAccess(): Unit {
         let storage = CountingStorage<CounterSession>()
@@ -546,6 +645,36 @@ public class LazySessionMiddlewareTest {
         @Expect(storage.readCount, 1)
         @Expect(storage.writeCount, 1)
         @Expect(counterValue(storage.read("6")), 21)
+    }
+
+    @TestCase
+    public func lazySessionDoesPrimitiveIoAndDeletes(): Unit {
+        let storage = CountingStorage<Int64>()
+        storage.write("40", 0)
+        storage.readCount = 0
+        storage.writeCount = 0
+        storage.deleteCount = 0
+        let middleware = lazySession<Int64>(SessionOptions<Int64>(storage))
+
+        middleware.handle(testCtx(40), { ctx: SessionContext<Int64> =>
+            if (ctx.session() == 0) {
+                ctx.setSession(1)
+            } else {
+                ctx.deleteSession()
+            }
+        })
+        middleware.handle(testCtx(40), { ctx: SessionContext<Int64> =>
+            if (ctx.session() == 0) {
+                ctx.setSession(1)
+            } else {
+                ctx.deleteSession()
+            }
+        })
+
+        @Expect(storage.readCount, 2)
+        @Expect(storage.writeCount, 1)
+        @Expect(storage.deleteCount, 1)
+        @Expect(intValue(storage.inner.read("40")), -1)
     }
 
     @TestCase
@@ -636,6 +765,27 @@ public class LazySessionMiddlewareTest {
     }
 
     @TestCase
+    public func lazySessionWriteThenReadNeverTouchesStorageRead(): Unit {
+        let storage = CountingStorage<CounterSession>()
+        storage.write("46", CounterSession(3))
+        storage.readCount = 0
+        storage.writeCount = 0
+
+        lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
+            testCtx(46),
+            { ctx: SessionContext<CounterSession> =>
+                ctx.setSession(CounterSession(11))
+                @Expect(ctx.session().count, 11)
+                @Expect(ctx.wasRead(), true)
+            },
+        )
+
+        @Expect(storage.readCount, 0)
+        @Expect(storage.writeCount, 1)
+        @Expect(counterValue(storage.inner.read("46")), 11)
+    }
+
+    @TestCase
     public func lazySessionReadsOnceAndCachesValue(): Unit {
         let storage = CountingStorage<CounterSession>()
         storage.write("45", CounterSession(4))
@@ -711,6 +861,22 @@ public class EnhancedStorageTest {
         @Expect(envelopeVersion(raw), 1)
         @Expect(envelopeHasExpiry(raw), true)
         @Expect(envelopeExpiry(raw), 150)
+    }
+
+    @TestCase
+    public func enhancedStorageRefreshesExpiryOnEnvelopeWithoutExpiry(): Unit {
+        let clock = TestClock(200)
+        let backing = MemorySessionStorage<SessionEnvelope<CounterSession>>()
+        backing.write("legacy", SessionEnvelope<CounterSession>(CounterSession(4)))
+
+        let enhanced = enhanceStorage<CounterSession>(
+            MigrationOptions<CounterSession>(backing, 50, { => clock.nowMillis }),
+        )
+
+        @Expect(counterValue(enhanced.read("legacy")), 4)
+        let raw = backing.read("legacy")
+        @Expect(envelopeHasExpiry(raw), true)
+        @Expect(envelopeExpiry(raw), 250)
     }
 
     @TestCase
