@@ -463,7 +463,7 @@ check_ordered_file_eq "ALL_CHAT_PERMISSIONS keys vs upstream" "$TMP_DIR/port_cha
 section "G8.1 API method diff"
 perl -0ne 'while(/^    (?!private|constructor)(?:async\s+)?([A-Za-z_]\w*)\s*\(/mg){print "$1\n"}' \
   "$GRAMMY_DIR/src/core/api.ts" | sort -u > "$TMP_DIR/upstream_api_methods"
-perl -ne 'if (/^public class Api\b/) {$in=1; next} if ($in && /^}/) {$in=0} if ($in && /^    public func (?!endpointFor\b|call\b)([A-Za-z_]\w*)\(/) {print "$1\n"}' \
+perl -ne 'if (/^public class Api\b/) {$in=1; next} if ($in && /^}/) {$in=0} if ($in && /^    public func (?!endpointFor\b|call\b|callResult\b|use\b)([A-Za-z_]\w*)\(/) {print "$1\n"}' \
   "$REPO_DIR/src/core/api.cj" | sort -u > "$TMP_DIR/port_api_methods"
 awk '
   /public func apiWrapperMethodNames/ { in_table = 1; next }
