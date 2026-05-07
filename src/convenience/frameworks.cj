@@ -119,6 +119,12 @@ public class WebhookResponse {
     public var lastAction: String = ""
     public var lateWebhookReplySent: Bool = false
     public var lateWebhookReplyPayload: String = ""
+    public var updateSource: String = ""
+    public var headerSource: String = ""
+    public var endProtocol: String = ""
+    public var respondProtocol: String = ""
+    public var unauthorizedProtocol: String = ""
+    public var responseDelivery: String = ""
 
     public init() {}
 
@@ -126,6 +132,12 @@ public class WebhookResponse {
         this.adapterName = adapterName
         this.handlerReturnAvailable = adapterHasHandlerReturn(adapterName)
         this.handlerReturnKind = adapterHandlerReturnKind(adapterName)
+        this.updateSource = adapterUpdateSource(adapterName)
+        this.headerSource = adapterHeaderSource(adapterName)
+        this.endProtocol = adapterEndProtocol(adapterName)
+        this.respondProtocol = adapterRespondProtocol(adapterName)
+        this.unauthorizedProtocol = adapterUnauthorizedProtocol(adapterName)
+        this.responseDelivery = adapterResponseDelivery(adapterName)
     }
 
     public func end(): Unit {
@@ -218,6 +230,38 @@ public class AdapterStatusEntry {
         this.supported = supported
         this.state = state
         this.reason = reason
+    }
+}
+
+public class FrameworkAdapterContract {
+    public let name: String
+    public let updateSource: String
+    public let headerSource: String
+    public let endProtocol: String
+    public let respondProtocol: String
+    public let unauthorizedProtocol: String
+    public let responseDelivery: String
+    public let handlerReturnAvailable: Bool
+    public let handlerReturnKind: String
+    public let endStatusCode: Int64
+    public let endBody: String
+    public let unauthorizedStatusText: String
+    public let unauthorizedBody: String
+
+    public init(name: String) {
+        this.name = name
+        this.updateSource = adapterUpdateSource(name)
+        this.headerSource = adapterHeaderSource(name)
+        this.endProtocol = adapterEndProtocol(name)
+        this.respondProtocol = adapterRespondProtocol(name)
+        this.unauthorizedProtocol = adapterUnauthorizedProtocol(name)
+        this.responseDelivery = adapterResponseDelivery(name)
+        this.handlerReturnAvailable = adapterHasHandlerReturn(name)
+        this.handlerReturnKind = adapterHandlerReturnKind(name)
+        this.endStatusCode = adapterEndStatusCode(name)
+        this.endBody = adapterEndBody(name)
+        this.unauthorizedStatusText = adapterUnauthorizedStatusText(name)
+        this.unauthorizedBody = adapterUnauthorizedBody(name)
     }
 }
 
@@ -349,6 +393,242 @@ public func adapterHandlerReturnKind(name: String): String {
     "promise-response"
 }
 
+public func adapterResponseDelivery(name: String): String {
+    if (adapterHasHandlerReturn(name)) {
+        return "handler-return"
+    }
+    if (name == "aws-lambda") {
+        return "lambda-callback"
+    }
+    if (name == "cloudflare" || name == "serveHttp") {
+        return "event-respond-with"
+    }
+    if (name == "azure" ||
+        name == "express" ||
+        name == "fastify" ||
+        name == "http" ||
+        name == "https" ||
+        name == "koa" ||
+        name == "next-js" ||
+        name == "nhttp" ||
+        name == "oak" ||
+        name == "worktop") {
+        return "mutable-response"
+    }
+    if (name == "callback") {
+        return "callback-return"
+    }
+    "unknown"
+}
+
+public func adapterUpdateSource(name: String): String {
+    if (name == "aws-lambda" || name == "aws-lambda-async") {
+        return "event.body-json"
+    }
+    if (name == "azure") {
+        return "request.body"
+    }
+    if (name == "azure-v4" ||
+        name == "bun" ||
+        name == "cloudflare" ||
+        name == "cloudflare-mod" ||
+        name == "hono" ||
+        name == "oak" ||
+        name == "serveHttp" ||
+        name == "std/http" ||
+        name == "sveltekit" ||
+        name == "worktop") {
+        return "request.json"
+    }
+    if (name == "elysia" ||
+        name == "express" ||
+        name == "fastify" ||
+        name == "koa" ||
+        name == "next-js" ||
+        name == "nhttp" ||
+        name == "callback") {
+        return "body-object"
+    }
+    if (name == "http" || name == "https") {
+        return "node-raw-json-stream"
+    }
+    "unknown"
+}
+
+public func adapterHeaderSource(name: String): String {
+    if (name == "aws-lambda" || name == "aws-lambda-async") {
+        return "headers-canonical-or-lowercase"
+    }
+    if (name == "azure" ||
+        name == "elysia" ||
+        name == "fastify" ||
+        name == "http" ||
+        name == "https" ||
+        name == "next-js") {
+        return "headers-lowercase"
+    }
+    if (name == "callback") {
+        return "callback-argument"
+    }
+    return "headers-get-canonical"
+}
+
+public func adapterEndProtocol(name: String): String {
+    if (name == "aws-lambda") {
+        return "callback-status-200"
+    }
+    if (name == "aws-lambda-async") {
+        return "resolve-status-200"
+    }
+    if (name == "azure") {
+        return "context-res-status-200-empty-body"
+    }
+    if (name == "azure-v4") {
+        return "resolve-status-204"
+    }
+    if (name == "bun" ||
+        name == "cloudflare" ||
+        name == "cloudflare-mod" ||
+        name == "serveHttp" ||
+        name == "std/http" ||
+        name == "sveltekit") {
+        return "response-200-empty-body"
+    }
+    if (name == "elysia" || name == "hono") {
+        return "resolve-empty-body"
+    }
+    if (name == "express" || name == "http" || name == "https" || name == "next-js") {
+        return "response-end"
+    }
+    if (name == "fastify") {
+        return "reply-send-empty"
+    }
+    if (name == "koa") {
+        return "ctx-body-empty"
+    }
+    if (name == "nhttp") {
+        return "send-status-200"
+    }
+    if (name == "oak") {
+        return "response-status-200"
+    }
+    if (name == "worktop") {
+        return "res-end-null"
+    }
+    if (name == "callback") {
+        return "callback-default-200"
+    }
+    "unknown"
+}
+
+public func adapterRespondProtocol(name: String): String {
+    if (name == "aws-lambda" || name == "aws-lambda-async") {
+        return "status-200-json-body"
+    }
+    if (name == "azure") {
+        return "context-res-send-json"
+    }
+    if (name == "azure-v4") {
+        return "resolve-json-body"
+    }
+    if (name == "bun" ||
+        name == "cloudflare" ||
+        name == "cloudflare-mod" ||
+        name == "serveHttp" ||
+        name == "std/http" ||
+        name == "sveltekit") {
+        return "response-200-application-json"
+    }
+    if (name == "elysia") {
+        return "set-content-type-resolve-json"
+    }
+    if (name == "express") {
+        return "res-set-content-type-send"
+    }
+    if (name == "fastify") {
+        return "reply-headers-send"
+    }
+    if (name == "hono") {
+        return "c-json"
+    }
+    if (name == "http" || name == "https") {
+        return "write-head-json-end"
+    }
+    if (name == "koa") {
+        return "ctx-set-response-body"
+    }
+    if (name == "next-js") {
+        return "status-200-json"
+    }
+    if (name == "nhttp") {
+        return "status-200-send"
+    }
+    if (name == "oak") {
+        return "response-type-json-body"
+    }
+    if (name == "worktop") {
+        return "res-send-200"
+    }
+    if (name == "callback") {
+        return "callback-json"
+    }
+    "unknown"
+}
+
+public func adapterUnauthorizedProtocol(name: String): String {
+    if (name == "aws-lambda" || name == "aws-lambda-async") {
+        return "status-401-no-body"
+    }
+    if (name == "azure") {
+        return "context-res-send-401"
+    }
+    if (name == "azure-v4") {
+        return "resolve-status-401-body"
+    }
+    if (name == "bun" ||
+        name == "cloudflare" ||
+        name == "cloudflare-mod" ||
+        name == "serveHttp" ||
+        name == "std/http" ||
+        name == "sveltekit") {
+        return "response-401-unauthorized-json"
+    }
+    if (name == "elysia") {
+        return "set-status-401-empty"
+    }
+    if (name == "express") {
+        return "status-401-send"
+    }
+    if (name == "fastify") {
+        return "code-401-send"
+    }
+    if (name == "hono") {
+        return "status-401-empty-body"
+    }
+    if (name == "http" || name == "https") {
+        return "write-head-401-end"
+    }
+    if (name == "koa") {
+        return "ctx-status-401"
+    }
+    if (name == "next-js") {
+        return "status-401-send"
+    }
+    if (name == "nhttp") {
+        return "status-401-send"
+    }
+    if (name == "oak") {
+        return "response-status-401"
+    }
+    if (name == "worktop") {
+        return "res-send-401"
+    }
+    if (name == "callback") {
+        return "callback-unauthorized-json"
+    }
+    "unknown"
+}
+
 public func adapterEndStatusCode(name: String): Int64 {
     if (name == "azure-v4") {
         return 204
@@ -394,6 +674,40 @@ public func adapterUnauthorizedBody(name: String): String {
         return "\"unauthorized\""
     }
     WRONG_TOKEN_ERROR
+}
+
+public func frameworkAdapterContract(name: String): FrameworkAdapterContract {
+    if (!adapterIsSupported(name)) {
+        throw UnsupportedAdapterError(name)
+    }
+    FrameworkAdapterContract(name)
+}
+
+public func frameworkAdapterContracts(): Array<FrameworkAdapterContract> {
+    [
+        FrameworkAdapterContract("callback"),
+        FrameworkAdapterContract("aws-lambda"),
+        FrameworkAdapterContract("aws-lambda-async"),
+        FrameworkAdapterContract("azure"),
+        FrameworkAdapterContract("azure-v4"),
+        FrameworkAdapterContract("bun"),
+        FrameworkAdapterContract("cloudflare"),
+        FrameworkAdapterContract("cloudflare-mod"),
+        FrameworkAdapterContract("elysia"),
+        FrameworkAdapterContract("express"),
+        FrameworkAdapterContract("fastify"),
+        FrameworkAdapterContract("hono"),
+        FrameworkAdapterContract("http"),
+        FrameworkAdapterContract("https"),
+        FrameworkAdapterContract("koa"),
+        FrameworkAdapterContract("next-js"),
+        FrameworkAdapterContract("nhttp"),
+        FrameworkAdapterContract("oak"),
+        FrameworkAdapterContract("serveHttp"),
+        FrameworkAdapterContract("std/http"),
+        FrameworkAdapterContract("sveltekit"),
+        FrameworkAdapterContract("worktop")
+    ]
 }
 
 public func createReqResHandler(adapterName: String, request: WebhookRequest): ReqResHandler {

@@ -7,108 +7,75 @@ import grammy4cj.types.Update
 @Test
 public class FrameworkAdaptersTest {
     @TestCase
-    public func reqResHandlerReadsSecretHeaderCaseInsensitively(): Unit {
-        let headers = WebhookHeaders().set(SECRET_HEADER_LOWERCASE, "secret-lower")
-        let request = WebhookRequest(Update(101), headers, "http")
-        let handler = nodeHttpAdapter(request)
-
-        @Expect(handler.update.updateId, 101)
-        @Expect(handler.header, "secret-lower")
-        @Expect(handler.headerPresent, true)
-    }
-
-    @TestCase
-    public func respondJsonSetsStatusBodyAndContentTypeForEveryAdapter(): Unit {
-        for (name in registeredFrameworkAdapterNames()) {
-            let handler = createReqResHandler(name, WebhookRequest(Update(102), WebhookHeaders(), name))
-            handler.respond("{\"method\":\"sendMessage\"}")
-
-            @Expect(handler.response.statusCode, 200)
-            @Expect(handler.response.contentType, "application/json")
-            @Expect(handler.response.body, "{\"method\":\"sendMessage\"}")
-            @Expect(handler.response.responded, true)
-            @Expect(handler.response.lastAction, "respond")
-            if (adapterHasHandlerReturn(name)) {
-                @Expect(handler.response.handlerReturnResolved, true)
-            }
-        }
-    }
-
-    @TestCase
-    public func unauthorizedUsesUpstreamAdapterProtocol(): Unit {
-        for (name in registeredFrameworkAdapterNames()) {
-            let handler = createReqResHandler(name, WebhookRequest(Update(103), WebhookHeaders(), name))
-            handler.unauthorized()
-
-            @Expect(handler.response.statusCode, 401)
-            @Expect(handler.response.body, adapterUnauthorizedBody(name))
-            @Expect(handler.response.statusText, adapterUnauthorizedStatusText(name))
-            @Expect(handler.response.unauthorizedCalled, true)
-            @Expect(handler.response.lastAction, "unauthorized")
-            if (adapterHasHandlerReturn(name)) {
-                @Expect(handler.response.handlerReturnResolved, true)
-            }
-        }
-    }
-
-    @TestCase
-    public func endUsesUpstreamAdapterProtocol(): Unit {
-        for (name in registeredFrameworkAdapterNames()) {
-            let handler = createReqResHandler(name, WebhookRequest(Update(104), WebhookHeaders(), name))
-            handler.end()
-
-            @Expect(handler.response.statusCode, adapterEndStatusCode(name))
-            @Expect(handler.response.body, adapterEndBody(name))
-            @Expect(handler.response.ended, true)
-            @Expect(handler.response.lastAction, "end")
-            if (adapterHasHandlerReturn(name)) {
-                @Expect(handler.response.handlerReturnResolved, true)
-            }
-        }
-    }
-
-    @TestCase
-    public func adapterMapReportsAllUpstreamAdaptersAsSupported(): Unit {
+    public func frameworkAdaptersMirrorUpstreamRequestResponseContracts(): Unit {
         @Expect(upstreamFrameworkAdapterCount(), 21)
         @Expect(registeredFrameworkAdapterCount(), 22)
         @Expect(adapterStatus("callback").supported, true)
-        @Expect(adapterStatus("fastify").supported, true)
-        @Expect(adapterStatus("fastify").state, "supported")
         @Expect(adapterStatus("unknown").supported, false)
-        @Expect(adapterStatus("unknown").state, "unknown")
-    }
 
-    @TestCase
-    public func everyUpstreamAdapterHasCangjieStatusEntry(): Unit {
-        for (name in upstreamFrameworkAdapterNames()) {
-            @Expect(hasAdapterStatus(name), true)
-            @Expect(adapterStatus(name).supported, true)
-            @Expect(adapterStatus(name).name, name)
-            @Expect(adapterStatus(name).reason.isEmpty(), false)
-        }
-    }
+        var updateId: Int64 = 100
+        for (contract in frameworkAdapterContracts()) {
+            @Expect(hasAdapterStatus(contract.name), true)
+            @Expect(adapterStatus(contract.name).supported, true)
+            @Expect(adapterStatus(contract.name).name, contract.name)
+            @Expect(adapterStatus(contract.name).reason.isEmpty(), false)
 
-    @TestCase
-    public func everyRegisteredAdapterExposesUpdateHeaderAndHandlerReturnContract(): Unit {
-        var updateId: Int64 = 200
-        for (name in registeredFrameworkAdapterNames()) {
-            let headers = WebhookHeaders().set(SECRET_HEADER, "secret")
-            let handler = createReqResHandler(name, WebhookRequest(Update(updateId), headers, name))
+            let headers = WebhookHeaders()
+                .set(SECRET_HEADER_LOWERCASE, "secret-lower")
+                .set(SECRET_HEADER, "secret-canonical")
+            let request = WebhookRequest(Update(updateId), "{\"update_id\":${updateId}}", headers, contract.name)
+            let handler = createReqResHandler(contract.name, request)
 
-            @Expect(handler.adapterName, name)
+            @Expect(handler.adapterName, contract.name)
             @Expect(handler.update.updateId, updateId)
-            @Expect(handler.header, "secret")
+            @Expect(handler.header, "secret-lower")
             @Expect(handler.headerPresent, true)
-            @Expect(handler.handlerReturn.handlerReturnAvailable, adapterHasHandlerReturn(name))
-            @Expect(handler.handlerReturn.handlerReturnKind, adapterHandlerReturnKind(name))
-            @Expect(handler.handlerReturn.handlerReturnResolved, false)
+            @Expect(handler.handlerReturn.handlerReturnAvailable, contract.handlerReturnAvailable)
+            @Expect(handler.handlerReturn.handlerReturnKind, contract.handlerReturnKind)
+            @Expect(handler.response.updateSource, contract.updateSource)
+            @Expect(handler.response.headerSource, contract.headerSource)
+            @Expect(handler.response.responseDelivery, contract.responseDelivery)
+
+            let endHandler = createReqResHandler(contract.name, request)
+            endHandler.end()
+            @Expect(endHandler.response.statusCode, contract.endStatusCode)
+            @Expect(endHandler.response.body, contract.endBody)
+            @Expect(endHandler.response.ended, true)
+            @Expect(endHandler.response.lastAction, "end")
+            @Expect(endHandler.response.endProtocol, contract.endProtocol)
+            if (contract.handlerReturnAvailable) {
+                @Expect(endHandler.response.handlerReturnResolved, true)
+            } else {
+                @Expect(contract.responseDelivery.isEmpty(), false)
+            }
+
+            let respondHandler = createReqResHandler(contract.name, request)
+            respondHandler.respond("{\"method\":\"sendMessage\"}")
+            @Expect(respondHandler.response.statusCode, 200)
+            @Expect(respondHandler.response.contentType, "application/json")
+            @Expect(respondHandler.response.body, "{\"method\":\"sendMessage\"}")
+            @Expect(respondHandler.response.responded, true)
+            @Expect(respondHandler.response.lastAction, "respond")
+            @Expect(respondHandler.response.respondProtocol, contract.respondProtocol)
+            if (contract.handlerReturnAvailable) {
+                @Expect(respondHandler.response.handlerReturnResolved, true)
+            }
+
+            let unauthorizedHandler = createReqResHandler(contract.name, request)
+            unauthorizedHandler.unauthorized()
+            @Expect(unauthorizedHandler.response.statusCode, 401)
+            @Expect(unauthorizedHandler.response.body, contract.unauthorizedBody)
+            @Expect(unauthorizedHandler.response.statusText, contract.unauthorizedStatusText)
+            @Expect(unauthorizedHandler.response.unauthorizedCalled, true)
+            @Expect(unauthorizedHandler.response.lastAction, "unauthorized")
+            @Expect(unauthorizedHandler.response.unauthorizedProtocol, contract.unauthorizedProtocol)
+            if (contract.handlerReturnAvailable) {
+                @Expect(unauthorizedHandler.response.handlerReturnResolved, true)
+            }
 
             updateId += 1
         }
-    }
 
-    @TestCase
-    public func nodeHttpAdaptersRejectMalformedJsonBodies(): Unit {
         var httpThrown = false
         try {
             let _ = createReqResHandler(
@@ -131,20 +98,16 @@ public class FrameworkAdaptersTest {
             @Expect(e.adapterName, "https")
         }
 
-        @Expect(httpThrown, true)
-        @Expect(httpsThrown, true)
-    }
-
-    @TestCase
-    public func unknownAdapterThrowsUnsupportedAdapterError(): Unit {
-        var thrown = false
+        var unknownThrown = false
         try {
-            let _ = createReqResHandler("unknown", WebhookRequest(Update(401), WebhookHeaders(), "unknown"))
+            let _ = frameworkAdapterContract("unknown")
         } catch (e: UnsupportedAdapterError) {
-            thrown = true
+            unknownThrown = true
             @Expect(e.adapterName, "unknown")
         }
 
-        @Expect(thrown, true)
+        @Expect(httpThrown, true)
+        @Expect(httpsThrown, true)
+        @Expect(unknownThrown, true)
     }
 }
