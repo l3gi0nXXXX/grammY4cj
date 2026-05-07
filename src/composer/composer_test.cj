@@ -9,6 +9,33 @@ import std.unittest.*
 
 private let eventMutex = Mutex()
 
+private class AsyncSignal {
+    private let mutex = Mutex()
+    private var released: Bool = false
+
+    public init() {}
+
+    public func release(): Unit {
+        synchronized(this.mutex) {
+            this.released = true
+        }
+    }
+
+    public func isReleased(): Bool {
+        var value = false
+        synchronized(this.mutex) {
+            value = this.released
+        }
+        value
+    }
+
+    public func wait(): Unit {
+        while (!this.isReleased()) {
+            ()
+        }
+    }
+}
+
 private func testCtx(updateId: Int64, kind: String): Context {
     Context(Update(updateId, kind), Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
 }
@@ -51,6 +78,13 @@ private func countEvents(events: ArrayList<String>, value: String): Int64 {
         }
     }
     count
+}
+
+private func spinWork(iterations: Int64): Unit {
+    var i: Int64 = 0
+    while (i < iterations) {
+        i += 1
+    }
 }
 
 private func botInfo(): UserFromGetMe {
@@ -154,6 +188,115 @@ public class ComposerMiddlewareTest {
 
         @Expect(thrown, true)
         @Expect(events.size, 1)
+    }
+
+    @TestCase
+    public func asyncMiddlewareAwaitsNextBeforeContinuing(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let outer: AsyncMiddlewareFn = { _ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "outer:pre")
+                next().get()
+                addEvent(events, "outer:post")
+            }
+        }
+        let inner: AsyncMiddlewareFn = { _ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "inner")
+                next().get()
+            }
+        }
+        composer.use(outer)
+        composer.use(inner)
+
+        run(composer, testCtx(80, "message"))
+
+        @Expect(events.size, 3)
+        @Expect(events[0], "outer:pre")
+        @Expect(events[1], "inner")
+        @Expect(events[2], "outer:post")
+    }
+
+    @TestCase
+    public func runPropagatesRejectedMiddlewareFuture(): Unit {
+        let failing: AsyncMiddlewareFn = { _ctx: Context, _next: AsyncNextFunction =>
+            spawn { => throw Exception("async boom") }
+        }
+
+        var thrown = false
+        try {
+            run(failing, testCtx(81, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "async boom")
+        }
+
+        @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func asyncFilterAndDropPredicatesControlFlow(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let even: Predicate = { ctx: Context =>
+            spawn { => ctx.updateId() % 2 == 0 }
+        }
+        composer.filter(even, eventMiddleware(events, "even"))
+        composer.drop(even, eventMiddleware(events, "odd"))
+
+        run(composer, testCtx(82, "message"))
+        run(composer, testCtx(83, "message"))
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "even")
+        @Expect(events[1], "odd")
+    }
+
+    @TestCase
+    public func asyncPredicateErrorsStopDownstreamAndPropagate(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let failing: Predicate = { _ctx: Context =>
+            spawn { =>
+                throw Exception("predicate boom")
+                false
+            }
+        }
+        composer.filter(failing, eventMiddleware(events, "filtered"))
+        composer.use(eventMiddleware(events, "after"))
+
+        var thrown = false
+        try {
+            run(composer, testCtx(84, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "predicate boom")
+        }
+
+        @Expect(thrown, true)
+        @Expect(events.size, 0)
+    }
+
+    @TestCase
+    public func asyncBranchSelectsTrueAndFalseMiddleware(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let even: Predicate = { ctx: Context =>
+            spawn { => ctx.updateId() % 2 == 0 }
+        }
+        composer.branch(
+            even,
+            eventMiddleware(events, "true"),
+            eventMiddleware(events, "false"),
+        )
+
+        run(composer, testCtx(86, "message"))
+        run(composer, testCtx(87, "message"))
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "true")
+        @Expect(events[1], "false")
     }
 
     @TestCase
@@ -396,8 +539,9 @@ public class ComposerMiddlewareTest {
     @TestCase
     public func useLetsErrorsBubble(): Unit {
         let composer = Composer()
+        let evil: MiddlewareFn = { _ctx: Context, _next: NextFunction => throw Exception("evil") }
         composer.use({ _ctx: Context, next: NextFunction => next() })
-            .use({ _ctx: Context, _next: NextFunction => throw Exception("evil") })
+            .use(evil)
 
         var thrown = false
         try {
@@ -722,7 +866,8 @@ public class ComposerMiddlewareTest {
     @TestCase
     public func forkPropagatesForkErrors(): Unit {
         let composer = Composer()
-        composer.fork({ _ctx: Context, _next: NextFunction => throw Exception("fork boom") })
+        let forkBoom: MiddlewareFn = { _ctx: Context, _next: NextFunction => throw Exception("fork boom") }
+        composer.fork(forkBoom)
 
         var thrown = false
         try {
@@ -732,6 +877,101 @@ public class ComposerMiddlewareTest {
             @Expect(err.message, "fork boom")
         }
         @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func forkStartsDownstreamAndForkedMiddlewareConcurrently(): Unit {
+        let events = ArrayList<String>()
+        let downstreamSeen = AsyncSignal()
+        let forkSeen = AsyncSignal()
+        let composer = Composer()
+        let forked: AsyncMiddlewareFn = { _ctx: Context, _next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "fork:start")
+                forkSeen.release()
+                downstreamSeen.wait()
+                addEvent(events, "fork:after-downstream")
+            }
+        }
+        let downstream: AsyncMiddlewareFn = { _ctx: Context, _next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "downstream:start")
+                downstreamSeen.release()
+                forkSeen.wait()
+                addEvent(events, "downstream:after-fork")
+            }
+        }
+        composer.fork(forked)
+        composer.use(downstream)
+
+        run(composer, testCtx(88, "message"))
+
+        @Expect(events.size, 4)
+        @Expect(countEvents(events, "fork:start"), 1)
+        @Expect(countEvents(events, "fork:after-downstream"), 1)
+        @Expect(countEvents(events, "downstream:start"), 1)
+        @Expect(countEvents(events, "downstream:after-fork"), 1)
+    }
+
+    @TestCase
+    public func forkRejectsWithFastForkErrorBeforeSlowerDownstreamError(): Unit {
+        let forkStarted = AsyncSignal()
+        let composer = Composer()
+        let forked: AsyncMiddlewareFn = { _ctx: Context, _next: AsyncNextFunction =>
+            spawn { =>
+                forkStarted.release()
+                throw Exception("fork fast")
+            }
+        }
+        let downstream: AsyncMiddlewareFn = { _ctx: Context, _next: AsyncNextFunction =>
+            spawn { =>
+                forkStarted.wait()
+                spinWork(5000000)
+                throw Exception("downstream late")
+            }
+        }
+        composer.fork(forked)
+        composer.use(downstream)
+
+        var thrown = false
+        try {
+            run(composer, testCtx(89, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "fork fast")
+        }
+
+        @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func forkPropagatesDownstreamErrorsAndSharesContext(): Unit {
+        let seen = ArrayList<String>()
+        let forkSeen = AsyncSignal()
+        let composer = Composer()
+        let forked: MiddlewareFn = { ctx: Context, _next: NextFunction =>
+            addEvent(seen, "fork:" + ctx.updateId().toString())
+            forkSeen.release()
+        }
+        let downstream: MiddlewareFn = { ctx: Context, _next: NextFunction =>
+            forkSeen.wait()
+            addEvent(seen, "downstream:" + ctx.updateId().toString())
+            throw Exception("downstream boom")
+        }
+        composer.fork(forked)
+        composer.use(downstream)
+
+        var thrown = false
+        try {
+            run(composer, testCtx(90, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "downstream boom")
+        }
+
+        @Expect(thrown, true)
+        @Expect(countEvents(seen, "fork:90"), 1)
+        @Expect(countEvents(seen, "downstream:90"), 1)
     }
 
     @TestCase
@@ -793,6 +1033,66 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func lazyAwaitsAsyncMiddlewareFactories(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let factory: AsyncMiddlewareFactory = { ctx: Context =>
+            spawn { =>
+                addEvent(events, "factory:" + ctx.updateId().toString())
+                eventMiddleware(events, "created")
+            }
+        }
+        let asyncFactory: (Context) -> Future<AsyncMiddlewareFn> = { ctx: Context =>
+            spawn { =>
+                let middleware: AsyncMiddlewareFn = { _ctx: Context, next: AsyncNextFunction =>
+                    spawn { =>
+                        addEvent(events, "async-created:" + ctx.updateId().toString())
+                        next().get()
+                    }
+                }
+                middleware
+            }
+        }
+        composer.lazy(factory)
+        composer.lazyAsync(asyncFactory)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(91, "message"))
+
+        @Expect(events.size, 4)
+        @Expect(events[0], "factory:91")
+        @Expect(events[1], "created")
+        @Expect(events[2], "async-created:91")
+        @Expect(events[3], "after")
+    }
+
+    @TestCase
+    public func lazyAwaitsAsyncArraysAndComposers(): Unit {
+        let events = ArrayList<String>()
+        let emptyArrayFactory: AsyncMiddlewareArrayFactory = { _ctx: Context =>
+            spawn { => Array<MiddlewareFn>() }
+        }
+        let composerFactory: AsyncComposerFactory = { ctx: Context =>
+            spawn { =>
+                Composer({ _ctx: Context, next: NextFunction =>
+                    addEvent(events, "composer:" + ctx.updateId().toString())
+                    next()
+                })
+            }
+        }
+        let composer = Composer()
+        composer.lazy(emptyArrayFactory)
+        composer.lazy(composerFactory)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(92, "message"))
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "composer:92")
+        @Expect(events[1], "after")
+    }
+
+    @TestCase
     public func routeRoutesContextObjects(): Unit {
         let events = ArrayList<String>()
         let composer = Composer()
@@ -825,8 +1125,8 @@ public class ComposerMiddlewareTest {
         let events = ArrayList<String>()
         let routes = HashMap<String, MiddlewareFn>()
         routes["key"] = eventMiddleware(events, "route")
-        let missing: Router = { _ctx: Context => None<String> }
-        let hit: Router = { _ctx: Context => Some("key") }
+        let missing: SyncRouter = { _ctx: Context => None<String> }
+        let hit: SyncRouter = { _ctx: Context => Some("key") }
 
         Composer().route(missing, routes, eventMiddleware(events, "fallback"))
             .middleware()(testCtx(34, "message"), { => () })
@@ -839,12 +1139,40 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func routeAwaitsAsyncRouterAndFallbacks(): Unit {
+        let events = ArrayList<String>()
+        let routes = HashMap<String, MiddlewareFn>()
+        routes["hit"] = eventMiddleware(events, "route")
+        let router: Router = { ctx: Context =>
+            spawn { =>
+                if (ctx.updateId() == 93) {
+                    Some("hit")
+                } else if (ctx.updateId() == 94) {
+                    Some("missing")
+                } else {
+                    None<String>
+                }
+            }
+        }
+        let composer = Composer()
+        composer.route(router, routes, eventMiddleware(events, "fallback"))
+
+        run(composer, testCtx(93, "message"))
+        run(composer, testCtx(94, "message"))
+        run(composer, testCtx(95, "message"))
+
+        @Expect(events.size, 3)
+        @Expect(events[0], "route")
+        @Expect(events[1], "fallback")
+        @Expect(events[2], "fallback")
+    }
+
+    @TestCase
     public func errorBoundaryRethrowsHandlerErrors(): Unit {
         let composer = Composer()
-        composer.errorBoundary(
-            { _err: BotError, _next: NextFunction => throw Exception("handler boom") },
-            { _ctx: Context, _next: NextFunction => throw Exception("inner boom") },
-        )
+        let handler: ErrorHandler = { _err: BotError, _next: NextFunction => throw Exception("handler boom") }
+        let inner: MiddlewareFn = { _ctx: Context, _next: NextFunction => throw Exception("inner boom") }
+        composer.errorBoundary(handler, inner)
 
         var thrown = false
         try {
@@ -860,12 +1188,13 @@ public class ComposerMiddlewareTest {
     public func errorBoundaryCatchesChildMiddlewareAndCanContinue(): Unit {
         let events = ArrayList<String>()
         let composer = Composer()
+        let child: MiddlewareFn = { _ctx: Context, _next: NextFunction => throw Exception("child boom") }
         composer.errorBoundary(
             { err: BotError, next: NextFunction =>
                 events.add("caught:" + err.error.message)
                 next()
             },
-        ).use({ _ctx: Context, _next: NextFunction => throw Exception("child boom") })
+        ).use(child)
         composer.use(eventMiddleware(events, "after"))
 
         run(composer, testCtx(36, "message"))
@@ -882,7 +1211,8 @@ public class ComposerMiddlewareTest {
         composer.errorBoundary(
             { _err: BotError, _next: NextFunction => events.add("caught") },
         )
-        composer.use({ _ctx: Context, _next: NextFunction => throw Exception("downstream boom") })
+        let downstream: MiddlewareFn = { _ctx: Context, _next: NextFunction => throw Exception("downstream boom") }
+        composer.use(downstream)
 
         var thrown = false
         try {
@@ -891,6 +1221,81 @@ public class ComposerMiddlewareTest {
             thrown = true
             @Expect(err.message, "downstream boom")
         }
+        @Expect(thrown, true)
+        @Expect(events.size, 0)
+    }
+
+    @TestCase
+    public func errorBoundaryAwaitsAsyncBoundMiddlewareBeforeContinuing(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let handler: AsyncErrorHandler = { _err: BotError, _next: AsyncNextFunction =>
+            spawn { => addEvent(events, "unused") }
+        }
+        let child: AsyncMiddlewareFn = { _ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "child:pre")
+                next().get()
+                addEvent(events, "child:post")
+            }
+        }
+        composer.errorBoundary(handler, child)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(96, "message"))
+
+        @Expect(events.size, 3)
+        @Expect(events[0], "child:pre")
+        @Expect(events[1], "child:post")
+        @Expect(events[2], "after")
+    }
+
+    @TestCase
+    public func errorBoundaryAsyncHandlerCatchesAndContinuesAfterNextMarker(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let handler: AsyncErrorHandler = { err: BotError, next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "caught:" + err.error.message)
+                next().get()
+                addEvent(events, "handler:post")
+            }
+        }
+        let child: AsyncMiddlewareFn = { _ctx: Context, _next: AsyncNextFunction =>
+            spawn { => throw Exception("async child boom") }
+        }
+        composer.errorBoundary(handler, child)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(97, "message"))
+
+        @Expect(events.size, 3)
+        @Expect(events[0], "caught:async child boom")
+        @Expect(events[1], "handler:post")
+        @Expect(events[2], "after")
+    }
+
+    @TestCase
+    public func errorBoundaryPropagatesAsyncHandlerErrors(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let handler: AsyncErrorHandler = { _err: BotError, _next: AsyncNextFunction =>
+            spawn { => throw Exception("async handler boom") }
+        }
+        let child: AsyncMiddlewareFn = { _ctx: Context, _next: AsyncNextFunction =>
+            spawn { => throw Exception("async child boom") }
+        }
+        composer.errorBoundary(handler, child)
+        composer.use(eventMiddleware(events, "after"))
+
+        var thrown = false
+        try {
+            run(composer, testCtx(98, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "async handler boom")
+        }
+
         @Expect(thrown, true)
         @Expect(events.size, 0)
     }

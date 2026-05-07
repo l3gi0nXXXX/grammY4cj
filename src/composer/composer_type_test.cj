@@ -91,13 +91,13 @@ public class ComposerTypeSurfaceTest {
 
     @TestCase
     public func filterPredicateNarrowsToComposableComposerShape(): Unit {
-        let predicate: Predicate = { _ctx: Context => true }
+        let predicate: SyncPredicate = { _ctx: Context => true }
         let composer: Composer = Composer().filter(predicate)
         composer.drop(predicate, { _ctx: Context, next: NextFunction => next() })
         let decision = composerMaybePromiseDecision()
 
-        @Expect(decision.callbackContract, "sync-callback")
-        @Expect(decision.futureBoundary, "Future work must be joined before the callback returns")
+        @Expect(decision.callbackContract, "MaybePromise via sync and Future middleware adapters")
+        @Expect(decision.futureBoundary.contains("AsyncNextFunction returns Future<Unit>"), true)
         @Expect(decision.routeFallbackContract, "None<String> route values select fallback")
         @Expect(composer.layerName(), "Composer")
     }

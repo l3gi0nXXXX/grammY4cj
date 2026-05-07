@@ -3,16 +3,25 @@ package grammy4cj.composer
 import grammy4cj.context.Context
 import grammy4cj.filter.matchFilter
 import grammy4cj.types.ReactionType
-import std.collection.HashMap
+import std.collection.{ArrayList, HashMap}
+import std.sync.{Condition, Mutex}
 
 public type NextFunction = () -> Unit
+public type AsyncNextFunction = () -> Future<Unit>
 public type MiddlewareFn = (Context, NextFunction) -> Unit
-public type Predicate = (Context) -> Bool
+public type AsyncMiddlewareFn = (Context, AsyncNextFunction) -> Future<Unit>
+public type SyncPredicate = (Context) -> Bool
+public type Predicate = (Context) -> Future<Bool>
 public type MiddlewareFactory = (Context) -> MiddlewareFn
+public type AsyncMiddlewareFactory = (Context) -> Future<MiddlewareFn>
 public type MiddlewareArrayFactory = (Context) -> Array<MiddlewareFn>
+public type AsyncMiddlewareArrayFactory = (Context) -> Future<Array<MiddlewareFn>>
 public type ComposerFactory = (Context) -> Composer
-public type Router = (Context) -> Option<String>
+public type AsyncComposerFactory = (Context) -> Future<Composer>
+public type SyncRouter = (Context) -> Option<String>
+public type Router = (Context) -> Future<Option<String>>
 public type ErrorHandler = (BotError, NextFunction) -> Unit
+public type AsyncErrorHandler = (BotError, AsyncNextFunction) -> Future<Unit>
 
 public class ComposerMaybePromiseDecision {
     public let callbackContract: String
@@ -30,9 +39,9 @@ public class ComposerMaybePromiseDecision {
 
 public func composerMaybePromiseDecision(): ComposerMaybePromiseDecision {
     ComposerMaybePromiseDecision(
-        "sync-callback",
-        "Future work must be joined before the callback returns",
-        "fork spawns downstream and forked middleware, then joins downstream before fork",
+        "MaybePromise via sync and Future middleware adapters",
+        "AsyncNextFunction returns Future<Unit>; async middleware, predicate, factory, router, and error handler are joined at control boundaries",
+        "fork starts downstream and forked middleware together and resolves on first failure or both successes",
         "None<String> route values select fallback",
     )
 }
@@ -60,103 +69,259 @@ private class NextCallState {
     public init() {}
 }
 
+private func resolvedUnitFuture(): Future<Unit> {
+    spawn { => () }
+}
+
+private func resolvedBoolFuture(value: Bool): Future<Bool> {
+    spawn { => value }
+}
+
+private func resolvedRouteFuture(value: Option<String>): Future<Option<String>> {
+    spawn { => value }
+}
+
+private func blockingNext(next: AsyncNextFunction): NextFunction {
+    { =>
+        next().get()
+    }
+}
+
+private func liftSyncMiddleware(middleware: MiddlewareFn): AsyncMiddlewareFn {
+    { ctx: Context, next: AsyncNextFunction =>
+        spawn { =>
+            middleware(ctx, blockingNext(next))
+        }
+    }
+}
+
+private func liftSyncMiddlewareArray(middleware: Array<MiddlewareFn>): Array<AsyncMiddlewareFn> {
+    let lifted = ArrayList<AsyncMiddlewareFn>()
+    for (mw in middleware) {
+        lifted.add(liftSyncMiddleware(mw))
+    }
+    lifted.toArray()
+}
+
+private func liftSyncPredicate(predicate: SyncPredicate): Predicate {
+    { ctx: Context => resolvedBoolFuture(predicate(ctx)) }
+}
+
+private func liftSyncRouter(router: SyncRouter): Router {
+    { ctx: Context => resolvedRouteFuture(router(ctx)) }
+}
+
+private func asyncPass(_ctx: Context, next: AsyncNextFunction): Future<Unit> {
+    next()
+}
+
 public func pass(_ctx: Context, next: NextFunction): Unit {
     next()
 }
 
-public func concat(first: MiddlewareFn, andThen: MiddlewareFn): MiddlewareFn {
-    { ctx: Context, next: NextFunction =>
-        let nextCalled = NextCallState()
-        first(ctx, { =>
-            if (nextCalled.called) {
-                throw Exception("`next` already called before!")
-            }
-            nextCalled.called = true
-            andThen(ctx, next)
-        })
+private func concatAsync(first: AsyncMiddlewareFn, andThen: AsyncMiddlewareFn): AsyncMiddlewareFn {
+    { ctx: Context, next: AsyncNextFunction =>
+        spawn { =>
+            let nextCalled = NextCallState()
+            first(ctx, { =>
+                if (nextCalled.called) {
+                    throw Exception("`next` already called before!")
+                }
+                nextCalled.called = true
+                andThen(ctx, next)
+            }).get()
+        }
     }
 }
 
-private func compose(middleware: Array<MiddlewareFn>): MiddlewareFn {
-    var handler: MiddlewareFn = pass
+public func concat(first: MiddlewareFn, andThen: MiddlewareFn): MiddlewareFn {
+    { ctx: Context, next: NextFunction =>
+        concatAsync(liftSyncMiddleware(first), liftSyncMiddleware(andThen))(
+            ctx,
+            { => spawn { => next() } },
+        ).get()
+    }
+}
+
+private func compose(middleware: Array<AsyncMiddlewareFn>): AsyncMiddlewareFn {
+    var handler: AsyncMiddlewareFn = asyncPass
     for (mw in middleware) {
-        handler = concat(handler, mw)
+        handler = concatAsync(handler, mw)
     }
     handler
 }
 
 public func run(middleware: MiddlewareFn, ctx: Context): Unit {
-    middleware(ctx, { => () })
+    liftSyncMiddleware(middleware)(ctx, { => resolvedUnitFuture() }).get()
+}
+
+public func run(middleware: AsyncMiddlewareFn, ctx: Context): Unit {
+    middleware(ctx, { => resolvedUnitFuture() }).get()
 }
 
 public func run(composer: Composer, ctx: Context): Unit {
-    run(composer.middleware(), ctx)
+    composer.run(ctx)
 }
 
 private func notPredicate(predicate: Predicate): Predicate {
-    { ctx: Context => !predicate(ctx) }
+    { ctx: Context =>
+        spawn { =>
+            !predicate(ctx).get()
+        }
+    }
 }
 
-private func hasPredicate(predicate: (Context) -> Bool): Predicate {
-    { ctx: Context => predicate(ctx) }
+private func hasPredicate(predicate: SyncPredicate): Predicate {
+    liftSyncPredicate(predicate)
 }
 
 private func queryPredicate(query: String): Predicate {
-    { ctx: Context => matchFilter(query, ctx) }
+    { ctx: Context => resolvedBoolFuture(matchFilter(query, ctx)) }
 }
 
 private func queryArrayPredicate(queries: Array<String>): Predicate {
-    { ctx: Context => matchFilter(queries, ctx) }
+    { ctx: Context => resolvedBoolFuture(matchFilter(queries, ctx)) }
 }
 
-private func routeMiddleware(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): MiddlewareFactory {
+private func routeMiddleware(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): AsyncMiddlewareFactory {
     { ctx: Context =>
-        match (router(ctx)) {
-            case Some(route) =>
-                match (routeHandlers.get(route)) {
-                    case Some(mw) => mw
-                    case None => fallback
+        spawn { =>
+            match (router(ctx).get()) {
+                case Some(route) =>
+                    match (routeHandlers.get(route)) {
+                        case Some(mw) => mw
+                        case None => fallback
+                    }
+                case None => fallback
+            }
+        }
+    }
+}
+
+private class PromiseAllState {
+    public var completed: Int64 = 0
+    public var failure: Option<Exception> = None<Exception>
+
+    public init() {}
+
+    public func hasFailure(): Bool {
+        match (this.failure) {
+            case Some(_) => true
+            case None => false
+        }
+    }
+}
+
+private func promiseAll(first: () -> Unit, second: () -> Unit): Future<Unit> {
+    spawn { =>
+        let state = PromiseAllState()
+        let mutex = Mutex()
+        let condition: Condition = synchronized(mutex) { mutex.condition() }
+        let record: (Option<Exception>) -> Unit = { err: Option<Exception> =>
+            synchronized(mutex) {
+                state.completed += 1
+                match (err) {
+                    case Some(failure) =>
+                        match (state.failure) {
+                            case Some(_) => ()
+                            case None => state.failure = Some(failure)
+                        }
+                    case None => ()
                 }
-            case None => fallback
+                condition.notifyAll()
+            }
+        }
+        let firstFuture = spawn { => first() }
+        let secondFuture = spawn { => second() }
+        spawn { =>
+            try {
+                firstFuture.get()
+                record(None<Exception>)
+            } catch (err: Exception) {
+                record(Some(err))
+            }
+        }
+        spawn { =>
+            try {
+                secondFuture.get()
+                record(None<Exception>)
+            } catch (err: Exception) {
+                record(Some(err))
+            }
+        }
+        synchronized(mutex) {
+            condition.waitUntil({ => state.hasFailure() || state.completed == 2 })
+        }
+        match (state.failure) {
+            case Some(err) => throw err
+            case None => ()
         }
     }
 }
 
 public class Composer {
-    private var handler: MiddlewareFn = pass
+    private var handler: AsyncMiddlewareFn = asyncPass
 
     public init() {}
 
     public init(composer: Composer) {
-        this.handler = composer.middleware()
+        this.handler = composer.asyncMiddleware()
     }
 
     public init(middleware: MiddlewareFn) {
+        this.handler = liftSyncMiddleware(middleware)
+    }
+
+    public init(middleware: AsyncMiddlewareFn) {
         this.handler = middleware
     }
 
     public init(middleware: Array<MiddlewareFn>) {
+        this.handler = compose(liftSyncMiddlewareArray(middleware))
+    }
+
+    public init(middleware: Array<AsyncMiddlewareFn>) {
         this.handler = compose(middleware)
     }
 
     public func middleware(): MiddlewareFn {
         { ctx: Context, next: NextFunction =>
+            this.handler(ctx, { => spawn { => next() } }).get()
+        }
+    }
+
+    public func asyncMiddleware(): AsyncMiddlewareFn {
+        { ctx: Context, next: AsyncNextFunction =>
             this.handler(ctx, next)
         }
+    }
+
+    public func run(ctx: Context): Unit {
+        this.handler(ctx, { => resolvedUnitFuture() }).get()
     }
 
     public func use(middleware: MiddlewareFn): Composer {
         this.use([middleware])
     }
 
+    public func use(middleware: AsyncMiddlewareFn): Composer {
+        this.use([middleware])
+    }
+
     public func use(composer: Composer): Composer {
-        this.handler = concat(this.handler, composer.middleware())
+        this.handler = concatAsync(this.handler, composer.asyncMiddleware())
         composer
     }
 
     public func use(middleware: Array<MiddlewareFn>): Composer {
         let composer = Composer(middleware)
-        this.handler = concat(this.handler, composer.middleware())
+        this.handler = concatAsync(this.handler, composer.asyncMiddleware())
+        composer
+    }
+
+    public func use(middleware: Array<AsyncMiddlewareFn>): Composer {
+        let composer = Composer(middleware)
+        this.handler = concatAsync(this.handler, composer.asyncMiddleware())
         composer
     }
 
@@ -450,11 +615,25 @@ public class Composer {
 
     public func filter(predicate: Predicate): Composer {
         let composer = Composer()
-        this.branch(predicate, composer.middleware(), pass)
+        this.branch(predicate, composer.asyncMiddleware(), asyncPass)
         composer
     }
 
+    public func filter(predicate: SyncPredicate): Composer {
+        this.filter(liftSyncPredicate(predicate))
+    }
+
     public func filter(predicate: Predicate, middleware: MiddlewareFn): Composer {
+        let composer = this.filter(predicate)
+        composer.use(middleware)
+        composer
+    }
+
+    public func filter(predicate: SyncPredicate, middleware: MiddlewareFn): Composer {
+        this.filter(liftSyncPredicate(predicate), middleware)
+    }
+
+    public func filter(predicate: Predicate, middleware: AsyncMiddlewareFn): Composer {
         let composer = this.filter(predicate)
         composer.use(middleware)
         composer
@@ -466,11 +645,33 @@ public class Composer {
         composer
     }
 
+    public func filter(predicate: SyncPredicate, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(liftSyncPredicate(predicate), middleware)
+    }
+
+    public func filter(predicate: Predicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        let composer = this.filter(predicate)
+        composer.use(middleware)
+        composer
+    }
+
     public func drop(predicate: Predicate): Composer {
         this.filter(notPredicate(predicate))
     }
 
+    public func drop(predicate: SyncPredicate): Composer {
+        this.drop(liftSyncPredicate(predicate))
+    }
+
     public func drop(predicate: Predicate, middleware: MiddlewareFn): Composer {
+        this.filter(notPredicate(predicate), middleware)
+    }
+
+    public func drop(predicate: SyncPredicate, middleware: MiddlewareFn): Composer {
+        this.drop(liftSyncPredicate(predicate), middleware)
+    }
+
+    public func drop(predicate: Predicate, middleware: AsyncMiddlewareFn): Composer {
         this.filter(notPredicate(predicate), middleware)
     }
 
@@ -478,116 +679,216 @@ public class Composer {
         this.filter(notPredicate(predicate), middleware)
     }
 
+    public func drop(predicate: SyncPredicate, middleware: Array<MiddlewareFn>): Composer {
+        this.drop(liftSyncPredicate(predicate), middleware)
+    }
+
+    public func drop(predicate: Predicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.filter(notPredicate(predicate), middleware)
+    }
+
     public func fork(): Composer {
-        this.fork([])
+        this.fork(Array<AsyncMiddlewareFn>())
     }
 
     public func fork(middleware: MiddlewareFn): Composer {
         this.fork([middleware])
     }
 
+    public func fork(middleware: AsyncMiddlewareFn): Composer {
+        this.fork([middleware])
+    }
+
     public func fork(middleware: Array<MiddlewareFn>): Composer {
+        this.fork(liftSyncMiddlewareArray(middleware))
+    }
+
+    public func fork(middleware: Array<AsyncMiddlewareFn>): Composer {
         let composer = Composer(middleware)
-        let forked = composer.middleware()
-        this.use({ ctx: Context, next: NextFunction =>
-            let downstream = spawn { => next() }
-            let forkFuture = spawn { => run(forked, ctx) }
-            var failure = None<Exception>
-            try {
-                downstream.get()
-            } catch (err: Exception) {
-                failure = Some(err)
-            }
-            try {
-                forkFuture.get()
-            } catch (err: Exception) {
-                match (failure) {
-                    case Some(_) => ()
-                    case None => failure = Some(err)
-                }
-            }
-            match (failure) {
-                case Some(err) => throw err
-                case None => ()
-            }
-        })
+        let forked = composer.asyncMiddleware()
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            promiseAll(
+                { => next().get() },
+                { => run(forked, ctx) },
+            )
+        }
+        this.use(runner)
         composer
     }
 
     public func lazy(factory: MiddlewareFactory): Composer {
-        this.use({ ctx: Context, next: NextFunction =>
-            let middleware = factory(ctx)
-            middleware(ctx, next)
-        })
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                let middleware = factory(ctx)
+                liftSyncMiddleware(middleware)(ctx, next).get()
+            }
+        }
+        this.use(runner)
+    }
+
+    public func lazy(factory: AsyncMiddlewareFactory): Composer {
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                let middleware = factory(ctx).get()
+                liftSyncMiddleware(middleware)(ctx, next).get()
+            }
+        }
+        this.use(runner)
+    }
+
+    public func lazyAsync(factory: (Context) -> Future<AsyncMiddlewareFn>): Composer {
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                let middleware = factory(ctx).get()
+                middleware(ctx, next).get()
+            }
+        }
+        this.use(runner)
     }
 
     public func lazy(factory: MiddlewareArrayFactory): Composer {
-        this.use({ ctx: Context, next: NextFunction =>
-            let middleware = factory(ctx)
-            Composer(middleware).middleware()(ctx, next)
-        })
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                let middleware = factory(ctx)
+                Composer(middleware).asyncMiddleware()(ctx, next).get()
+            }
+        }
+        this.use(runner)
+    }
+
+    public func lazy(factory: AsyncMiddlewareArrayFactory): Composer {
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                let middleware = factory(ctx).get()
+                Composer(middleware).asyncMiddleware()(ctx, next).get()
+            }
+        }
+        this.use(runner)
     }
 
     public func lazy(factory: ComposerFactory): Composer {
-        this.use({ ctx: Context, next: NextFunction =>
-            factory(ctx).middleware()(ctx, next)
-        })
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                factory(ctx).asyncMiddleware()(ctx, next).get()
+            }
+        }
+        this.use(runner)
+    }
+
+    public func lazy(factory: AsyncComposerFactory): Composer {
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                factory(ctx).get().asyncMiddleware()(ctx, next).get()
+            }
+        }
+        this.use(runner)
+    }
+
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
+        this.route(liftSyncRouter(router), routeHandlers, pass)
     }
 
     public func route(router: Router, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
         this.route(router, routeHandlers, pass)
     }
 
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
+        this.route(liftSyncRouter(router), routeHandlers, fallback)
+    }
+
     public func route(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
         this.lazy(routeMiddleware(router, routeHandlers, fallback))
     }
 
+    public func branch(predicate: SyncPredicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
+        this.branch(liftSyncPredicate(predicate), trueMiddleware, falseMiddleware)
+    }
+
     public func branch(predicate: Predicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
-        this.lazy({ ctx: Context =>
-            if (predicate(ctx)) {
-                trueMiddleware
-            } else {
-                falseMiddleware
+        this.branch(predicate, liftSyncMiddleware(trueMiddleware), liftSyncMiddleware(falseMiddleware))
+    }
+
+    public func branch(predicate: Predicate, trueMiddleware: AsyncMiddlewareFn, falseMiddleware: AsyncMiddlewareFn): Composer {
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                if (predicate(ctx).get()) {
+                    trueMiddleware(ctx, next).get()
+                } else {
+                    falseMiddleware(ctx, next).get()
+                }
             }
-        })
+        }
+        this.use(runner)
+    }
+
+    public func branch(predicate: SyncPredicate, trueMiddleware: Array<MiddlewareFn>, falseMiddleware: Array<MiddlewareFn>): Composer {
+        this.branch(liftSyncPredicate(predicate), trueMiddleware, falseMiddleware)
     }
 
     public func branch(predicate: Predicate, trueMiddleware: Array<MiddlewareFn>, falseMiddleware: Array<MiddlewareFn>): Composer {
-        this.lazy({ ctx: Context =>
-            if (predicate(ctx)) {
-                trueMiddleware
-            } else {
-                falseMiddleware
+        this.branch(predicate, liftSyncMiddlewareArray(trueMiddleware), liftSyncMiddlewareArray(falseMiddleware))
+    }
+
+    public func branch(predicate: Predicate, trueMiddleware: Array<AsyncMiddlewareFn>, falseMiddleware: Array<AsyncMiddlewareFn>): Composer {
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                if (predicate(ctx).get()) {
+                    Composer(trueMiddleware).asyncMiddleware()(ctx, next).get()
+                } else {
+                    Composer(falseMiddleware).asyncMiddleware()(ctx, next).get()
+                }
             }
-        })
+        }
+        this.use(runner)
     }
 
     public func errorBoundary(errorHandler: ErrorHandler): Composer {
         this.errorBoundary(errorHandler, pass)
     }
 
+    public func errorBoundary(errorHandler: AsyncErrorHandler): Composer {
+        this.errorBoundary(errorHandler, asyncPass)
+    }
+
     public func errorBoundary(errorHandler: ErrorHandler, middleware: MiddlewareFn): Composer {
         this.errorBoundary(errorHandler, [middleware])
     }
 
+    public func errorBoundary(errorHandler: AsyncErrorHandler, middleware: AsyncMiddlewareFn): Composer {
+        this.errorBoundary(errorHandler, [middleware])
+    }
+
     public func errorBoundary(errorHandler: ErrorHandler, middleware: Array<MiddlewareFn>): Composer {
+        let asyncHandler: AsyncErrorHandler = { err: BotError, next: AsyncNextFunction =>
+            spawn { =>
+                errorHandler(err, blockingNext(next))
+            }
+        }
+        this.errorBoundary(asyncHandler, liftSyncMiddlewareArray(middleware))
+    }
+
+    public func errorBoundary(errorHandler: AsyncErrorHandler, middleware: Array<AsyncMiddlewareFn>): Composer {
         let composer = Composer(middleware)
-        let bound = composer.middleware()
-        this.use({ ctx: Context, next: NextFunction =>
-            let nextCalled = NextCallState()
-            let cont: NextFunction = { =>
-                nextCalled.called = true
+        let bound = composer.asyncMiddleware()
+        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                let nextCalled = NextCallState()
+                let cont: AsyncNextFunction = { =>
+                    nextCalled.called = true
+                    resolvedUnitFuture()
+                }
+                try {
+                    bound(ctx, cont).get()
+                } catch (err: Exception) {
+                    nextCalled.called = false
+                    errorHandler(BotError(err, ctx), cont).get()
+                }
+                if (nextCalled.called) {
+                    next().get()
+                }
             }
-            try {
-                bound(ctx, cont)
-            } catch (err: Exception) {
-                nextCalled.called = false
-                errorHandler(BotError(err, ctx), cont)
-            }
-            if (nextCalled.called) {
-                next()
-            }
-        })
+        }
+        this.use(runner)
         composer
     }
 
