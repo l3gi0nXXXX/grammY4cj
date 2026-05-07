@@ -24,7 +24,9 @@ public import grammy4cj.context.ContextHas
 public import grammy4cj.context.ContextPredicate
 public import grammy4cj.context.ContextShortcutMapping
 public import grammy4cj.context.TextTrigger
+public import grammy4cj.context.contextShortcutApiTargets
 public import grammy4cj.context.contextShortcutMappings
+public import grammy4cj.context.contextShortcutRequiredContext
 public import grammy4cj.context.orThrow
 public import grammy4cj.context.toArray
 public import grammy4cj.context.triggerFn

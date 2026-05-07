@@ -637,6 +637,687 @@ public class Context {
         this.api.sendLocation(payload)
     }
 
+    public func editMessageLiveLocation(latitude: String, longitude: String): Payload {
+        let payload = inlineOrMessageTargetPayload("editMessageLiveLocation")
+        payload.addValue("latitude", latitude)
+        payload.addValue("longitude", longitude)
+        invokeInlineOrMessageApi("editMessageLiveLocation", "editMessageLiveLocationInline", payload)
+    }
+
+    public func stopMessageLiveLocation(): Payload {
+        let payload = inlineOrMessageTargetPayload("stopMessageLiveLocation")
+        invokeInlineOrMessageApi("stopMessageLiveLocation", "stopMessageLiveLocationInline", payload)
+    }
+
+    public func sendPaidMedia(starCount: Int64, media: String): Payload {
+        let payload = defaultReplyPayload("sendPaidMedia")
+        payload.addInt("star_count", starCount)
+        payload.addRawJson("media", media)
+        invokeApi("sendPaidMedia", payload)
+    }
+
+    public func replyWithVenue(latitude: String, longitude: String, title: String, address: String): Payload {
+        let payload = defaultReplyPayload("sendVenue")
+        payload.addValue("latitude", latitude)
+        payload.addValue("longitude", longitude)
+        payload.addValue("title", title)
+        payload.addValue("address", address)
+        invokeApi("sendVenue", payload)
+    }
+
+    public func replyWithContact(phoneNumber: String, firstName: String): Payload {
+        let payload = defaultReplyPayload("sendContact")
+        payload.addValue("phone_number", phoneNumber)
+        payload.addValue("first_name", firstName)
+        invokeApi("sendContact", payload)
+    }
+
+    public func replyWithPoll(question: String, optionsJson: String): Payload {
+        let payload = defaultReplyPayload("sendPoll")
+        payload.addValue("question", question)
+        payload.addRawJson("options", optionsJson)
+        invokeApi("sendPoll", payload)
+    }
+
+    public func replyWithChecklist(checklistJson: String): Payload {
+        let payload = businessPayload("sendChecklist")
+        payload.addInt("chat_id", orThrow(this.chatId, "sendChecklist"))
+        payload.addRawJson("checklist", checklistJson)
+        invokeApi("sendChecklist", payload)
+    }
+
+    public func editMessageChecklist(checklistJson: String): Payload {
+        let payload = businessMessageTargetPayload("editMessageChecklist")
+        payload.addRawJson("checklist", checklistJson)
+        invokeApi("editMessageChecklist", payload)
+    }
+
+    public func replyWithDice(emoji: String): Payload {
+        let payload = defaultReplyPayload("sendDice")
+        payload.addValue("emoji", emoji)
+        invokeApi("sendDice", payload)
+    }
+
+    public func replyWithChatAction(action: String): Payload {
+        let payload = defaultReplyPayload("sendChatAction")
+        payload.addValue("action", action)
+        invokeApi("sendChatAction", payload)
+    }
+
+    public func react(reaction: String): Payload {
+        let payload = messageTargetPayload("setMessageReaction")
+        payload.addRawJson("reaction", "[{\"type\":\"emoji\",\"emoji\":\"" + reaction + "\"}]")
+        invokeApi("setMessageReaction", payload)
+    }
+
+    public func getUserProfilePhotos(): Payload {
+        invokeApi("getUserProfilePhotos", fromPayload("getUserProfilePhotos"))
+    }
+
+    public func getUserProfileAudios(): Payload {
+        invokeApi("getUserProfileAudios", fromPayload("getUserProfileAudios"))
+    }
+
+    public func setUserEmojiStatus(emojiStatusCustomEmojiId: String): Payload {
+        let payload = fromPayload("setUserEmojiStatus")
+        payload.addValue("emoji_status_custom_emoji_id", emojiStatusCustomEmojiId)
+        invokeApi("setUserEmojiStatus", payload)
+    }
+
+    public func getUserChatBoosts(chatId: Int64): Payload {
+        let payload = fromPayload("getUserChatBoosts")
+        payload.addInt("chat_id", chatId)
+        invokeApi("getUserChatBoosts", payload)
+    }
+
+    public func getUserChatBoosts(): Payload {
+        let payload = fromPayload("getUserChatBoosts")
+        payload.addInt("chat_id", orThrow(this.chatId, "getUserChatBoosts"))
+        invokeApi("getUserChatBoosts", payload)
+    }
+
+    public func getUserGifts(): Payload {
+        invokeApi("getUserGifts", fromPayload("getUserGifts"))
+    }
+
+    public func getChatGifts(): Payload {
+        invokeApi("getChatGifts", chatPayload("getChatGifts"))
+    }
+
+    public func getBusinessConnection(): Payload {
+        invokeApi("getBusinessConnection", businessPayload("getBusinessConnection"))
+    }
+
+    public func getFile(fileId: String): Payload {
+        let payload = Payload("")
+        payload.addValue("file_id", orThrow(fileId, "getFile"))
+        invokeApi("getFile", payload)
+    }
+
+    public func kickAuthor(): Payload {
+        banAuthor()
+    }
+
+    public func banAuthor(): Payload {
+        let payload = chatAuthorPayload("banAuthor")
+        invokeApi("banChatMember", payload)
+    }
+
+    public func kickChatMember(userId: Int64): Payload {
+        banChatMember(userId)
+    }
+
+    public func banChatMember(userId: Int64): Payload {
+        let payload = chatUserPayload("banChatMember", userId)
+        invokeApi("banChatMember", payload)
+    }
+
+    public func unbanChatMember(userId: Int64): Payload {
+        let payload = chatUserPayload("unbanChatMember", userId)
+        invokeApi("unbanChatMember", payload)
+    }
+
+    public func restrictAuthor(permissionsJson: String): Payload {
+        let payload = chatAuthorPayload("restrictAuthor")
+        payload.addRawJson("permissions", permissionsJson)
+        invokeApi("restrictChatMember", payload)
+    }
+
+    public func restrictChatMember(userId: Int64, permissionsJson: String): Payload {
+        let payload = chatUserPayload("restrictChatMember", userId)
+        payload.addRawJson("permissions", permissionsJson)
+        invokeApi("restrictChatMember", payload)
+    }
+
+    public func promoteAuthor(): Payload {
+        let payload = chatAuthorPayload("promoteAuthor")
+        invokeApi("promoteChatMember", payload)
+    }
+
+    public func promoteChatMember(userId: Int64): Payload {
+        let payload = chatUserPayload("promoteChatMember", userId)
+        invokeApi("promoteChatMember", payload)
+    }
+
+    public func setChatAdministratorAuthorCustomTitle(customTitle: String): Payload {
+        let payload = chatAuthorPayload("setChatAdministratorAuthorCustomTitle")
+        payload.addValue("custom_title", customTitle)
+        invokeApi("setChatAdministratorCustomTitle", payload)
+    }
+
+    public func setChatAdministratorCustomTitle(userId: Int64, customTitle: String): Payload {
+        let payload = chatUserPayload("setChatAdministratorCustomTitle", userId)
+        payload.addValue("custom_title", customTitle)
+        invokeApi("setChatAdministratorCustomTitle", payload)
+    }
+
+    public func setAuthorTag(tag: String): Payload {
+        let payload = chatAuthorPayload("setAuthorTag")
+        payload.addValue("tag", tag)
+        invokeApi("setChatMemberTag", payload)
+    }
+
+    public func setChatMemberTag(userId: Int64, tag: String): Payload {
+        let payload = chatUserPayload("setChatMemberTag", userId)
+        payload.addValue("tag", tag)
+        invokeApi("setChatMemberTag", payload)
+    }
+
+    public func banChatSenderChat(senderChatId: Int64): Payload {
+        let payload = chatPayload("banChatSenderChat")
+        payload.addInt("sender_chat_id", senderChatId)
+        invokeApi("banChatSenderChat", payload)
+    }
+
+    public func unbanChatSenderChat(senderChatId: Int64): Payload {
+        let payload = chatPayload("unbanChatSenderChat")
+        payload.addInt("sender_chat_id", senderChatId)
+        invokeApi("unbanChatSenderChat", payload)
+    }
+
+    public func setChatPermissions(permissionsJson: String): Payload {
+        let payload = chatPayload("setChatPermissions")
+        payload.addRawJson("permissions", permissionsJson)
+        invokeApi("setChatPermissions", payload)
+    }
+
+    public func exportChatInviteLink(): Payload {
+        invokeApi("exportChatInviteLink", chatPayload("exportChatInviteLink"))
+    }
+
+    public func createChatInviteLink(): Payload {
+        invokeApi("createChatInviteLink", chatPayload("createChatInviteLink"))
+    }
+
+    public func editChatInviteLink(inviteLink: String): Payload {
+        let payload = chatPayload("editChatInviteLink")
+        payload.addValue("invite_link", inviteLink)
+        invokeApi("editChatInviteLink", payload)
+    }
+
+    public func createChatSubscriptionInviteLink(subscriptionPeriod: Int64, subscriptionPrice: Int64): Payload {
+        let payload = chatPayload("createChatSubscriptionInviteLink")
+        payload.addInt("subscription_period", subscriptionPeriod)
+        payload.addInt("subscription_price", subscriptionPrice)
+        invokeApi("createChatSubscriptionInviteLink", payload)
+    }
+
+    public func editChatSubscriptionInviteLink(inviteLink: String): Payload {
+        let payload = chatPayload("editChatSubscriptionInviteLink")
+        payload.addValue("invite_link", inviteLink)
+        invokeApi("editChatSubscriptionInviteLink", payload)
+    }
+
+    public func revokeChatInviteLink(inviteLink: String): Payload {
+        let payload = chatPayload("revokeChatInviteLink")
+        payload.addValue("invite_link", inviteLink)
+        invokeApi("revokeChatInviteLink", payload)
+    }
+
+    public func getManagedBotToken(): Payload {
+        invokeApi("getManagedBotToken", managedBotPayload("getManagedBotToken"))
+    }
+
+    public func replaceManagedBotToken(): Payload {
+        invokeApi("replaceManagedBotToken", managedBotPayload("replaceManagedBotToken"))
+    }
+
+    public func approveChatJoinRequest(userId: Int64): Payload {
+        let payload = chatUserPayload("approveChatJoinRequest", userId)
+        invokeApi("approveChatJoinRequest", payload)
+    }
+
+    public func declineChatJoinRequest(userId: Int64): Payload {
+        let payload = chatUserPayload("declineChatJoinRequest", userId)
+        invokeApi("declineChatJoinRequest", payload)
+    }
+
+    public func approveSuggestedPost(): Payload {
+        invokeApi("approveSuggestedPost", messageTargetPayload("approveSuggestedPost"))
+    }
+
+    public func declineSuggestedPost(): Payload {
+        invokeApi("declineSuggestedPost", messageTargetPayload("declineSuggestedPost"))
+    }
+
+    public func setChatPhoto(photo: String): Payload {
+        let payload = chatPayload("setChatPhoto")
+        payload.addValue("photo", photo)
+        invokeApi("setChatPhoto", payload)
+    }
+
+    public func deleteChatPhoto(): Payload {
+        invokeApi("deleteChatPhoto", chatPayload("deleteChatPhoto"))
+    }
+
+    public func setChatTitle(title: String): Payload {
+        let payload = chatPayload("setChatTitle")
+        payload.addValue("title", title)
+        invokeApi("setChatTitle", payload)
+    }
+
+    public func setChatDescription(description: String): Payload {
+        let payload = chatPayload("setChatDescription")
+        payload.addValue("description", description)
+        invokeApi("setChatDescription", payload)
+    }
+
+    public func pinChatMessage(messageId: Int64): Payload {
+        let payload = chatPayload("pinChatMessage")
+        payload.addInt("message_id", messageId)
+        addBusinessConnectionIfPresent(payload)
+        invokeApi("pinChatMessage", payload)
+    }
+
+    public func unpinChatMessage(messageId: Int64): Payload {
+        let payload = chatPayload("unpinChatMessage")
+        payload.addInt("message_id", messageId)
+        addBusinessConnectionIfPresent(payload)
+        invokeApi("unpinChatMessage", payload)
+    }
+
+    public func unpinChatMessage(): Payload {
+        let payload = chatPayload("unpinChatMessage")
+        addBusinessConnectionIfPresent(payload)
+        invokeApi("unpinChatMessage", payload)
+    }
+
+    public func unpinAllChatMessages(): Payload {
+        invokeApi("unpinAllChatMessages", chatPayload("unpinAllChatMessages"))
+    }
+
+    public func leaveChat(): Payload {
+        invokeApi("leaveChat", chatPayload("leaveChat"))
+    }
+
+    public func getChat(): Payload {
+        invokeApi("getChat", chatPayload("getChat"))
+    }
+
+    public func getChatAdministrators(): Payload {
+        invokeApi("getChatAdministrators", chatPayload("getChatAdministrators"))
+    }
+
+    public func getChatMembersCount(): Payload {
+        getChatMemberCount()
+    }
+
+    public func getChatMemberCount(): Payload {
+        invokeApi("getChatMemberCount", chatPayload("getChatMemberCount"))
+    }
+
+    public func getAuthor(): Payload {
+        let payload = chatAuthorPayload("getAuthor")
+        invokeApi("getChatMember", payload)
+    }
+
+    public func getChatMember(userId: Int64): Payload {
+        let payload = chatUserPayload("getChatMember", userId)
+        invokeApi("getChatMember", payload)
+    }
+
+    public func setChatStickerSet(stickerSetName: String): Payload {
+        let payload = chatPayload("setChatStickerSet")
+        payload.addValue("sticker_set_name", stickerSetName)
+        invokeApi("setChatStickerSet", payload)
+    }
+
+    public func deleteChatStickerSet(): Payload {
+        invokeApi("deleteChatStickerSet", chatPayload("deleteChatStickerSet"))
+    }
+
+    public func createForumTopic(name: String): Payload {
+        let payload = chatPayload("createForumTopic")
+        payload.addValue("name", name)
+        invokeApi("createForumTopic", payload)
+    }
+
+    public func editForumTopic(): Payload {
+        invokeApi("editForumTopic", forumTopicPayload("editForumTopic"))
+    }
+
+    public func closeForumTopic(): Payload {
+        invokeApi("closeForumTopic", forumTopicPayload("closeForumTopic"))
+    }
+
+    public func reopenForumTopic(): Payload {
+        invokeApi("reopenForumTopic", forumTopicPayload("reopenForumTopic"))
+    }
+
+    public func deleteForumTopic(): Payload {
+        invokeApi("deleteForumTopic", forumTopicPayload("deleteForumTopic"))
+    }
+
+    public func unpinAllForumTopicMessages(): Payload {
+        invokeApi("unpinAllForumTopicMessages", forumTopicPayload("unpinAllForumTopicMessages"))
+    }
+
+    public func editGeneralForumTopic(name: String): Payload {
+        let payload = chatPayload("editGeneralForumTopic")
+        payload.addValue("name", name)
+        invokeApi("editGeneralForumTopic", payload)
+    }
+
+    public func closeGeneralForumTopic(): Payload {
+        invokeApi("closeGeneralForumTopic", chatPayload("closeGeneralForumTopic"))
+    }
+
+    public func reopenGeneralForumTopic(): Payload {
+        invokeApi("reopenGeneralForumTopic", chatPayload("reopenGeneralForumTopic"))
+    }
+
+    public func hideGeneralForumTopic(): Payload {
+        invokeApi("hideGeneralForumTopic", chatPayload("hideGeneralForumTopic"))
+    }
+
+    public func unhideGeneralForumTopic(): Payload {
+        invokeApi("unhideGeneralForumTopic", chatPayload("unhideGeneralForumTopic"))
+    }
+
+    public func unpinAllGeneralForumTopicMessages(): Payload {
+        invokeApi("unpinAllGeneralForumTopicMessages", chatPayload("unpinAllGeneralForumTopicMessages"))
+    }
+
+    public func answerCallbackQuery(text: String): Payload {
+        let payload = callbackQueryPayload("answerCallbackQuery")
+        payload.addValue("text", text)
+        invokeApi("answerCallbackQuery", payload)
+    }
+
+    public func setChatMenuButton(): Payload {
+        invokeApi("setChatMenuButton", Payload(""))
+    }
+
+    public func getChatMenuButton(): Payload {
+        invokeApi("getChatMenuButton", Payload(""))
+    }
+
+    public func setMyDefaultAdministratorRights(): Payload {
+        invokeApi("setMyDefaultAdministratorRights", Payload(""))
+    }
+
+    public func getMyDefaultAdministratorRights(): Payload {
+        invokeApi("getMyDefaultAdministratorRights", Payload(""))
+    }
+
+    public func editMessageText(text: String): Payload {
+        let payload = inlineOrMessageTargetPayload("editMessageText")
+        payload.addValue("text", text)
+        invokeInlineOrMessageApi("editMessageText", "editMessageTextInline", payload)
+    }
+
+    public func editMessageCaption(caption: String): Payload {
+        let payload = inlineOrMessageTargetPayload("editMessageCaption")
+        payload.addValue("caption", caption)
+        invokeInlineOrMessageApi("editMessageCaption", "editMessageCaptionInline", payload)
+    }
+
+    public func editMessageMedia(media: String): Payload {
+        let payload = inlineOrMessageTargetPayload("editMessageMedia")
+        payload.addRawJson("media", media)
+        invokeInlineOrMessageApi("editMessageMedia", "editMessageMediaInline", payload)
+    }
+
+    public func editMessageReplyMarkup(replyMarkup: String): Payload {
+        let payload = inlineOrMessageTargetPayload("editMessageReplyMarkup")
+        payload.addRawJson("reply_markup", replyMarkup)
+        invokeInlineOrMessageApi("editMessageReplyMarkup", "editMessageReplyMarkupInline", payload)
+    }
+
+    public func stopPoll(): Payload {
+        invokeApi("stopPoll", messageTargetPayload("stopPoll"))
+    }
+
+    public func deleteMessage(): Payload {
+        invokeApi("deleteMessage", messageTargetPayload("deleteMessage"))
+    }
+
+    public func deleteMessages(messageIds: String): Payload {
+        let payload = chatPayload("deleteMessages")
+        payload.addRawJson("message_ids", messageIds)
+        invokeApi("deleteMessages", payload)
+    }
+
+    public func deleteBusinessMessages(messageIds: String): Payload {
+        let payload = businessPayload("deleteBusinessMessages")
+        payload.addRawJson("message_ids", messageIds)
+        invokeApi("deleteBusinessMessages", payload)
+    }
+
+    public func setBusinessAccountName(firstName: String): Payload {
+        let payload = businessPayload("setBusinessAccountName")
+        payload.addValue("first_name", firstName)
+        invokeApi("setBusinessAccountName", payload)
+    }
+
+    public func setBusinessAccountUsername(username: String): Payload {
+        let payload = businessPayload("setBusinessAccountUsername")
+        payload.addValue("username", username)
+        invokeApi("setBusinessAccountUsername", payload)
+    }
+
+    public func setBusinessAccountBio(bio: String): Payload {
+        let payload = businessPayload("setBusinessAccountBio")
+        payload.addValue("bio", bio)
+        invokeApi("setBusinessAccountBio", payload)
+    }
+
+    public func setBusinessAccountProfilePhoto(photo: String): Payload {
+        let payload = businessPayload("setBusinessAccountProfilePhoto")
+        payload.addRawJson("photo", photo)
+        invokeApi("setBusinessAccountProfilePhoto", payload)
+    }
+
+    public func removeBusinessAccountProfilePhoto(): Payload {
+        invokeApi("removeBusinessAccountProfilePhoto", businessPayload("removeBusinessAccountProfilePhoto"))
+    }
+
+    public func setBusinessAccountGiftSettings(showGiftButton: Bool, acceptedGiftTypes: String): Payload {
+        let payload = businessPayload("setBusinessAccountGiftSettings")
+        payload.addBool("show_gift_button", showGiftButton)
+        payload.addRawJson("accepted_gift_types", acceptedGiftTypes)
+        invokeApi("setBusinessAccountGiftSettings", payload)
+    }
+
+    public func getBusinessAccountStarBalance(): Payload {
+        invokeApi("getBusinessAccountStarBalance", businessPayload("getBusinessAccountStarBalance"))
+    }
+
+    public func transferBusinessAccountStars(starCount: Int64): Payload {
+        let payload = businessPayload("transferBusinessAccountStars")
+        payload.addInt("star_count", starCount)
+        invokeApi("transferBusinessAccountStars", payload)
+    }
+
+    public func getBusinessAccountGifts(): Payload {
+        invokeApi("getBusinessAccountGifts", businessPayload("getBusinessAccountGifts"))
+    }
+
+    public func convertGiftToStars(ownedGiftId: String): Payload {
+        let payload = businessPayload("convertGiftToStars")
+        payload.addValue("owned_gift_id", ownedGiftId)
+        invokeApi("convertGiftToStars", payload)
+    }
+
+    public func upgradeGift(ownedGiftId: String): Payload {
+        let payload = businessPayload("upgradeGift")
+        payload.addValue("owned_gift_id", ownedGiftId)
+        invokeApi("upgradeGift", payload)
+    }
+
+    public func transferGift(ownedGiftId: String, newOwnerChatId: Int64, starCount: Int64): Payload {
+        let payload = businessPayload("transferGift")
+        payload.addValue("owned_gift_id", ownedGiftId)
+        payload.addInt("new_owner_chat_id", newOwnerChatId)
+        payload.addInt("star_count", starCount)
+        invokeApi("transferGift", payload)
+    }
+
+    public func postStory(content: String, activePeriod: Int64): Payload {
+        let payload = businessPayload("postStory")
+        payload.addRawJson("content", content)
+        payload.addInt("active_period", activePeriod)
+        invokeApi("postStory", payload)
+    }
+
+    public func repostStory(fromChatId: Int64, fromStoryId: Int64, activePeriod: Int64): Payload {
+        let payload = businessPayload("repostStory")
+        payload.addInt("from_chat_id", fromChatId)
+        payload.addInt("from_story_id", fromStoryId)
+        payload.addInt("active_period", activePeriod)
+        invokeApi("repostStory", payload)
+    }
+
+    public func editStory(storyId: Int64, content: String): Payload {
+        let payload = businessPayload("editStory")
+        payload.addInt("story_id", storyId)
+        payload.addRawJson("content", content)
+        invokeApi("editStory", payload)
+    }
+
+    public func deleteStory(storyId: Int64): Payload {
+        let payload = businessPayload("deleteStory")
+        payload.addInt("story_id", storyId)
+        invokeApi("deleteStory", payload)
+    }
+
+    public func replyWithSticker(sticker: String): Payload {
+        let payload = defaultReplyPayload("sendSticker")
+        payload.addValue("sticker", sticker)
+        invokeApi("sendSticker", payload)
+    }
+
+    public func getCustomEmojiStickers(customEmojiIds: String): Payload {
+        let payload = Payload("")
+        payload.addRawJson("custom_emoji_ids", customEmojiIds)
+        invokeApi("getCustomEmojiStickers", payload)
+    }
+
+    public func replyWithGift(giftId: String): Payload {
+        let payload = fromPayload("sendGift")
+        payload.addValue("gift_id", giftId)
+        invokeApi("sendGift", payload)
+    }
+
+    public func giftPremiumSubscription(monthCount: Int64, starCount: Int64): Payload {
+        let payload = fromPayload("giftPremiumSubscription")
+        payload.addInt("month_count", monthCount)
+        payload.addInt("star_count", starCount)
+        invokeApi("giftPremiumSubscription", payload)
+    }
+
+    public func replyWithGiftToChannel(giftId: String): Payload {
+        let payload = chatPayload("sendGift")
+        payload.addValue("gift_id", giftId)
+        invokeApi("sendGiftToChannel", payload)
+    }
+
+    public func answerInlineQuery(resultsJson: String): Payload {
+        let payload = inlineQueryPayload("answerInlineQuery")
+        payload.addRawJson("results", resultsJson)
+        invokeApi("answerInlineQuery", payload)
+    }
+
+    public func savePreparedInlineMessage(resultJson: String): Payload {
+        let payload = fromPayload("savePreparedInlineMessage")
+        payload.addRawJson("result", resultJson)
+        invokeApi("savePreparedInlineMessage", payload)
+    }
+
+    public func savePreparedKeyboardButton(buttonJson: String): Payload {
+        let payload = fromPayload("savePreparedKeyboardButton")
+        payload.addRawJson("button", buttonJson)
+        invokeApi("savePreparedKeyboardButton", payload)
+    }
+
+    public func replyWithInvoice(title: String, description: String, invoicePayload: String, currency: String, pricesJson: String): Payload {
+        let payload = defaultReplyPayload("sendInvoice")
+        payload.addValue("title", title)
+        payload.addValue("description", description)
+        payload.addValue("payload", invoicePayload)
+        payload.addValue("currency", currency)
+        payload.addRawJson("prices", pricesJson)
+        invokeApi("sendInvoice", payload)
+    }
+
+    public func answerShippingQuery(ok: Bool): Payload {
+        let payload = shippingQueryPayload("answerShippingQuery")
+        payload.addBool("ok", ok)
+        invokeApi("answerShippingQuery", payload)
+    }
+
+    public func answerPreCheckoutQuery(ok: Bool): Payload {
+        let payload = preCheckoutQueryPayload("answerPreCheckoutQuery")
+        payload.addBool("ok", ok)
+        invokeApi("answerPreCheckoutQuery", payload)
+    }
+
+    public func refundStarPayment(telegramPaymentChargeId: String): Payload {
+        let payload = fromPayload("refundStarPayment")
+        payload.addValue("telegram_payment_charge_id", telegramPaymentChargeId)
+        invokeApi("refundStarPayment", payload)
+    }
+
+    public func editUserStarSubscription(telegramPaymentChargeId: String, isCanceled: Bool): Payload {
+        let payload = fromPayload("editUserStarSubscription")
+        payload.addValue("telegram_payment_charge_id", telegramPaymentChargeId)
+        payload.addBool("is_canceled", isCanceled)
+        invokeApi("editUserStarSubscription", payload)
+    }
+
+    public func verifyUser(): Payload {
+        invokeApi("verifyUser", fromPayload("verifyUser"))
+    }
+
+    public func verifyChat(): Payload {
+        invokeApi("verifyChat", chatPayload("verifyChat"))
+    }
+
+    public func removeUserVerification(): Payload {
+        invokeApi("removeUserVerification", fromPayload("removeUserVerification"))
+    }
+
+    public func removeChatVerification(): Payload {
+        invokeApi("removeChatVerification", chatPayload("removeChatVerification"))
+    }
+
+    public func readBusinessMessage(): Payload {
+        let payload = businessMessageTargetPayload("readBusinessMessage")
+        invokeApi("readBusinessMessage", payload)
+    }
+
+    public func setPassportDataErrors(errorsJson: String): Payload {
+        let payload = fromPayload("setPassportDataErrors")
+        payload.addRawJson("errors", errorsJson)
+        invokeApi("setPassportDataErrors", payload)
+    }
+
+    public func replyWithGame(gameShortName: String): Payload {
+        let payload = defaultReplyPayload("sendGame")
+        payload.addValue("game_short_name", gameShortName)
+        invokeApi("sendGame", payload)
+    }
+
     private func defaultReplyPayload(method: String): Payload {
         let payload = Payload("")
         payload.addValue("chat_id", orThrow(this.chatId, method).toString())
@@ -662,28 +1343,495 @@ public class Context {
         if (method == "sendAnimation") { return this.api.sendAnimation(payload) }
         if (method == "sendVoice") { return this.api.sendVoice(payload) }
         if (method == "sendVideoNote") { return this.api.sendVideoNote(payload) }
-        this.api.call(method, payload)
+        invokeApi(method, payload)
+    }
+
+    private func chatPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addInt("chat_id", orThrow(this.chatId, method))
+        payload
+    }
+
+    private func messageTargetPayload(method: String): Payload {
+        let payload = chatPayload(method)
+        payload.addInt("message_id", orThrow(this.msgId, method))
+        payload
+    }
+
+    private func businessPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addValue("business_connection_id", orThrow(this.businessConnectionId, method))
+        payload
+    }
+
+    private func businessMessageTargetPayload(method: String): Payload {
+        let payload = businessPayload(method)
+        payload.addInt("chat_id", orThrow(this.chatId, method))
+        payload.addInt("message_id", orThrow(this.msgId, method))
+        payload
+    }
+
+    private func fromPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addInt("user_id", orThrow(this.from, method).id)
+        payload
+    }
+
+    private func chatUserPayload(method: String, userId: Int64): Payload {
+        let payload = chatPayload(method)
+        payload.addInt("user_id", orThrow(userId, method))
+        payload
+    }
+
+    private func chatAuthorPayload(method: String): Payload {
+        let payload = chatPayload(method)
+        payload.addInt("user_id", orThrow(this.from, method).id)
+        payload
+    }
+
+    private func callbackQueryPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addValue("callback_query_id", callbackQueryId(method))
+        payload
+    }
+
+    private func inlineQueryPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addValue("inline_query_id", inlineQueryId(method))
+        payload
+    }
+
+    private func shippingQueryPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addValue("shipping_query_id", shippingQueryId(method))
+        payload
+    }
+
+    private func preCheckoutQueryPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addValue("pre_checkout_query_id", preCheckoutQueryId(method))
+        payload
+    }
+
+    private func managedBotPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addInt("bot_id", orThrow(this.managedBot, method).user.id)
+        payload
+    }
+
+    private func forumTopicPayload(method: String): Payload {
+        let message = orThrow(this.msg, method)
+        let payload = Payload("")
+        payload.addInt("chat_id", orThrow(message.chat.id, method))
+        payload.addInt("message_thread_id", orThrow(message.messageThreadId, method))
+        payload
+    }
+
+    private func inlineOrMessageTargetPayload(method: String): Payload {
+        let payload = Payload("")
+        if (!this.inlineMessageId.isEmpty()) {
+            payload.addValue("inline_message_id", this.inlineMessageId)
+        } else {
+            payload.addInt("chat_id", orThrow(this.chatId, method))
+            payload.addInt("message_id", orThrow(this.msgId, method))
+        }
+        addBusinessConnectionIfPresent(payload)
+        payload
+    }
+
+    private func addBusinessConnectionIfPresent(payload: Payload): Unit {
+        if (!this.businessConnectionId.isEmpty()) {
+            payload.addValue("business_connection_id", this.businessConnectionId)
+        }
+    }
+
+    private func callbackQueryId(method: String): String {
+        if (!this.callbackQuery.isPresent) {
+            throw Exception("Missing information for API call to " + method)
+        }
+        if (!this.callbackQuery.data.isEmpty()) { return this.callbackQuery.data }
+        if (!this.callbackQuery.gameShortName.isEmpty()) { return this.callbackQuery.gameShortName }
+        if (!this.callbackQuery.inlineMessageId.isEmpty()) { return this.callbackQuery.inlineMessageId }
+        throw Exception("Missing information for API call to " + method)
+    }
+
+    private func inlineQueryId(method: String): String {
+        if (!this.inlineQuery.isPresent || this.inlineQuery.query.isEmpty()) {
+            throw Exception("Missing information for API call to " + method)
+        }
+        this.inlineQuery.query
+    }
+
+    private func shippingQueryId(method: String): String {
+        if (!this.shippingQuery.isPresent || this.shippingQuery.invoicePayload.isEmpty()) {
+            throw Exception("Missing information for API call to " + method)
+        }
+        this.shippingQuery.invoicePayload
+    }
+
+    private func preCheckoutQueryId(method: String): String {
+        if (!this.preCheckoutQuery.isPresent || this.preCheckoutQuery.invoicePayload.isEmpty()) {
+            throw Exception("Missing information for API call to " + method)
+        }
+        this.preCheckoutQuery.invoicePayload
+    }
+
+    private func invokeInlineOrMessageApi(messageMethod: String, inlineMethod: String, payload: Payload): Payload {
+        if (!this.inlineMessageId.isEmpty()) {
+            return invokeApi(inlineMethod, payload)
+        }
+        invokeApi(messageMethod, payload)
+    }
+
+    private func invokeApi(method: String, payload: Payload): Payload {
+        if (method == "answerCallbackQuery") { return this.api.answerCallbackQuery(payload) }
+        if (method == "answerInlineQuery") { return this.api.answerInlineQuery(payload) }
+        if (method == "answerPreCheckoutQuery") { return this.api.answerPreCheckoutQuery(payload) }
+        if (method == "answerShippingQuery") { return this.api.answerShippingQuery(payload) }
+        if (method == "approveChatJoinRequest") { return this.api.approveChatJoinRequest(payload) }
+        if (method == "approveSuggestedPost") { return this.api.approveSuggestedPost(payload) }
+        if (method == "banChatMember") { return this.api.banChatMember(payload) }
+        if (method == "banChatSenderChat") { return this.api.banChatSenderChat(payload) }
+        if (method == "closeForumTopic") { return this.api.closeForumTopic(payload) }
+        if (method == "closeGeneralForumTopic") { return this.api.closeGeneralForumTopic(payload) }
+        if (method == "convertGiftToStars") { return this.api.convertGiftToStars(payload) }
+        if (method == "copyMessage") { return this.api.copyMessage(payload) }
+        if (method == "copyMessages") { return this.api.copyMessages(payload) }
+        if (method == "createChatInviteLink") { return this.api.createChatInviteLink(payload) }
+        if (method == "createChatSubscriptionInviteLink") { return this.api.createChatSubscriptionInviteLink(payload) }
+        if (method == "createForumTopic") { return this.api.createForumTopic(payload) }
+        if (method == "declineChatJoinRequest") { return this.api.declineChatJoinRequest(payload) }
+        if (method == "declineSuggestedPost") { return this.api.declineSuggestedPost(payload) }
+        if (method == "deleteBusinessMessages") { return this.api.deleteBusinessMessages(payload) }
+        if (method == "deleteChatPhoto") { return this.api.deleteChatPhoto(payload) }
+        if (method == "deleteChatStickerSet") { return this.api.deleteChatStickerSet(payload) }
+        if (method == "deleteForumTopic") { return this.api.deleteForumTopic(payload) }
+        if (method == "deleteMessage") { return this.api.deleteMessage(payload) }
+        if (method == "deleteMessages") { return this.api.deleteMessages(payload) }
+        if (method == "deleteStory") { return this.api.deleteStory(payload) }
+        if (method == "editChatInviteLink") { return this.api.editChatInviteLink(payload) }
+        if (method == "editChatSubscriptionInviteLink") { return this.api.editChatSubscriptionInviteLink(payload) }
+        if (method == "editForumTopic") { return this.api.editForumTopic(payload) }
+        if (method == "editGeneralForumTopic") { return this.api.editGeneralForumTopic(payload) }
+        if (method == "editMessageCaption") { return this.api.editMessageCaption(payload) }
+        if (method == "editMessageCaptionInline") { return this.api.editMessageCaptionInline(payload) }
+        if (method == "editMessageChecklist") { return this.api.editMessageChecklist(payload) }
+        if (method == "editMessageLiveLocation") { return this.api.editMessageLiveLocation(payload) }
+        if (method == "editMessageLiveLocationInline") { return this.api.editMessageLiveLocationInline(payload) }
+        if (method == "editMessageMedia") { return this.api.editMessageMedia(payload) }
+        if (method == "editMessageMediaInline") { return this.api.editMessageMediaInline(payload) }
+        if (method == "editMessageReplyMarkup") { return this.api.editMessageReplyMarkup(payload) }
+        if (method == "editMessageReplyMarkupInline") { return this.api.editMessageReplyMarkupInline(payload) }
+        if (method == "editMessageText") { return this.api.editMessageText(payload) }
+        if (method == "editMessageTextInline") { return this.api.editMessageTextInline(payload) }
+        if (method == "editStory") { return this.api.editStory(payload) }
+        if (method == "editUserStarSubscription") { return this.api.editUserStarSubscription(payload) }
+        if (method == "exportChatInviteLink") { return this.api.exportChatInviteLink(payload) }
+        if (method == "forwardMessage") { return this.api.forwardMessage(payload) }
+        if (method == "forwardMessages") { return this.api.forwardMessages(payload) }
+        if (method == "getBusinessAccountGifts") { return this.api.getBusinessAccountGifts(payload) }
+        if (method == "getBusinessAccountStarBalance") { return this.api.getBusinessAccountStarBalance(payload) }
+        if (method == "getBusinessConnection") { return this.api.getBusinessConnection(payload) }
+        if (method == "getChat") { return this.api.getChat(payload) }
+        if (method == "getChatAdministrators") { return this.api.getChatAdministrators(payload) }
+        if (method == "getChatGifts") { return this.api.getChatGifts(payload) }
+        if (method == "getChatMember") { return this.api.getChatMember(payload) }
+        if (method == "getChatMemberCount") { return this.api.getChatMemberCount(payload) }
+        if (method == "getChatMenuButton") { return this.api.getChatMenuButton(payload) }
+        if (method == "getCustomEmojiStickers") { return this.api.getCustomEmojiStickers(payload) }
+        if (method == "getFile") { return this.api.getFile(payload) }
+        if (method == "getManagedBotToken") { return this.api.getManagedBotToken(payload) }
+        if (method == "getMyDefaultAdministratorRights") { return this.api.getMyDefaultAdministratorRights(payload) }
+        if (method == "getUserChatBoosts") { return this.api.getUserChatBoosts(payload) }
+        if (method == "getUserGifts") { return this.api.getUserGifts(payload) }
+        if (method == "getUserProfileAudios") { return this.api.getUserProfileAudios(payload) }
+        if (method == "getUserProfilePhotos") { return this.api.getUserProfilePhotos(payload) }
+        if (method == "giftPremiumSubscription") { return this.api.giftPremiumSubscription(payload) }
+        if (method == "hideGeneralForumTopic") { return this.api.hideGeneralForumTopic(payload) }
+        if (method == "leaveChat") { return this.api.leaveChat(payload) }
+        if (method == "pinChatMessage") { return this.api.pinChatMessage(payload) }
+        if (method == "postStory") { return this.api.postStory(payload) }
+        if (method == "promoteChatMember") { return this.api.promoteChatMember(payload) }
+        if (method == "readBusinessMessage") { return this.api.readBusinessMessage(payload) }
+        if (method == "refundStarPayment") { return this.api.refundStarPayment(payload) }
+        if (method == "removeBusinessAccountProfilePhoto") { return this.api.removeBusinessAccountProfilePhoto(payload) }
+        if (method == "removeChatVerification") { return this.api.removeChatVerification(payload) }
+        if (method == "removeUserVerification") { return this.api.removeUserVerification(payload) }
+        if (method == "reopenForumTopic") { return this.api.reopenForumTopic(payload) }
+        if (method == "reopenGeneralForumTopic") { return this.api.reopenGeneralForumTopic(payload) }
+        if (method == "replaceManagedBotToken") { return this.api.replaceManagedBotToken(payload) }
+        if (method == "repostStory") { return this.api.repostStory(payload) }
+        if (method == "restrictChatMember") { return this.api.restrictChatMember(payload) }
+        if (method == "revokeChatInviteLink") { return this.api.revokeChatInviteLink(payload) }
+        if (method == "savePreparedInlineMessage") { return this.api.savePreparedInlineMessage(payload) }
+        if (method == "savePreparedKeyboardButton") { return this.api.savePreparedKeyboardButton(payload) }
+        if (method == "sendAnimation") { return this.api.sendAnimation(payload) }
+        if (method == "sendAudio") { return this.api.sendAudio(payload) }
+        if (method == "sendChatAction") { return this.api.sendChatAction(payload) }
+        if (method == "sendChecklist") { return this.api.sendChecklist(payload) }
+        if (method == "sendContact") { return this.api.sendContact(payload) }
+        if (method == "sendDice") { return this.api.sendDice(payload) }
+        if (method == "sendDocument") { return this.api.sendDocument(payload) }
+        if (method == "sendGame") { return this.api.sendGame(payload) }
+        if (method == "sendGift") { return this.api.sendGift(payload) }
+        if (method == "sendGiftToChannel") { return this.api.sendGiftToChannel(payload) }
+        if (method == "sendInvoice") { return this.api.sendInvoice(payload) }
+        if (method == "sendLocation") { return this.api.sendLocation(payload) }
+        if (method == "sendMediaGroup") { return this.api.sendMediaGroup(payload) }
+        if (method == "sendMessage") { return this.api.sendMessage(payload) }
+        if (method == "sendMessageDraft") { return this.api.sendMessageDraft(payload) }
+        if (method == "sendPaidMedia") { return this.api.sendPaidMedia(payload) }
+        if (method == "sendPhoto") { return this.api.sendPhoto(payload) }
+        if (method == "sendPoll") { return this.api.sendPoll(payload) }
+        if (method == "sendSticker") { return this.api.sendSticker(payload) }
+        if (method == "sendVenue") { return this.api.sendVenue(payload) }
+        if (method == "sendVideo") { return this.api.sendVideo(payload) }
+        if (method == "sendVideoNote") { return this.api.sendVideoNote(payload) }
+        if (method == "sendVoice") { return this.api.sendVoice(payload) }
+        if (method == "setBusinessAccountBio") { return this.api.setBusinessAccountBio(payload) }
+        if (method == "setBusinessAccountGiftSettings") { return this.api.setBusinessAccountGiftSettings(payload) }
+        if (method == "setBusinessAccountName") { return this.api.setBusinessAccountName(payload) }
+        if (method == "setBusinessAccountProfilePhoto") { return this.api.setBusinessAccountProfilePhoto(payload) }
+        if (method == "setBusinessAccountUsername") { return this.api.setBusinessAccountUsername(payload) }
+        if (method == "setChatAdministratorCustomTitle") { return this.api.setChatAdministratorCustomTitle(payload) }
+        if (method == "setChatDescription") { return this.api.setChatDescription(payload) }
+        if (method == "setChatMemberTag") { return this.api.setChatMemberTag(payload) }
+        if (method == "setChatMenuButton") { return this.api.setChatMenuButton(payload) }
+        if (method == "setChatPermissions") { return this.api.setChatPermissions(payload) }
+        if (method == "setChatPhoto") { return this.api.setChatPhoto(payload) }
+        if (method == "setChatStickerSet") { return this.api.setChatStickerSet(payload) }
+        if (method == "setChatTitle") { return this.api.setChatTitle(payload) }
+        if (method == "setMessageReaction") { return this.api.setMessageReaction(payload) }
+        if (method == "setMyDefaultAdministratorRights") { return this.api.setMyDefaultAdministratorRights(payload) }
+        if (method == "setPassportDataErrors") { return this.api.setPassportDataErrors(payload) }
+        if (method == "setUserEmojiStatus") { return this.api.setUserEmojiStatus(payload) }
+        if (method == "stopMessageLiveLocation") { return this.api.stopMessageLiveLocation(payload) }
+        if (method == "stopMessageLiveLocationInline") { return this.api.stopMessageLiveLocationInline(payload) }
+        if (method == "stopPoll") { return this.api.stopPoll(payload) }
+        if (method == "transferBusinessAccountStars") { return this.api.transferBusinessAccountStars(payload) }
+        if (method == "transferGift") { return this.api.transferGift(payload) }
+        if (method == "unbanChatMember") { return this.api.unbanChatMember(payload) }
+        if (method == "unbanChatSenderChat") { return this.api.unbanChatSenderChat(payload) }
+        if (method == "unhideGeneralForumTopic") { return this.api.unhideGeneralForumTopic(payload) }
+        if (method == "unpinAllChatMessages") { return this.api.unpinAllChatMessages(payload) }
+        if (method == "unpinAllForumTopicMessages") { return this.api.unpinAllForumTopicMessages(payload) }
+        if (method == "unpinAllGeneralForumTopicMessages") { return this.api.unpinAllGeneralForumTopicMessages(payload) }
+        if (method == "unpinChatMessage") { return this.api.unpinChatMessage(payload) }
+        if (method == "upgradeGift") { return this.api.upgradeGift(payload) }
+        if (method == "verifyChat") { return this.api.verifyChat(payload) }
+        if (method == "verifyUser") { return this.api.verifyUser(payload) }
+        throw Exception("Unsupported Context API target " + method)
     }
 }
 
 public func contextShortcutMappings(): Array<ContextShortcutMapping> {
+    let mappings = ArrayList<ContextShortcutMapping>()
+    for (target in contextShortcutApiTargets()) {
+        mappings.add(ContextShortcutMapping(target, target, contextShortcutRequiredContext(target)))
+    }
+    mappings.toArray()
+}
+
+public func contextShortcutApiTargets(): Array<String> {
     [
-        ContextShortcutMapping("reply", "sendMessage", "chat_id"),
-        ContextShortcutMapping("replyWithDraft", "sendMessageDraft", "chat_id, update_id"),
-        ContextShortcutMapping("forwardMessage", "forwardMessage", "chat_id, from_chat_id, message_id"),
-        ContextShortcutMapping("forwardMessages", "forwardMessages", "chat_id, from_chat_id, message_ids"),
-        ContextShortcutMapping("copyMessage", "copyMessage", "chat_id, from_chat_id, message_id"),
-        ContextShortcutMapping("copyMessages", "copyMessages", "chat_id, from_chat_id, message_ids"),
-        ContextShortcutMapping("replyWithPhoto", "sendPhoto", "chat_id, photo"),
-        ContextShortcutMapping("replyWithAudio", "sendAudio", "chat_id, audio"),
-        ContextShortcutMapping("replyWithDocument", "sendDocument", "chat_id, document"),
-        ContextShortcutMapping("replyWithVideo", "sendVideo", "chat_id, video"),
-        ContextShortcutMapping("replyWithAnimation", "sendAnimation", "chat_id, animation"),
-        ContextShortcutMapping("replyWithVoice", "sendVoice", "chat_id, voice"),
-        ContextShortcutMapping("replyWithVideoNote", "sendVideoNote", "chat_id, video_note"),
-        ContextShortcutMapping("replyWithMediaGroup", "sendMediaGroup", "chat_id, media"),
-        ContextShortcutMapping("replyWithLocation", "sendLocation", "chat_id, latitude, longitude")
+        "answerCallbackQuery",
+        "answerInlineQuery",
+        "answerPreCheckoutQuery",
+        "answerShippingQuery",
+        "approveChatJoinRequest",
+        "approveSuggestedPost",
+        "banChatMember",
+        "banChatSenderChat",
+        "closeForumTopic",
+        "closeGeneralForumTopic",
+        "convertGiftToStars",
+        "copyMessage",
+        "copyMessages",
+        "createChatInviteLink",
+        "createChatSubscriptionInviteLink",
+        "createForumTopic",
+        "declineChatJoinRequest",
+        "declineSuggestedPost",
+        "deleteBusinessMessages",
+        "deleteChatPhoto",
+        "deleteChatStickerSet",
+        "deleteForumTopic",
+        "deleteMessage",
+        "deleteMessages",
+        "deleteStory",
+        "editChatInviteLink",
+        "editChatSubscriptionInviteLink",
+        "editForumTopic",
+        "editGeneralForumTopic",
+        "editMessageCaption",
+        "editMessageCaptionInline",
+        "editMessageChecklist",
+        "editMessageLiveLocation",
+        "editMessageLiveLocationInline",
+        "editMessageMedia",
+        "editMessageMediaInline",
+        "editMessageReplyMarkup",
+        "editMessageReplyMarkupInline",
+        "editMessageText",
+        "editMessageTextInline",
+        "editStory",
+        "editUserStarSubscription",
+        "exportChatInviteLink",
+        "forwardMessage",
+        "forwardMessages",
+        "getBusinessAccountGifts",
+        "getBusinessAccountStarBalance",
+        "getBusinessConnection",
+        "getChat",
+        "getChatAdministrators",
+        "getChatGifts",
+        "getChatMember",
+        "getChatMemberCount",
+        "getChatMenuButton",
+        "getCustomEmojiStickers",
+        "getFile",
+        "getManagedBotToken",
+        "getMyDefaultAdministratorRights",
+        "getUserChatBoosts",
+        "getUserGifts",
+        "getUserProfileAudios",
+        "getUserProfilePhotos",
+        "giftPremiumSubscription",
+        "hideGeneralForumTopic",
+        "leaveChat",
+        "pinChatMessage",
+        "postStory",
+        "promoteChatMember",
+        "readBusinessMessage",
+        "refundStarPayment",
+        "removeBusinessAccountProfilePhoto",
+        "removeChatVerification",
+        "removeUserVerification",
+        "reopenForumTopic",
+        "reopenGeneralForumTopic",
+        "replaceManagedBotToken",
+        "repostStory",
+        "restrictChatMember",
+        "revokeChatInviteLink",
+        "savePreparedInlineMessage",
+        "savePreparedKeyboardButton",
+        "sendAnimation",
+        "sendAudio",
+        "sendChatAction",
+        "sendChecklist",
+        "sendContact",
+        "sendDice",
+        "sendDocument",
+        "sendGame",
+        "sendGift",
+        "sendGiftToChannel",
+        "sendInvoice",
+        "sendLocation",
+        "sendMediaGroup",
+        "sendMessage",
+        "sendMessageDraft",
+        "sendPaidMedia",
+        "sendPhoto",
+        "sendPoll",
+        "sendSticker",
+        "sendVenue",
+        "sendVideo",
+        "sendVideoNote",
+        "sendVoice",
+        "setBusinessAccountBio",
+        "setBusinessAccountGiftSettings",
+        "setBusinessAccountName",
+        "setBusinessAccountProfilePhoto",
+        "setBusinessAccountUsername",
+        "setChatAdministratorCustomTitle",
+        "setChatDescription",
+        "setChatMemberTag",
+        "setChatMenuButton",
+        "setChatPermissions",
+        "setChatPhoto",
+        "setChatStickerSet",
+        "setChatTitle",
+        "setMessageReaction",
+        "setMyDefaultAdministratorRights",
+        "setPassportDataErrors",
+        "setUserEmojiStatus",
+        "stopMessageLiveLocation",
+        "stopMessageLiveLocationInline",
+        "stopPoll",
+        "transferBusinessAccountStars",
+        "transferGift",
+        "unbanChatMember",
+        "unbanChatSenderChat",
+        "unhideGeneralForumTopic",
+        "unpinAllChatMessages",
+        "unpinAllForumTopicMessages",
+        "unpinAllGeneralForumTopicMessages",
+        "unpinChatMessage",
+        "upgradeGift",
+        "verifyChat",
+        "verifyUser"
     ]
+}
+
+public func contextShortcutRequiredContext(target: String): String {
+    if (target == "setChatMenuButton" || target == "getChatMenuButton" ||
+        target == "setMyDefaultAdministratorRights" || target == "getMyDefaultAdministratorRights") {
+        return "none"
+    }
+    if (target == "answerCallbackQuery") { return "callback_query_id" }
+    if (target == "answerInlineQuery") { return "inline_query_id" }
+    if (target == "answerShippingQuery") { return "shipping_query_id" }
+    if (target == "answerPreCheckoutQuery") { return "pre_checkout_query_id" }
+    if (target == "sendChecklist" || target == "editMessageChecklist" ||
+        target == "deleteBusinessMessages" || target.startsWith("setBusinessAccount") ||
+        target.startsWith("removeBusinessAccount") || target.startsWith("getBusinessAccount") ||
+        target == "transferBusinessAccountStars" || target == "convertGiftToStars" ||
+        target == "upgradeGift" || target == "transferGift" || target == "postStory" ||
+        target == "repostStory" || target == "editStory" || target == "deleteStory" ||
+        target == "readBusinessMessage" || target == "getBusinessConnection") {
+        return "business_connection_id"
+    }
+    if (target == "getUserProfilePhotos" || target == "getUserProfileAudios" ||
+        target == "setUserEmojiStatus" || target == "getUserChatBoosts" ||
+        target == "getUserGifts" || target == "sendGift" ||
+        target == "giftPremiumSubscription" || target == "savePreparedInlineMessage" ||
+        target == "savePreparedKeyboardButton" || target == "refundStarPayment" ||
+        target == "editUserStarSubscription" || target == "verifyUser" ||
+        target == "removeUserVerification" || target == "setPassportDataErrors") {
+        return "user_id"
+    }
+    if (target == "editMessageText" || target == "editMessageCaption" ||
+        target == "editMessageMedia" || target == "editMessageReplyMarkup" ||
+        target == "editMessageLiveLocation" || target == "stopMessageLiveLocation") {
+        return "chat_id/message_id or inline_message_id"
+    }
+    if (target.endsWith("Inline")) { return "inline_message_id" }
+    if (target == "forwardMessage" || target == "copyMessage") {
+        return "chat_id, from_chat_id, message_id"
+    }
+    if (target == "forwardMessages" || target == "copyMessages") {
+        return "chat_id, from_chat_id, message_ids"
+    }
+    if (target == "getFile") { return "file_id" }
+    if (target == "getCustomEmojiStickers") { return "custom_emoji_ids" }
+    if (target == "getManagedBotToken" || target == "replaceManagedBotToken") { return "bot_id" }
+    if (target == "editForumTopic" || target == "closeForumTopic" ||
+        target == "reopenForumTopic" || target == "deleteForumTopic" ||
+        target == "unpinAllForumTopicMessages") {
+        return "chat_id, message_thread_id"
+    }
+    if (target == "deleteMessage" || target == "stopPoll" || target == "approveSuggestedPost" ||
+        target == "declineSuggestedPost" || target == "setMessageReaction") {
+        return "chat_id, message_id"
+    }
+    if (target == "banChatMember" || target == "unbanChatMember" ||
+        target == "restrictChatMember" || target == "promoteChatMember" ||
+        target == "setChatAdministratorCustomTitle" || target == "setChatMemberTag" ||
+        target == "getChatMember" || target == "approveChatJoinRequest" ||
+        target == "declineChatJoinRequest") {
+        return "chat_id, user_id"
+    }
+    "chat_id"
 }
 
 public func orThrow(value: Int64, method: String): Int64 {
@@ -695,6 +1843,27 @@ public func orThrow(value: Int64, method: String): Int64 {
 
 public func orThrow(value: String, method: String): String {
     if (value.isEmpty()) {
+        throw Exception("Missing information for API call to " + method)
+    }
+    value
+}
+
+public func orThrow(value: User, method: String): User {
+    if (!value.isPresent) {
+        throw Exception("Missing information for API call to " + method)
+    }
+    value
+}
+
+public func orThrow(value: Message, method: String): Message {
+    if (!value.isPresent) {
+        throw Exception("Missing information for API call to " + method)
+    }
+    value
+}
+
+public func orThrow(value: ManagedBotUpdate, method: String): ManagedBotUpdate {
+    if (!value.isPresent) {
         throw Exception("Missing information for API call to " + method)
     }
     value
