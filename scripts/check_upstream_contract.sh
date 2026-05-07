@@ -28,9 +28,18 @@ done
 
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
-GRAMMY_DIR="${GRAMMY_DIR:-$REPO_DIR/../grammY}"
+PARITY_LEDGER="$REPO_DIR/src/architecture/upstream_test_parity_ledger.tsv"
+PHASE_STATUS_SOURCE="$REPO_DIR/src/architecture/phase_status.tsv"
+GATE_STATUS_SOURCE="$REPO_DIR/src/architecture/gate_status.tsv"
+
+if [ -z "${GRAMMY_DIR:-}" ]; then
+  GRAMMY_DIR="$REPO_DIR/../grammY"
+  if [ ! -d "$GRAMMY_DIR" ] && [ -d "$REPO_DIR/../../grammY" ]; then
+    GRAMMY_DIR="$REPO_DIR/../../grammY"
+  fi
+fi
 if [ ! -d "$GRAMMY_DIR" ]; then
-  printf 'GRAMMY_DIR must point to the upstream grammY checkout (default: ../grammY)\n'
+  printf 'GRAMMY_DIR must point to the upstream grammY checkout (default: ../grammY or ../../grammY)\n'
   exit 2
 fi
 GRAMMY_DIR="$(CDPATH= cd "$GRAMMY_DIR" && pwd)"
@@ -174,27 +183,142 @@ check_docs_heading_policy() {
 }
 
 write_phase_status_artifact() {
-  if [ -z "$ARTIFACT_DIR" ]; then
+  if [ ! -f "$PHASE_STATUS_SOURCE" ]; then
+    printf 'FAIL missing phase status source: %s\n' "$PHASE_STATUS_SOURCE"
+    record_failure
+    return
+  fi
+  if [ ! -f "$GATE_STATUS_SOURCE" ]; then
+    printf 'FAIL missing gate status source: %s\n' "$GATE_STATUS_SOURCE"
+    record_failure
     return
   fi
 
-  mkdir -p "$ARTIFACT_DIR"
-  phase_artifact="$ARTIFACT_DIR/phase_status.tsv"
-  cat > "$phase_artifact" <<'EOF'
-gate	phase	status	owner_artifact	acceptance
-G8	G8.1	closed_by_docs_sync	README.md	root README mirrors upstream headings or records the explicit grammY4cj heading exemption
-G8	G8.2	closed_by_docs_sync	src/README.md	src README mirrors upstream headings or records the explicit grammY4cj source map exemption
-G8	G8.3	closed_by_docs_sync	CONTRIBUTING.md	SDK setup OpenSSL workaround unified cjpm gate command and side-effect policy are documented
-G9	G9.1	closed_by_docs_sync	scripts/check_upstream_contract.sh	hard-fail mode is available through GRAMMY4CJ_HARD_FAIL=1 or --hard-fail
-G9	G9.2	closed_by_docs_sync	scripts/check_source_trace_matrix.sh	source trace TSV artifacts are emitted when GRAMMY4CJ_ARTIFACT_DIR is set
-G9	G9.3	closed_by_docs_sync	scripts/check_upstream_contract.sh	test parity ledger is printed and becomes hard-fail in strict mode
-G9	G9.4	closed_by_docs_sync	README.md src/README.md	README docs explain heading parity policy and upstream sync scope
-G9	G9.5	closed_by_docs_sync	scripts/check_source_trace_matrix.sh	root export and baseline source trace remain represented in the matrix
-G9	G9.6	closed_by_docs_sync	CONTRIBUTING.md	full local handoff command set is documented
-G10	G10.1	pending_integration	scripts/check_upstream_contract.sh	strict mode should be enabled only after Gate 1 through Gate 9 code branches are integrated
-EOF
-  phase_rows="$(awk 'NR > 1 {count += 1} END {print count + 0}' "$phase_artifact")"
-  printf 'phase status artifact: %s rows=%s\n' "$phase_artifact" "$phase_rows"
+  phase_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$PHASE_STATUS_SOURCE")"
+  gate_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$GATE_STATUS_SOURCE")"
+  printf 'phase status source: %s rows=%s\n' "$PHASE_STATUS_SOURCE" "$phase_rows"
+  printf 'gate status source: %s rows=%s\n' "$GATE_STATUS_SOURCE" "$gate_rows"
+
+  if [ "$phase_rows" != "63" ]; then
+    printf 'FAIL phase status rows expected=63 actual=%s\n' "$phase_rows"
+    record_failure
+  fi
+  if [ "$gate_rows" != "11" ]; then
+    printf 'FAIL gate status rows expected=11 actual=%s\n' "$gate_rows"
+    record_failure
+  fi
+
+  if [ -n "$ARTIFACT_DIR" ]; then
+    mkdir -p "$ARTIFACT_DIR"
+    phase_artifact="$ARTIFACT_DIR/phase_status.tsv"
+    gate_artifact="$ARTIFACT_DIR/gate_status.tsv"
+    cp "$PHASE_STATUS_SOURCE" "$phase_artifact"
+    cp "$GATE_STATUS_SOURCE" "$gate_artifact"
+    printf 'phase status artifact: %s rows=%s\n' "$phase_artifact" "$phase_rows"
+    printf 'gate status artifact: %s rows=%s\n' "$gate_artifact" "$gate_rows"
+  fi
+}
+
+classify_test_parity_mismatches() {
+  mismatch_file="$1"
+  if [ ! -f "$PARITY_LEDGER" ]; then
+    printf 'FAIL missing test parity ledger: %s\n' "$PARITY_LEDGER"
+    record_failure
+    TEST_PARITY_TRUE_GAPS=0
+    TEST_PARITY_LEDGER_ERRORS=1
+    return
+  fi
+
+  report_file="$TMP_DIR/test_parity_ledger_report"
+  summary_file="$TMP_DIR/test_parity_ledger_summary"
+  artifact_file=""
+  if [ -n "$ARTIFACT_DIR" ]; then
+    mkdir -p "$ARTIFACT_DIR"
+    artifact_file="$ARTIFACT_DIR/upstream_test_parity_mismatches.tsv"
+  fi
+
+  awk -F '\t' -v artifact="$artifact_file" -v summary="$summary_file" '
+    BEGIN {
+      if (artifact != "") {
+        print "key\tupstream_count\tport_count\tclassification\tgate\tupstream_file\tport_files\towner_artifact\trationale" > artifact
+      }
+    }
+    NR == FNR {
+      if (FNR > 1 && $1 != "") {
+        ledger_upstream[$1] = $2
+        ledger_port[$1] = $3
+        classification[$1] = $4
+        gate[$1] = $5
+        upstream_file[$1] = $6
+        port_files[$1] = $7
+        owner_artifact[$1] = $8
+        rationale[$1] = $9
+      }
+      next
+    }
+    $1 != "" {
+      key = $1
+      upstream = $2
+      port = $3
+      cls = classification[key]
+      row_gate = gate[key]
+      row_upstream_file = upstream_file[key]
+      row_port_files = port_files[key]
+      row_owner_artifact = owner_artifact[key]
+      row_rationale = rationale[key]
+
+      if (cls == "") {
+        cls = "unclassified"
+        row_gate = "UNKNOWN"
+        row_upstream_file = "UNKNOWN"
+        row_port_files = "UNKNOWN"
+        row_owner_artifact = "UNKNOWN"
+        row_rationale = "missing ledger row"
+        errors += 1
+      } else {
+        if (cls != "necessary-extra" && cls != "mapped-different-file" && cls != "true-gap") {
+          row_rationale = "invalid classification: " cls
+          errors += 1
+        }
+        if (ledger_upstream[key] != upstream || ledger_port[key] != port) {
+          row_rationale = row_rationale "; stale ledger count expected=" ledger_upstream[key] "/" ledger_port[key]
+          errors += 1
+        }
+      }
+
+      if (cls == "necessary-extra") necessary += 1
+      else if (cls == "mapped-different-file") mapped += 1
+      else if (cls == "true-gap") {
+        true_gap += 1
+        true_gap_lines = true_gap_lines sprintf("  true-gap: %s gate=%s upstream=%s port=%s owner=%s\n", key, row_gate, upstream, port, row_owner_artifact)
+      } else {
+        unclassified += 1
+      }
+
+      printf "  %-34s upstream=%3s port=%3s class=%s gate=%s\n", key, upstream, port, cls, row_gate
+      printf "    upstream_file=%s port_files=%s\n", row_upstream_file, row_port_files
+      printf "    rationale=%s\n", row_rationale
+
+      if (artifact != "") {
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", key, upstream, port, cls, row_gate, row_upstream_file, row_port_files, row_owner_artifact, row_rationale >> artifact
+      }
+    }
+    END {
+      printf "test parity ledger summary: necessary-extra=%d mapped-different-file=%d true-gap=%d unclassified=%d ledger-errors=%d\n", necessary + 0, mapped + 0, true_gap + 0, unclassified + 0, errors + 0
+      if (true_gap > 0) {
+        printf "remaining true-gap gates:\n%s", true_gap_lines
+      }
+      printf "%d %d\n", true_gap + 0, errors + 0 > summary
+    }
+  ' "$PARITY_LEDGER" "$mismatch_file" > "$report_file"
+
+  cat "$report_file"
+  if [ -n "$artifact_file" ]; then
+    printf 'test parity mismatch artifact: %s\n' "$artifact_file"
+  fi
+
+  TEST_PARITY_TRUE_GAPS="$(awk '{print $1}' "$summary_file")"
+  TEST_PARITY_LEDGER_ERRORS="$(awk '{print $2}' "$summary_file")"
 }
 
 upstream_test_key() {
@@ -345,7 +469,19 @@ check_ge "port composer.type compile-surface @TestCase declarations" "$(test_cou
 check_ge "port filter @TestCase declarations" "$(test_count_for filter "$TMP_DIR/port_test_counts")" "11"
 test_mismatch_count="$(join -a 1 -a 2 -e 0 -o '0 1.2 2.2' "$TMP_DIR/upstream_test_counts" "$TMP_DIR/port_test_counts" |
   awk '$2 != $3 {count += 1} END {print count + 0}')"
-hard_fail_if_nonzero "test parity ledger mismatches" "$test_mismatch_count"
+printf 'test parity mismatches=%s\n' "$test_mismatch_count"
+join -a 1 -a 2 -e 0 -o '0 1.2 2.2' "$TMP_DIR/upstream_test_counts" "$TMP_DIR/port_test_counts" |
+  awk '$2 != $3 {printf "%s\t%s\t%s\n", $1, $2, $3}' > "$TMP_DIR/test_parity_mismatches"
+TEST_PARITY_TRUE_GAPS=0
+TEST_PARITY_LEDGER_ERRORS=0
+if [ "$test_mismatch_count" != "0" ]; then
+  classify_test_parity_mismatches "$TMP_DIR/test_parity_mismatches"
+  if [ "$TEST_PARITY_LEDGER_ERRORS" != "0" ]; then
+    printf 'FAIL test parity ledger has stale or unclassified rows count=%s\n' "$TEST_PARITY_LEDGER_ERRORS"
+    record_failure
+  fi
+  hard_fail_if_nonzero "test parity true gaps" "$TEST_PARITY_TRUE_GAPS"
+fi
 
 section "G8.5 Docs heading diff"
 extract_markdown_headings "$GRAMMY_DIR/README.md" "$TMP_DIR/upstream_readme_headings"
@@ -373,10 +509,28 @@ check_docs_heading_policy "src" "$REPO_DIR/src/README.md" \
 
 section "G9 Source trace matrix"
 if [ -n "$ARTIFACT_DIR" ]; then
-  GRAMMY4CJ_TRACE_ARTIFACT_DIR="$ARTIFACT_DIR" sh "$SCRIPT_DIR/check_source_trace_matrix.sh"
+  GRAMMY_DIR="$GRAMMY_DIR" GRAMMY4CJ_TRACE_ARTIFACT_DIR="$ARTIFACT_DIR" sh "$SCRIPT_DIR/check_source_trace_matrix.sh"
 else
-  sh "$SCRIPT_DIR/check_source_trace_matrix.sh"
+  GRAMMY_DIR="$GRAMMY_DIR" sh "$SCRIPT_DIR/check_source_trace_matrix.sh"
 fi
+
+section "G9.3 Upstream diff workflow"
+if [ -n "${GRAMMY4CJ_UPSTREAM_DIFF_BASE:-}" ] || [ -n "${GRAMMY4CJ_UPSTREAM_DIFF_HEAD:-}" ]; then
+  if GRAMMY_DIR="$GRAMMY_DIR" sh "$SCRIPT_DIR/check_upstream_diff_workflow.sh" \
+      --base "${GRAMMY4CJ_UPSTREAM_DIFF_BASE:-}" \
+      --head "${GRAMMY4CJ_UPSTREAM_DIFF_HEAD:-}"; then
+    :
+  else
+    record_failure
+  fi
+else
+  if sh "$SCRIPT_DIR/check_upstream_diff_workflow.sh" --validate-only; then
+    :
+  else
+    record_failure
+  fi
+fi
+section "G9.2 Phase status"
 write_phase_status_artifact
 
 if [ "$failures" -ne 0 ]; then
