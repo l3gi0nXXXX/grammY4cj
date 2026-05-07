@@ -11,10 +11,22 @@ public let WRONG_TOKEN_ERROR: String = "secret token is wrong"
 public class WebhookHeader {
     public let key: String
     public let value: String
+    public let values: ArrayList<String>
 
     public init(key: String, value: String) {
         this.key = key
         this.value = value
+        this.values = ArrayList<String>()
+        this.values.add(value)
+    }
+
+    public init(key: String, values: Array<String>) {
+        this.key = key
+        this.values = ArrayList<String>()
+        for (value in values) {
+            this.values.add(value)
+        }
+        this.value = if (this.values.size > 0) { this.values[0] } else { "" }
     }
 }
 
@@ -28,6 +40,11 @@ public class WebhookHeaders {
         this
     }
 
+    public func setValues(key: String, values: Array<String>): WebhookHeaders {
+        this.entries.add(WebhookHeader(key, values))
+        this
+    }
+
     public func get(key: String): String {
         for (entry in this.entries) {
             if (headerNamesEqual(entry.key, key)) {
@@ -37,9 +54,27 @@ public class WebhookHeaders {
         ""
     }
 
+    public func getExact(key: String): String {
+        for (entry in this.entries) {
+            if (entry.key == key) {
+                return entry.value
+            }
+        }
+        ""
+    }
+
     public func has(key: String): Bool {
         for (entry in this.entries) {
             if (headerNamesEqual(entry.key, key)) {
+                return true
+            }
+        }
+        false
+    }
+
+    public func hasExact(key: String): Bool {
+        for (entry in this.entries) {
+            if (entry.key == key) {
                 return true
             }
         }
@@ -66,12 +101,14 @@ public class WebhookRequest {
     public let rawBody: String
     public let headers: WebhookHeaders
     public let adapterName: String
+    public let bodyPresent: Bool
 
     public init(update: Update) {
         this.update = update
         this.rawBody = ""
         this.headers = WebhookHeaders()
         this.adapterName = "callback"
+        this.bodyPresent = true
     }
 
     public init(update: Update, headers: WebhookHeaders) {
@@ -79,6 +116,7 @@ public class WebhookRequest {
         this.rawBody = ""
         this.headers = headers
         this.adapterName = "callback"
+        this.bodyPresent = true
     }
 
     public init(update: Update, headers: WebhookHeaders, adapterName: String) {
@@ -86,6 +124,7 @@ public class WebhookRequest {
         this.rawBody = ""
         this.headers = headers
         this.adapterName = adapterName
+        this.bodyPresent = true
     }
 
     public init(update: Update, rawBody: String, headers: WebhookHeaders, adapterName: String) {
@@ -93,6 +132,23 @@ public class WebhookRequest {
         this.rawBody = rawBody
         this.headers = headers
         this.adapterName = adapterName
+        this.bodyPresent = true
+    }
+
+    public init(update: Update, rawBody: String, headers: WebhookHeaders, adapterName: String, bodyPresent: Bool) {
+        this.update = update
+        this.rawBody = rawBody
+        this.headers = headers
+        this.adapterName = adapterName
+        this.bodyPresent = bodyPresent
+    }
+
+    public static func raw(rawBody: String, headers: WebhookHeaders, adapterName: String): WebhookRequest {
+        WebhookRequest(Update(0), rawBody, headers, adapterName)
+    }
+
+    public static func missingBody(headers: WebhookHeaders, adapterName: String): WebhookRequest {
+        WebhookRequest(Update(0), "", headers, adapterName, false)
     }
 
     public func secretHeader(): String {
@@ -190,20 +246,33 @@ public class WebhookResponse {
 }
 
 public class ReqResHandler {
-    public let update: Update
+    private let request: WebhookRequest
+    private var cachedUpdate: Option<Update> = None<Update>
     public let header: String
     public let headerPresent: Bool
     public let response: WebhookResponse
     public let handlerReturn: WebhookResponse
     public let adapterName: String
 
-    public init(update: Update, header: String, headerPresent: Bool, response: WebhookResponse, adapterName: String) {
-        this.update = update
+    public init(request: WebhookRequest, header: String, headerPresent: Bool, response: WebhookResponse, adapterName: String) {
+        this.request = request
         this.header = header
         this.headerPresent = headerPresent
         this.response = response
         this.handlerReturn = response
         this.adapterName = adapterName
+    }
+
+    public prop update: Update {
+        get() {
+            match (this.cachedUpdate) {
+                case Some(update) => update
+                case None =>
+                    let parsed = resolveUpdateForAdapter(this.adapterName, this.request)
+                    this.cachedUpdate = Some(parsed)
+                    parsed
+            }
+        }
     }
 
     public func respond(json: String): Unit {
@@ -282,6 +351,15 @@ public class MalformedWebhookBodyError <: Exception {
         super("Malformed JSON body for webhook adapter: ${adapterName}")
         this.adapterName = adapterName
         this.rawBody = rawBody
+    }
+}
+
+public class MissingWebhookBodyError <: Exception {
+    public let adapterName: String
+
+    public init(adapterName: String) {
+        super("Missing webhook body for webhook adapter: ${adapterName}")
+        this.adapterName = adapterName
     }
 }
 
@@ -714,9 +792,14 @@ public func createReqResHandler(adapterName: String, request: WebhookRequest): R
     if (!adapterIsSupported(adapterName)) {
         throw UnsupportedAdapterError(adapterName)
     }
-    validateRequestBody(adapterName, request)
     let response = WebhookResponse(adapterName)
-    ReqResHandler(request.update, request.secretHeader(), request.secretHeaderPresent(), response, adapterName)
+    ReqResHandler(
+        request,
+        headerValueForAdapter(adapterName, request.headers),
+        headerPresentForAdapter(adapterName, request.headers),
+        response,
+        adapterName
+    )
 }
 
 public func callbackAdapter(update: Update, header: String): ReqResHandler {
@@ -742,21 +825,201 @@ private func adapterReason(name: String): String {
     "Upstream grammY adapter contract mirrored by WebhookRequest/WebhookResponse fakes."
 }
 
-private func validateRequestBody(adapterName: String, request: WebhookRequest): Unit {
-    if ((adapterName == "http" || adapterName == "https") && httpRawBodyMalformed(request.rawBody)) {
-        throw MalformedWebhookBodyError(adapterName, request.rawBody)
+private func headerValueForAdapter(adapterName: String, headers: WebhookHeaders): String {
+    if (adapterName == "aws-lambda" || adapterName == "aws-lambda-async") {
+        if (headers.hasExact(SECRET_HEADER)) {
+            return headers.getExact(SECRET_HEADER)
+        }
+        return headers.getExact(SECRET_HEADER_LOWERCASE)
+    }
+    if (adapterName == "azure" ||
+        adapterName == "elysia" ||
+        adapterName == "fastify" ||
+        adapterName == "http" ||
+        adapterName == "https" ||
+        adapterName == "next-js") {
+        return headers.getExact(SECRET_HEADER_LOWERCASE)
+    }
+    return headers.get(SECRET_HEADER)
+}
+
+private func headerPresentForAdapter(adapterName: String, headers: WebhookHeaders): Bool {
+    if (adapterName == "aws-lambda" || adapterName == "aws-lambda-async") {
+        headers.hasExact(SECRET_HEADER) || headers.hasExact(SECRET_HEADER_LOWERCASE)
+    } else if (adapterName == "azure" ||
+        adapterName == "elysia" ||
+        adapterName == "fastify" ||
+        adapterName == "http" ||
+        adapterName == "https" ||
+        adapterName == "next-js") {
+        headers.hasExact(SECRET_HEADER_LOWERCASE)
+    } else {
+        headers.has(SECRET_HEADER)
     }
 }
 
-private func httpRawBodyMalformed(rawBody: String): Bool {
+private func resolveUpdateForAdapter(adapterName: String, request: WebhookRequest): Update {
+    let source = adapterUpdateSource(adapterName)
+    if (source == "body-object") {
+        if (!request.bodyPresent) {
+            throw MissingWebhookBodyError(adapterName)
+        }
+        return request.update
+    }
+    if (source == "event.body-json") {
+        if (!request.bodyPresent) {
+            return Update(0)
+        }
+        return parseRawUpdateOrFallback(adapterName, request.rawBody, request.update)
+    }
+    if (source == "node-raw-json-stream") {
+        if (!request.bodyPresent) {
+            throw MissingWebhookBodyError(adapterName)
+        }
+        if (request.rawBody.isEmpty()) {
+            return request.update
+        }
+        return parseRawUpdate(adapterName, request.rawBody)
+    }
+    if (!request.bodyPresent) {
+        throw MissingWebhookBodyError(adapterName)
+    }
+    parseRawUpdateOrFallback(adapterName, request.rawBody, request.update)
+}
+
+private func parseRawUpdateOrFallback(adapterName: String, rawBody: String, fallback: Update): Update {
     if (rawBody.isEmpty()) {
-        return false
+        return fallback
     }
-    if (!rawBody.startsWith("{")) {
+    parseRawUpdate(adapterName, rawBody)
+}
+
+private func parseRawUpdate(adapterName: String, rawBody: String): Update {
+    if (rawJsonObjectMalformed(rawBody)) {
+        throw MalformedWebhookBodyError(adapterName, rawBody)
+    }
+    if (!rawBody.contains("\"update_id\"") && !rawBody.contains("\"updateId\"")) {
+        if (rawJsonObjectEmpty(rawBody)) {
+            return Update(0)
+        }
+        throw MalformedWebhookBodyError(adapterName, rawBody)
+    }
+    let updateId = parseUpdateId(adapterName, rawBody)
+    Update(updateId)
+}
+
+private func rawJsonObjectMalformed(rawBody: String): Bool {
+    let first = firstNonWhitespaceIndex(rawBody)
+    if (first < 0) {
         return true
     }
-    if (!rawBody.endsWith("}")) {
-        return true
+    let last = lastNonWhitespaceIndex(rawBody)
+    rawBody[first..first + 1] != "{" || rawBody[last..last + 1] != "}"
+}
+
+private func rawJsonObjectEmpty(rawBody: String): Bool {
+    let first = firstNonWhitespaceIndex(rawBody)
+    let last = lastNonWhitespaceIndex(rawBody)
+    var i = first + 1
+    while (i < last) {
+        if (!isJsonWhitespace(rawBody[i..i + 1])) {
+            return false
+        }
+        i += 1
     }
-    !rawBody.contains("update_id") && !rawBody.contains("updateId")
+    true
+}
+
+private func firstNonWhitespaceIndex(value: String): Int64 {
+    var i: Int64 = 0
+    while (i < value.size) {
+        if (!isJsonWhitespace(value[i..i + 1])) {
+            return i
+        }
+        i += 1
+    }
+    -1
+}
+
+private func lastNonWhitespaceIndex(value: String): Int64 {
+    var i = value.size - 1
+    while (i >= 0) {
+        if (!isJsonWhitespace(value[i..i + 1])) {
+            return i
+        }
+        i -= 1
+    }
+    -1
+}
+
+private func isJsonWhitespace(value: String): Bool {
+    value == " " || value == "\n" || value == "\r" || value == "\t"
+}
+
+private func parseUpdateId(adapterName: String, rawBody: String): Int64 {
+    let keyIndex = updateIdKeyIndex(rawBody)
+    if (keyIndex < 0) {
+        return 0
+    }
+    let keyLength = if (rawBody[keyIndex..keyIndex + 11] == "\"update_id\"") { 11 } else { 10 }
+    let afterKey = keyIndex + keyLength
+    let rest = rawBody[afterKey..rawBody.size]
+    match (rest.indexOf(":")) {
+        case Some(offset) => parseIntegerAfter(adapterName, rawBody, afterKey + offset + 1)
+        case None => throw MalformedWebhookBodyError(adapterName, rawBody)
+    }
+}
+
+private func updateIdKeyIndex(rawBody: String): Int64 {
+    match (rawBody.indexOf("\"update_id\"")) {
+        case Some(index) => return index
+        case None => ()
+    }
+    match (rawBody.indexOf("\"updateId\"")) {
+        case Some(index) => index
+        case None => -1
+    }
+}
+
+private func parseIntegerAfter(adapterName: String, rawBody: String, start: Int64): Int64 {
+    var i = start
+    while (i < rawBody.size && isJsonWhitespace(rawBody[i..i + 1])) {
+        i += 1
+    }
+    var value: Int64 = 0
+    var found = false
+    while (i < rawBody.size) {
+        let ch = rawBody[i..i + 1]
+        if (!isDigit(ch)) {
+            if (found) {
+                return value
+            }
+            throw MalformedWebhookBodyError(adapterName, rawBody)
+        }
+        found = true
+        value = value * 10 + digitValue(ch)
+        i += 1
+    }
+    if (found) {
+        return value
+    }
+    throw MalformedWebhookBodyError(adapterName, rawBody)
+}
+
+private func isDigit(value: String): Bool {
+    value == "0" || value == "1" || value == "2" || value == "3" || value == "4" ||
+        value == "5" || value == "6" || value == "7" || value == "8" || value == "9"
+}
+
+private func digitValue(value: String): Int64 {
+    if (value == "1") { return 1 }
+    if (value == "2") { return 2 }
+    if (value == "3") { return 3 }
+    if (value == "4") { return 4 }
+    if (value == "5") { return 5 }
+    if (value == "6") { return 6 }
+    if (value == "7") { return 7 }
+    if (value == "8") { return 8 }
+    if (value == "9") { return 9 }
+    0
 }
