@@ -24,4 +24,28 @@ public class CoreErrorTest {
         @Expect(err.method, "POST")
         @Expect(err.url, "https://api.telegram.org/botT/getMe")
     }
+
+    @TestCase
+    public func toHttpErrorHidesSensitiveMessagesByDefault(): Unit {
+        let err = toHttpError("getMe", false, Exception("secret-token leaked"))
+
+        @Expect(err.message, "Network request for 'getMe' failed!")
+        @Expect(err.error, "secret-token leaked")
+    }
+
+    @TestCase
+    public func toHttpErrorIncludesSensitiveMessagesWhenEnabled(): Unit {
+        let err = toHttpError("getMe", true, Exception("debug detail"))
+
+        @Expect(err.message, "Network request for 'getMe' failed! debug detail")
+    }
+
+    @TestCase
+    public func toHttpErrorIncludesTelegramStatusInfo(): Unit {
+        let err = toHttpError("getMe", false, 502, "Bad Gateway", "upstream failed")
+
+        @Expect(err.message, "Network request for 'getMe' failed! (502: Bad Gateway)")
+        @Expect(err.status, 502)
+        @Expect(err.statusText, "Bad Gateway")
+    }
 }
