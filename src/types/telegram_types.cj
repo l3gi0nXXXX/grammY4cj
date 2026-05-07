@@ -49,6 +49,51 @@ public class ApiResponse {
     }
 }
 
+public class TelegramTypeAliasTrace {
+    public let aliasName: String
+    public let upstreamGeneric: String
+    public let inputFileBinding: String
+    public let exportedFromDeno: Bool
+    public let exportedFromNode: Bool
+    public let exportedFromWeb: Bool
+
+    public init(aliasName: String, upstreamGeneric: String, inputFileBinding: String) {
+        this.aliasName = aliasName
+        this.upstreamGeneric = upstreamGeneric
+        this.inputFileBinding = inputFileBinding
+        this.exportedFromDeno = true
+        this.exportedFromNode = true
+        this.exportedFromWeb = true
+    }
+}
+
+public func telegramInputFileAliasTrace(): Array<TelegramTypeAliasTrace> {
+    [
+        TelegramTypeAliasTrace("ApiMethods", "ApiMethodsF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("Opts", "OptsF<InputFile>[M]", "InputFile"),
+        TelegramTypeAliasTrace("InputSticker", "InputStickerF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputMedia", "InputMediaF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputMediaPhoto", "InputMediaPhotoF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputMediaVideo", "InputMediaVideoF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputMediaAnimation", "InputMediaAnimationF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputMediaAudio", "InputMediaAudioF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputMediaDocument", "InputMediaDocumentF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputPaidMedia", "InputPaidMediaF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputPaidMediaPhoto", "InputPaidMediaPhotoF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputPaidMediaVideo", "InputPaidMediaVideoF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputProfilePhoto", "InputProfilePhotoF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputProfilePhotoStatic", "InputProfilePhotoStaticF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputProfilePhotoAnimated", "InputProfilePhotoAnimatedF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputStoryContent", "InputStoryContentF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputStoryContentPhoto", "InputStoryContentPhotoF<InputFile>", "InputFile"),
+        TelegramTypeAliasTrace("InputStoryContentVideo", "InputStoryContentVideoF<InputFile>", "InputFile")
+    ]
+}
+
+public func telegramInputFileAliasTraceCount(): Int64 {
+    18
+}
+
 public class User {
     public var id: Int64 = 0
     public var isBot: Bool = false

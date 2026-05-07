@@ -22,6 +22,16 @@ private func toRawErrorMessage(file: InputFile): String {
     message
 }
 
+private func toRawErrorMessage(file: InputFile, runtime: String): String {
+    var message = ""
+    try {
+        file.toRaw(runtime)
+    } catch (e: Exception) {
+        message = e.message
+    }
+    message
+}
+
 @Test
 public class TelegramTypesTest {
     @TestCase
@@ -48,6 +58,22 @@ public class TelegramTypesTest {
         @Expect(message.messageId, 3)
         @Expect(message.chat.kind, "private")
         @Expect(update.kind, "message")
+    }
+
+    @TestCase
+    public func telegramTypeAliasTraceCoversInputFileBoundExports(): Unit {
+        let aliases = telegramInputFileAliasTrace()
+
+        @Expect(telegramInputFileAliasTraceCount(), 18)
+        @Expect(aliases.size, 18)
+        @Expect(aliases[0].aliasName, "ApiMethods")
+        @Expect(aliases[0].upstreamGeneric, "ApiMethodsF<InputFile>")
+        @Expect(aliases[1].aliasName, "Opts")
+        @Expect(aliases[17].aliasName, "InputStoryContentVideo")
+        @Expect(aliases[17].inputFileBinding, "InputFile")
+        @Expect(aliases[17].exportedFromDeno, true)
+        @Expect(aliases[17].exportedFromNode, true)
+        @Expect(aliases[17].exportedFromWeb, true)
     }
 }
 
@@ -88,6 +114,29 @@ public class InputFileTest {
     }
 
     @TestCase
+    public func inputFileSourceKindsAndRuntimeSupportMirrorUpstreamFacades(): Unit {
+        @Expect(inputFileSourceKindCount(), 10)
+        @Expect(inputFileRuntimeNames().size, 3)
+        @Expect(inputFileRuntimeNames()[0], "deno")
+        @Expect(inputFileSourceKindNames()[0], "path")
+        @Expect(inputFileSourceKindNames()[9], "supplier")
+        @Expect(inputFileSourceSupportedOnRuntime("path", "deno"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("path", "node"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("path", "web"), false)
+        @Expect(inputFileSourceSupportedOnRuntime("blob", "deno"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("blob", "node"), false)
+        @Expect(inputFileSourceSupportedOnRuntime("blob", "web"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("response", "deno"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("response", "node"), false)
+        @Expect(inputFileSourceSupportedOnRuntime("response", "web"), false)
+        @Expect(inputFileSourceSupportedOnRuntime("supplier", "deno"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("supplier", "node"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("supplier", "web"), false)
+        @Expect(inputFileSourceSupportedOnRuntime("bytes", "web"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("unknown", "deno"), false)
+    }
+
+    @TestCase
     public func inputFileToRawReturnsFakeContractsWithoutIo(): Unit {
         let pathFile = InputFile.fromPath("/tmp/photo.png")
         let urlFile = InputFile.fromUrl("https://example.test/files/report.pdf")
@@ -106,6 +155,64 @@ public class InputFileTest {
         @Expect(bytesRaw.contract, "bytes-as-is")
         @Expect(bytesRaw.reusable, true)
         @Expect(bytesRaw.summary(), "bytes:bytes-as-is:data.bin")
+    }
+
+    @TestCase
+    public func inputFileToRawUsesPlatformSpecificRawContracts(): Unit {
+        let denoPath = InputFile.fromPath("/tmp/photo.png").toRaw("deno")
+        let nodePath = InputFile.fromPath("/tmp/photo.png").toRaw("node")
+        let webUrl = InputFile.fromUrl("https://example.test/files/report.pdf").toRaw("web")
+        let webBytes = InputFile.fromBytes("bytes:3", "data.bin").toRaw("web")
+        let denoStreamFile = InputFile.fromStream("stream:1", "video.mp4")
+        let denoStream = denoStreamFile.toRaw("deno")
+        let nodeStreamFile = InputFile.fromStream("stream:2", "clip.mp4")
+        let nodeStream = nodeStreamFile.toRaw("node")
+
+        @Expect(denoPath.runtime, "deno")
+        @Expect(denoPath.rawSourceKind, "path")
+        @Expect(denoPath.platformContract, "deno-open-file-async-iterator")
+        @Expect(denoPath.platformSummary(), "deno:path:deno-open-file-async-iterator:photo.png")
+        @Expect(nodePath.platformContract, "node-create-read-stream")
+        @Expect(webUrl.platformContract, "fetch-body-async-iterable")
+        @Expect(webBytes.platformContract, "uint8-array-as-is")
+        @Expect(denoStream.platformContract, "readable-stream-as-is")
+        @Expect(denoStream.singleUseBoundary, true)
+        @Expect(denoStreamFile.consumed, true)
+        @Expect(nodeStream.platformContract, "node-read-stream-as-is")
+        @Expect(nodeStreamFile.consumed, true)
+    }
+
+    @TestCase
+    public func inputFileSupplierUnwrapsSuppliedSourceAndStaysReusable(): Unit {
+        let supplierBytes = InputFile.fromSupplier("lazy-bytes", InputFileSource.bytes("bytes:5", "voice.dat"))
+        let denoRaw = supplierBytes.toRaw("deno")
+        let nodeRaw = supplierBytes.toRaw("node")
+        let supplierStream = InputFile.fromSupplier("lazy-stream", InputFileSource.stream("stream:5", "clip.mp4"))
+        let streamRaw = supplierStream.toRaw("node")
+
+        @Expect(denoRaw.sourceKind, "supplier")
+        @Expect(denoRaw.rawSourceKind, "bytes")
+        @Expect(denoRaw.originalSourceKind, "supplier")
+        @Expect(denoRaw.supplierLabel, "lazy-bytes")
+        @Expect(denoRaw.platformContract, "uint8-array-as-is")
+        @Expect(nodeRaw.platformContract, "uint8-array-as-is")
+        @Expect(supplierBytes.consumed, false)
+        @Expect(streamRaw.rawSourceKind, "stream")
+        @Expect(streamRaw.platformContract, "node-read-stream-as-is")
+        @Expect(streamRaw.singleUseBoundary, true)
+        @Expect(supplierStream.consumed, false)
+    }
+
+    @TestCase
+    public func inputFileRejectsUnsupportedRuntimeSources(): Unit {
+        @Expect(toRawErrorMessage(InputFile.fromPath("/tmp/photo.png"), "web"), "InputFile source kind 'path' is not supported on web")
+        @Expect(toRawErrorMessage(InputFile.fromBlob("blob:1", "a.txt"), "node"), "InputFile source kind 'blob' is not supported on node")
+        @Expect(toRawErrorMessage(InputFile.fromResponse("response:1", "a.bin"), "node"), "InputFile source kind 'response' is not supported on node")
+        @Expect(toRawErrorMessage(InputFile.fromSupplier("lazy", "a.txt"), "web"), "InputFile source kind 'supplier' is not supported on web")
+        @Expect(
+            toRawErrorMessage(InputFile.fromSupplier("lazy-blob", InputFileSource.blob("blob:2", "b.txt")), "node"),
+            "InputFile supplier source kind 'blob' is not supported on node"
+        )
     }
 
     @TestCase

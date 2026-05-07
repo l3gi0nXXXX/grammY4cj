@@ -170,10 +170,15 @@ public import grammy4cj.platform.Logger
 public import grammy4cj.platform.PlatformAdapter
 public import grammy4cj.platform.PlatformHttpRequest
 public import grammy4cj.platform.PlatformHttpResponse
+public import grammy4cj.platform.PlatformRawData
+public import grammy4cj.platform.PlatformRawSource
 public import grammy4cj.platform.baseFetchConfig
 public import grammy4cj.platform.defaultAdapter
 public import grammy4cj.platform.defaultPlatform
+public import grammy4cj.platform.inputFileRaw
 public import grammy4cj.platform.itrToStream
+public import grammy4cj.platform.platformInputFileRawContract
+public import grammy4cj.platform.platformSupportsInputFileSource
 public import grammy4cj.platform.redactToken
 public import grammy4cj.types.ApiError
 public import grammy4cj.types.ApiResponse
@@ -211,7 +216,15 @@ public import grammy4cj.types.User
 public import grammy4cj.types.UserFromGetMe
 public import grammy4cj.types.inferFilename
 public import grammy4cj.types.inferUrlFilename
+public import grammy4cj.types.inputFilePlatformContract
+public import grammy4cj.types.inputFileRuntimeNames
+public import grammy4cj.types.inputFileSourceKindCount
+public import grammy4cj.types.inputFileSourceKindNames
+public import grammy4cj.types.inputFileSourceSupportedOnRuntime
 public import grammy4cj.types.looksLikeRemoteUrl
+public import grammy4cj.types.TelegramTypeAliasTrace
+public import grammy4cj.types.telegramInputFileAliasTrace
+public import grammy4cj.types.telegramInputFileAliasTraceCount
 
 public let GRAMMY4CJ_VERSION: String = "0.1.0"
 public let GRAMMY_BASELINE_HEAD: String = "c865dd3a4d26911b01c83695e3845c7245870a5d"
