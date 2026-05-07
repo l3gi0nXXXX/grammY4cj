@@ -1,0 +1,13 @@
+[dependencies]
+
+[package]
+  cjc-version = "1.0.0"
+  compile-option = "-Woff unused"
+  description = "A Cangjie port of grammY with source-compatible architecture targets."
+  link-option = ""
+  name = "grammy4cj"
+  output-type = "static"
+  src-dir = ""
+  target-dir = ""
+  version = "0.1.0"
+  package-configuration = {}
