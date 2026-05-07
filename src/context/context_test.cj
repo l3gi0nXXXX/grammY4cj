@@ -66,6 +66,15 @@ private func throwsException(action: () -> Unit): Bool {
     }
 }
 
+private func exceptionMessage(action: () -> Unit): String {
+    try {
+        action()
+        ""
+    } catch (err: Exception) {
+        err.message
+    }
+}
+
 @Test
 public class ContextGetterTest {
     @TestCase
@@ -336,6 +345,47 @@ public class ContextGetterTest {
         @Expect(summary.customEmojiRemoved[0], "custom-old")
         @Expect(summary.paid, true)
         @Expect(summary.paidAdded, true)
+
+        let keptUpdate = Update.withMessageReaction(
+            70,
+            MessageReactionUpdated(
+                chat,
+                user,
+                34,
+                [
+                    ReactionType.emojiReaction("plus"),
+                    ReactionType.customEmojiReaction("custom-old"),
+                    ReactionType.customEmojiReaction("custom-kept"),
+                    ReactionType.paidReaction()
+                ],
+                [
+                    ReactionType.emojiReaction("plus"),
+                    ReactionType.customEmojiReaction("custom-kept"),
+                    ReactionType.customEmojiReaction("custom-new"),
+                    ReactionType.paidReaction()
+                ]
+            )
+        )
+        let kept = testContext(keptUpdate).reactions()
+
+        @Expect(kept.emoji[0], "plus")
+        @Expect(kept.emojiAdded.size, 0)
+        @Expect(kept.emojiKept[0], "plus")
+        @Expect(kept.emojiRemoved.size, 0)
+        @Expect(kept.customEmoji[0], "custom-kept")
+        @Expect(kept.customEmoji[1], "custom-new")
+        @Expect(kept.customEmojiAdded[0], "custom-new")
+        @Expect(kept.customEmojiKept[0], "custom-kept")
+        @Expect(kept.customEmojiRemoved[0], "custom-old")
+        @Expect(kept.paid, true)
+        @Expect(kept.paidAdded, false)
+
+        let paidRemoved = testContext(Update.withMessageReaction(
+            71,
+            MessageReactionUpdated(chat, user, 35, [ReactionType.paidReaction()], [])
+        )).reactions()
+        @Expect(paidRemoved.paid, false)
+        @Expect(paidRemoved.paidAdded, false)
     }
 }
 
@@ -444,6 +494,61 @@ public class ContextHasTest {
     }
 
     @TestCase
+    public func failedTriggerProbesDoNotOverwriteExistingMatchAcrossKinds(): Unit {
+        let chat = Chat(131, "private")
+        let user = User(463, false, "Evelyn", "evelyn")
+
+        let emptyText = testContext(Update.withMessage(151, Message(451, chat, "", user)))
+        emptyText.`match` = "seed"
+        @Expect(emptyText.hasText(""), false)
+        @Expect(emptyText.`match`, "seed")
+
+        let commandMessage = Message(452, chat, "/start payload", user)
+        commandMessage.addEntity(MessageEntity("bot_command", 0, 6))
+        let commandCtx = testContext(Update.withMessage(152, commandMessage))
+        commandCtx.`match` = "seed"
+        @Expect(commandCtx.hasCommand("help"), false)
+        @Expect(commandCtx.`match`, "seed")
+
+        let callbackCtx = testContext(Update.withCallbackQuery(153, CallbackQuery(user, "clicked", Message(453, chat, "button", user))))
+        callbackCtx.`match` = "seed"
+        @Expect(callbackCtx.hasCallbackQuery("missing"), false)
+        @Expect(callbackCtx.`match`, "seed")
+
+        let gameCtx = testContext(Update.withCallbackQuery(154, CallbackQuery(user, "", "game-a", Message(454, chat, "game", user), "")))
+        gameCtx.`match` = "seed"
+        @Expect(gameCtx.hasGameQuery("missing"), false)
+        @Expect(gameCtx.`match`, "seed")
+
+        let inlineCtx = testContext(Update.withInlineQuery(155, InlineQuery(user, "inline-a")))
+        inlineCtx.`match` = "seed"
+        @Expect(inlineCtx.hasInlineQuery("missing"), false)
+        @Expect(inlineCtx.`match`, "seed")
+
+        let chosenCtx = testContext(Update.withChosenInlineResult(156, ChosenInlineResult(user, "chosen-a", "inline-message")))
+        chosenCtx.`match` = "seed"
+        @Expect(chosenCtx.hasChosenInlineResult("missing"), false)
+        @Expect(chosenCtx.`match`, "seed")
+
+        let preCheckoutCtx = testContext(Update.withPreCheckoutQuery(157, PreCheckoutQuery(user, "pre-a")))
+        preCheckoutCtx.`match` = "seed"
+        @Expect(preCheckoutCtx.hasPreCheckoutQuery("missing"), false)
+        @Expect(preCheckoutCtx.`match`, "seed")
+
+        let shippingCtx = testContext(Update.withShippingQuery(158, ShippingQuery(user, "ship-a")))
+        shippingCtx.`match` = "seed"
+        @Expect(shippingCtx.hasShippingQuery("missing"), false)
+        @Expect(shippingCtx.`match`, "seed")
+
+        let missingCtx = testContext(Update(159))
+        missingCtx.`match` = "seed"
+        @Expect(missingCtx.hasText("anything"), false)
+        @Expect(missingCtx.hasCallbackQuery("anything"), false)
+        @Expect(missingCtx.hasReaction("heart"), false)
+        @Expect(missingCtx.`match`, "seed")
+    }
+
+    @TestCase
     public func commandProbeMatchesOnlyTargetedBotMentions(): Unit {
         let chat = Chat(126, "private")
         let user = User(459, false, "Edsger", "edsger")
@@ -461,16 +566,70 @@ public class ContextHasTest {
     }
 
     @TestCase
+    public func commandProbeReadsChannelPostsLikeMessages(): Unit {
+        let chat = Chat(132, "channel")
+        let channelPost = Message(461, chat, "/publish payload")
+        channelPost.addEntity(MessageEntity("bot_command", 0, 8))
+        let ctx = testContext(Update.withChannelPost(160, channelPost))
+
+        @Expect(ctx.hasText("/publish payload"), true)
+        @Expect(ctx.`match`, "/publish payload")
+        @Expect(ctx.hasCommand("publish"), true)
+        @Expect(ctx.`match`, "payload")
+    }
+
+    @TestCase
     public func commandProbeRejectsSlashPrefix(): Unit {
-        var threw = false
+        @Expect(
+            exceptionMessage({ => Context.has.command("/start") }),
+            "Do not include '/' when registering command handlers (use 'start' not '/start')"
+        )
+        @Expect(
+            exceptionMessage({ => Context.has.command(["help", "/start"]) }),
+            "Do not include '/' when registering command handlers (use 'start' not '/start')"
+        )
+    }
 
-        try {
-            Context.has.command("/start")
-        } catch (_: Exception) {
-            threw = true
-        }
+    @TestCase
+    public func reactionProbeMatchesOnlyNewWantedReactionsAndUnsupportedKinds(): Unit {
+        let chat = Chat(133, "private")
+        let user = User(464, false, "Katherine", "katherine")
 
-        @Expect(threw, true)
+        let customNew = testContext(Update.withMessageReaction(
+            161,
+            MessageReactionUpdated(chat, user, 461, [], [ReactionType.customEmojiReaction("custom-1")])
+        ))
+        @Expect(customNew.hasReaction(ReactionType.customEmojiReaction("custom-1")), true)
+
+        let customKept = testContext(Update.withMessageReaction(
+            162,
+            MessageReactionUpdated(
+                chat,
+                user,
+                462,
+                [ReactionType.customEmojiReaction("custom-1")],
+                [ReactionType.customEmojiReaction("custom-1")]
+            )
+        ))
+        @Expect(customKept.hasReaction(ReactionType.customEmojiReaction("custom-1")), false)
+
+        let paidNew = testContext(Update.withMessageReaction(
+            163,
+            MessageReactionUpdated(chat, user, 463, [], [ReactionType.paidReaction()])
+        ))
+        @Expect(paidNew.hasReaction(ReactionType.paidReaction()), true)
+
+        let paidKept = testContext(Update.withMessageReaction(
+            164,
+            MessageReactionUpdated(chat, user, 464, [ReactionType.paidReaction()], [ReactionType.paidReaction()])
+        ))
+        @Expect(paidKept.hasReaction(ReactionType.paidReaction()), false)
+
+        let unsupported = testContext(Update.withMessageReaction(
+            165,
+            MessageReactionUpdated(chat, user, 465, [], [ReactionType("unsupported", "", "")])
+        ))
+        @Expect(unsupported.hasReaction("heart"), true)
     }
 
     @TestCase
@@ -515,12 +674,12 @@ public class ContextShortcutTest {
         let payload = ctx.reply("pong")
 
         @Expect(methodName(payload), "sendMessage")
-        @Expect(payloadBody(payload).contains("\"chat_id\":\"777\""), true)
+        @Expect(payloadBody(payload).contains("\"chat_id\":777"), true)
         @Expect(payloadBody(payload).contains("\"text\":\"pong\""), true)
     }
 
     @TestCase
-    public func replyFamilyPrefillsChatBusinessThreadAndDirectTopic(): Unit {
+    public func replyFamilyPrefillsChatBusinessThreadAndChatActionTopic(): Unit {
         let chat = Chat(701, "supergroup")
         let user = User(801, false, "Ada", "ada")
         let message = Message(901, chat, "incoming", user)
@@ -533,11 +692,54 @@ public class ContextShortcutTest {
         let payload = ctx.replyWithChatAction("typing")
 
         @Expect(methodName(payload), "sendChatAction")
-        @Expect(payloadBody(payload).contains("\"chat_id\":\"701\""), true)
+        @Expect(payloadBody(payload).contains("\"chat_id\":701"), true)
         @Expect(payloadBody(payload).contains("\"business_connection_id\":\"bc-701\""), true)
-        @Expect(payloadBody(payload).contains("\"message_thread_id\":\"77\""), true)
-        @Expect(payloadBody(payload).contains("\"direct_messages_topic_id\":\"88\""), true)
+        @Expect(payloadBody(payload).contains("\"message_thread_id\":77"), true)
+        @Expect(payloadBody(payload).contains("\"direct_messages_topic_id\""), false)
         @Expect(payloadBody(payload).contains("\"action\":\"typing\""), true)
+    }
+
+    @TestCase
+    public func replyFamilyDirectTopicMatrixMatchesUpstreamShortcuts(): Unit {
+        let chat = Chat(707, "supergroup")
+        let user = User(807, false, "Ada", "ada")
+        let message = Message(907, chat, "incoming", user)
+        message.businessConnectionId = "bc-707"
+        message.isTopicMessage = true
+        message.messageThreadId = 71
+        message.directMessagesTopicId = 72
+        let ctx = testContext(Update.withMessage(112, message))
+
+        let reply = ctx.reply("pong")
+        @Expect(methodName(reply), "sendMessage")
+        @Expect(payloadBody(reply).contains("\"business_connection_id\":\"bc-707\""), true)
+        @Expect(payloadBody(reply).contains("\"message_thread_id\":71"), true)
+        @Expect(payloadBody(reply).contains("\"direct_messages_topic_id\":72"), true)
+
+        let draft = ctx.replyWithDraft("draft")
+        @Expect(methodName(draft), "sendMessageDraft")
+        @Expect(payloadBody(draft).contains("\"update_id\":112"), true)
+        @Expect(payloadBody(draft).contains("\"message_thread_id\":71"), true)
+        @Expect(payloadBody(draft).contains("\"business_connection_id\""), false)
+        @Expect(payloadBody(draft).contains("\"direct_messages_topic_id\""), false)
+
+        let poll = ctx.replyWithPoll("question", "[\"yes\",\"no\"]")
+        @Expect(methodName(poll), "sendPoll")
+        @Expect(payloadBody(poll).contains("\"business_connection_id\":\"bc-707\""), true)
+        @Expect(payloadBody(poll).contains("\"message_thread_id\":71"), true)
+        @Expect(payloadBody(poll).contains("\"direct_messages_topic_id\""), false)
+
+        let game = ctx.replyWithGame("short-game")
+        @Expect(methodName(game), "sendGame")
+        @Expect(payloadBody(game).contains("\"business_connection_id\":\"bc-707\""), true)
+        @Expect(payloadBody(game).contains("\"message_thread_id\":71"), true)
+        @Expect(payloadBody(game).contains("\"direct_messages_topic_id\""), false)
+
+        let invoice = ctx.replyWithInvoice("title", "description", "invoice-payload", "USD", "[{\"label\":\"price\",\"amount\":100}]")
+        @Expect(methodName(invoice), "sendInvoice")
+        @Expect(payloadBody(invoice).contains("\"message_thread_id\":71"), true)
+        @Expect(payloadBody(invoice).contains("\"direct_messages_topic_id\":72"), true)
+        @Expect(payloadBody(invoice).contains("\"business_connection_id\""), false)
     }
 
     @TestCase
@@ -545,6 +747,7 @@ public class ContextShortcutTest {
         let chat = Chat(706, "private")
         let user = User(806, false, "Donald", "donald")
         let message = Message(906, chat, "incoming", user)
+        message.directMessagesTopicId = 73
         let ctx = testContext(Update.withMessage(111, message))
 
         let forward = ctx.forwardMessage(9001)
@@ -552,19 +755,23 @@ public class ContextShortcutTest {
         @Expect(payloadBody(forward).contains("\"chat_id\":9001"), true)
         @Expect(payloadBody(forward).contains("\"from_chat_id\":706"), true)
         @Expect(payloadBody(forward).contains("\"message_id\":906"), true)
+        @Expect(payloadBody(forward).contains("\"direct_messages_topic_id\":73"), true)
 
         let forwardMany = ctx.forwardMessages(9002, [906, 907])
         @Expect(methodName(forwardMany), "forwardMessages")
         @Expect(payloadBody(forwardMany).contains("\"message_ids\":[906,907]"), true)
+        @Expect(payloadBody(forwardMany).contains("\"direct_messages_topic_id\":73"), true)
 
         let copy = ctx.copyMessage(9003)
         @Expect(methodName(copy), "copyMessage")
         @Expect(payloadBody(copy).contains("\"from_chat_id\":706"), true)
         @Expect(payloadBody(copy).contains("\"message_id\":906"), true)
+        @Expect(payloadBody(copy).contains("\"direct_messages_topic_id\":73"), true)
 
         let copyMany = ctx.copyMessages(9004, [908, 909])
         @Expect(methodName(copyMany), "copyMessages")
         @Expect(payloadBody(copyMany).contains("\"message_ids\":[908,909]"), true)
+        @Expect(payloadBody(copyMany).contains("\"direct_messages_topic_id\":73"), true)
 
         let deleteMany = ctx.deleteMessages([906, 907])
         @Expect(methodName(deleteMany), "deleteMessages")
@@ -736,5 +943,14 @@ public class ContextShortcutTest {
         @Expect(throwsException({ => empty.replyWithGift("gift") }), true)
         @Expect(throwsException({ => empty.refundStarPayment("charge") }), true)
         @Expect(throwsException({ => empty.readBusinessMessage() }), true)
+    }
+
+    @TestCase
+    public func missingContextErrorMethodNamesMirrorUpstreamAliasImplementations(): Unit {
+        let empty = testContext(Update(113))
+
+        @Expect(exceptionMessage({ => empty.setAuthorTag("tag") }), "Missing information for API call to setChatMemberTag")
+        @Expect(exceptionMessage({ => empty.revokeChatInviteLink("invite") }), "Missing information for API call to editChatInviteLink")
+        @Expect(exceptionMessage({ => empty.replaceManagedBotToken() }), "Missing information for API call to getManagedBotToken")
     }
 }

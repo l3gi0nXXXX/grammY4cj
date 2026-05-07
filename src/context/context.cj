@@ -302,6 +302,124 @@ public class ContextPredicate {
     }
 }
 
+public class HearsContext {
+    public let ctx: Context
+    public let message: Message
+    public let `match`: String
+
+    public init(ctx: Context, message: Message, `match`: String) {
+        this.ctx = ctx
+        this.message = message
+        this.`match` = `match`
+    }
+}
+
+public class CommandContext {
+    public let ctx: Context
+    public let message: Message
+    public let `match`: String
+
+    public init(ctx: Context, message: Message, `match`: String) {
+        this.ctx = ctx
+        this.message = message
+        this.`match` = `match`
+    }
+}
+
+public class ChatTypeContext {
+    public let ctx: Context
+    public let chat: Chat
+    public let chatType: String
+
+    public init(ctx: Context, chat: Chat, chatType: String) {
+        this.ctx = ctx
+        this.chat = chat
+        this.chatType = chatType
+    }
+}
+
+public class CallbackQueryContext {
+    public let ctx: Context
+    public let callbackQuery: CallbackQuery
+    public let `match`: String
+
+    public init(ctx: Context, callbackQuery: CallbackQuery, `match`: String) {
+        this.ctx = ctx
+        this.callbackQuery = callbackQuery
+        this.`match` = `match`
+    }
+}
+
+public class GameQueryContext {
+    public let ctx: Context
+    public let callbackQuery: CallbackQuery
+    public let `match`: String
+
+    public init(ctx: Context, callbackQuery: CallbackQuery, `match`: String) {
+        this.ctx = ctx
+        this.callbackQuery = callbackQuery
+        this.`match` = `match`
+    }
+}
+
+public class InlineQueryContext {
+    public let ctx: Context
+    public let inlineQuery: InlineQuery
+    public let `match`: String
+
+    public init(ctx: Context, inlineQuery: InlineQuery, `match`: String) {
+        this.ctx = ctx
+        this.inlineQuery = inlineQuery
+        this.`match` = `match`
+    }
+}
+
+public class ChosenInlineResultContext {
+    public let ctx: Context
+    public let chosenInlineResult: ChosenInlineResult
+    public let `match`: String
+
+    public init(ctx: Context, chosenInlineResult: ChosenInlineResult, `match`: String) {
+        this.ctx = ctx
+        this.chosenInlineResult = chosenInlineResult
+        this.`match` = `match`
+    }
+}
+
+public class PreCheckoutQueryContext {
+    public let ctx: Context
+    public let preCheckoutQuery: PreCheckoutQuery
+    public let `match`: String
+
+    public init(ctx: Context, preCheckoutQuery: PreCheckoutQuery, `match`: String) {
+        this.ctx = ctx
+        this.preCheckoutQuery = preCheckoutQuery
+        this.`match` = `match`
+    }
+}
+
+public class ShippingQueryContext {
+    public let ctx: Context
+    public let shippingQuery: ShippingQuery
+    public let `match`: String
+
+    public init(ctx: Context, shippingQuery: ShippingQuery, `match`: String) {
+        this.ctx = ctx
+        this.shippingQuery = shippingQuery
+        this.`match` = `match`
+    }
+}
+
+public class ReactionContext {
+    public let ctx: Context
+    public let messageReaction: MessageReactionUpdated
+
+    public init(ctx: Context, messageReaction: MessageReactionUpdated) {
+        this.ctx = ctx
+        this.messageReaction = messageReaction
+    }
+}
+
 public class Context {
     public static let has = ContextHas()
 
@@ -664,6 +782,161 @@ public class Context {
         Context.has.shippingQuery(trigger).matches(this)
     }
 
+    public func refineText(trigger: String): Option<HearsContext> {
+        this.refineText(TextTrigger.exact(trigger))
+    }
+
+    public func refineText(triggers: Array<String>): Option<HearsContext> {
+        this.refineText(TextTrigger.exact(triggers))
+    }
+
+    public func refineText(trigger: TextTrigger): Option<HearsContext> {
+        if (!this.hasText(trigger)) {
+            return None<HearsContext>
+        }
+        Some(HearsContext(this, triggerMessage(this), this.`match`))
+    }
+
+    public func refineCommand(command: String): Option<CommandContext> {
+        this.refineCommand([command])
+    }
+
+    public func refineCommand(commands: Array<String>): Option<CommandContext> {
+        if (!this.hasCommand(commands)) {
+            return None<CommandContext>
+        }
+        Some(CommandContext(this, triggerMessage(this), this.`match`))
+    }
+
+    public func refineChatType(chatType: String): Option<ChatTypeContext> {
+        this.refineChatType([chatType])
+    }
+
+    public func refineChatType(chatTypes: Array<String>): Option<ChatTypeContext> {
+        if (!this.hasChatType(chatTypes)) {
+            return None<ChatTypeContext>
+        }
+        Some(ChatTypeContext(this, this.chat, this.chat.kind))
+    }
+
+    public func refineCallbackQuery(trigger: String): Option<CallbackQueryContext> {
+        this.refineCallbackQuery(TextTrigger.exact(trigger))
+    }
+
+    public func refineCallbackQuery(triggers: Array<String>): Option<CallbackQueryContext> {
+        this.refineCallbackQuery(TextTrigger.exact(triggers))
+    }
+
+    public func refineCallbackQuery(trigger: TextTrigger): Option<CallbackQueryContext> {
+        if (!this.hasCallbackQuery(trigger)) {
+            return None<CallbackQueryContext>
+        }
+        Some(CallbackQueryContext(this, this.callbackQuery, this.`match`))
+    }
+
+    public func refineGameQuery(trigger: String): Option<GameQueryContext> {
+        this.refineGameQuery(TextTrigger.exact(trigger))
+    }
+
+    public func refineGameQuery(triggers: Array<String>): Option<GameQueryContext> {
+        this.refineGameQuery(TextTrigger.exact(triggers))
+    }
+
+    public func refineGameQuery(trigger: TextTrigger): Option<GameQueryContext> {
+        if (!this.hasGameQuery(trigger)) {
+            return None<GameQueryContext>
+        }
+        Some(GameQueryContext(this, this.callbackQuery, this.`match`))
+    }
+
+    public func refineInlineQuery(trigger: String): Option<InlineQueryContext> {
+        this.refineInlineQuery(TextTrigger.exact(trigger))
+    }
+
+    public func refineInlineQuery(triggers: Array<String>): Option<InlineQueryContext> {
+        this.refineInlineQuery(TextTrigger.exact(triggers))
+    }
+
+    public func refineInlineQuery(trigger: TextTrigger): Option<InlineQueryContext> {
+        if (!this.hasInlineQuery(trigger)) {
+            return None<InlineQueryContext>
+        }
+        Some(InlineQueryContext(this, this.inlineQuery, this.`match`))
+    }
+
+    public func refineChosenInlineResult(trigger: String): Option<ChosenInlineResultContext> {
+        this.refineChosenInlineResult(TextTrigger.exact(trigger))
+    }
+
+    public func refineChosenInlineResult(triggers: Array<String>): Option<ChosenInlineResultContext> {
+        this.refineChosenInlineResult(TextTrigger.exact(triggers))
+    }
+
+    public func refineChosenInlineResult(trigger: TextTrigger): Option<ChosenInlineResultContext> {
+        if (!this.hasChosenInlineResult(trigger)) {
+            return None<ChosenInlineResultContext>
+        }
+        Some(ChosenInlineResultContext(this, this.chosenInlineResult, this.`match`))
+    }
+
+    public func refinePreCheckoutQuery(trigger: String): Option<PreCheckoutQueryContext> {
+        this.refinePreCheckoutQuery(TextTrigger.exact(trigger))
+    }
+
+    public func refinePreCheckoutQuery(triggers: Array<String>): Option<PreCheckoutQueryContext> {
+        this.refinePreCheckoutQuery(TextTrigger.exact(triggers))
+    }
+
+    public func refinePreCheckoutQuery(trigger: TextTrigger): Option<PreCheckoutQueryContext> {
+        if (!this.hasPreCheckoutQuery(trigger)) {
+            return None<PreCheckoutQueryContext>
+        }
+        Some(PreCheckoutQueryContext(this, this.preCheckoutQuery, this.`match`))
+    }
+
+    public func refineShippingQuery(trigger: String): Option<ShippingQueryContext> {
+        this.refineShippingQuery(TextTrigger.exact(trigger))
+    }
+
+    public func refineShippingQuery(triggers: Array<String>): Option<ShippingQueryContext> {
+        this.refineShippingQuery(TextTrigger.exact(triggers))
+    }
+
+    public func refineShippingQuery(trigger: TextTrigger): Option<ShippingQueryContext> {
+        if (!this.hasShippingQuery(trigger)) {
+            return None<ShippingQueryContext>
+        }
+        Some(ShippingQueryContext(this, this.shippingQuery, this.`match`))
+    }
+
+    public func refineReaction(reaction: String): Option<ReactionContext> {
+        if (!this.hasReaction(reaction)) {
+            return None<ReactionContext>
+        }
+        Some(ReactionContext(this, this.messageReaction))
+    }
+
+    public func refineReaction(reactions: Array<String>): Option<ReactionContext> {
+        if (!this.hasReaction(reactions)) {
+            return None<ReactionContext>
+        }
+        Some(ReactionContext(this, this.messageReaction))
+    }
+
+    public func refineReaction(reaction: ReactionType): Option<ReactionContext> {
+        if (!this.hasReaction(reaction)) {
+            return None<ReactionContext>
+        }
+        Some(ReactionContext(this, this.messageReaction))
+    }
+
+    public func refineReaction(reactions: Array<ReactionType>): Option<ReactionContext> {
+        if (!this.hasReaction(reactions)) {
+            return None<ReactionContext>
+        }
+        Some(ReactionContext(this, this.messageReaction))
+    }
+
     public func reply(text: String): Payload {
         let payload = defaultReplyPayload("sendMessage")
         payload.addValue("text", text)
@@ -671,8 +944,8 @@ public class Context {
     }
 
     public func replyWithDraft(text: String): Payload {
-        let payload = defaultReplyPayload("sendMessageDraft")
-        payload.addValue("update_id", this.update.updateId.toString())
+        let payload = draftReplyPayload("sendMessageDraft")
+        payload.addInt("update_id", this.update.updateId)
         payload.addValue("text", text)
         this.api.sendMessageDraft(payload)
     }
@@ -682,6 +955,7 @@ public class Context {
         payload.addInt("chat_id", chatId)
         payload.addInt("from_chat_id", orThrow(this.chatId, "forwardMessage"))
         payload.addInt("message_id", orThrow(this.msgId, "forwardMessage"))
+        addDirectMessagesTopicIfPresent(payload)
         this.api.forwardMessage(payload)
     }
 
@@ -690,6 +964,7 @@ public class Context {
         payload.addInt("chat_id", chatId)
         payload.addInt("from_chat_id", orThrow(this.chatId, "forwardMessages"))
         payload.addRawJson("message_ids", messageIds)
+        addDirectMessagesTopicIfPresent(payload)
         this.api.forwardMessages(payload)
     }
 
@@ -702,6 +977,7 @@ public class Context {
         payload.addInt("chat_id", chatId)
         payload.addInt("from_chat_id", orThrow(this.chatId, "copyMessage"))
         payload.addInt("message_id", orThrow(this.msgId, "copyMessage"))
+        addDirectMessagesTopicIfPresent(payload)
         this.api.copyMessage(payload)
     }
 
@@ -710,6 +986,7 @@ public class Context {
         payload.addInt("chat_id", chatId)
         payload.addInt("from_chat_id", orThrow(this.chatId, "copyMessages"))
         payload.addRawJson("message_ids", messageIds)
+        addDirectMessagesTopicIfPresent(payload)
         this.api.copyMessages(payload)
     }
 
@@ -794,7 +1071,7 @@ public class Context {
     }
 
     public func replyWithPoll(question: String, optionsJson: String): Payload {
-        let payload = defaultReplyPayload("sendPoll")
+        let payload = defaultReplyPayloadWithoutDirectTopic("sendPoll")
         payload.addValue("question", question)
         payload.addRawJson("options", optionsJson)
         invokeApi("sendPoll", payload)
@@ -820,7 +1097,7 @@ public class Context {
     }
 
     public func replyWithChatAction(action: String): Payload {
-        let payload = defaultReplyPayload("sendChatAction")
+        let payload = chatActionPayload("sendChatAction")
         payload.addValue("action", action)
         invokeApi("sendChatAction", payload)
     }
@@ -951,7 +1228,8 @@ public class Context {
     }
 
     public func setAuthorTag(tag: String): Payload {
-        let payload = chatAuthorPayload("setAuthorTag")
+        let payload = chatPayload("setChatMemberTag")
+        payload.addInt("user_id", orThrow(this.from, "setChatMemberTag").id)
         payload.addValue("tag", tag)
         invokeApi("setChatMemberTag", payload)
     }
@@ -1008,7 +1286,7 @@ public class Context {
     }
 
     public func revokeChatInviteLink(inviteLink: String): Payload {
-        let payload = chatPayload("revokeChatInviteLink")
+        let payload = chatPayload("editChatInviteLink")
         payload.addValue("invite_link", inviteLink)
         invokeApi("revokeChatInviteLink", payload)
     }
@@ -1018,7 +1296,7 @@ public class Context {
     }
 
     public func replaceManagedBotToken(): Payload {
-        invokeApi("replaceManagedBotToken", managedBotPayload("replaceManagedBotToken"))
+        invokeApi("replaceManagedBotToken", managedBotPayload("getManagedBotToken"))
     }
 
     public func approveChatJoinRequest(userId: Int64): Payload {
@@ -1402,7 +1680,7 @@ public class Context {
     }
 
     public func replyWithInvoice(title: String, description: String, invoicePayload: String, currency: String, pricesJson: String): Payload {
-        let payload = defaultReplyPayload("sendInvoice")
+        let payload = invoiceReplyPayload("sendInvoice")
         payload.addValue("title", title)
         payload.addValue("description", description)
         payload.addValue("payload", invoicePayload)
@@ -1471,23 +1749,62 @@ public class Context {
     }
 
     public func replyWithGame(gameShortName: String): Payload {
-        let payload = defaultReplyPayload("sendGame")
+        let payload = defaultReplyPayloadWithoutDirectTopic("sendGame")
         payload.addValue("game_short_name", gameShortName)
         invokeApi("sendGame", payload)
     }
 
     private func defaultReplyPayload(method: String): Payload {
+        defaultReplyPayload(method, true)
+    }
+
+    private func defaultReplyPayloadWithoutDirectTopic(method: String): Payload {
+        defaultReplyPayload(method, false)
+    }
+
+    private func defaultReplyPayload(method: String, includeDirectTopic: Bool): Payload {
         let payload = Payload("")
-        payload.addValue("chat_id", orThrow(this.chatId, method).toString())
+        payload.addInt("chat_id", orThrow(this.chatId, method))
         if (!this.businessConnectionId.isEmpty()) {
             payload.addValue("business_connection_id", this.businessConnectionId)
         }
         if (this.msg.isTopicMessage) {
-            payload.addValue("message_thread_id", this.msg.messageThreadId.toString())
+            payload.addInt("message_thread_id", this.msg.messageThreadId)
         }
-        if (this.msg.directMessagesTopicId != 0) {
-            payload.addValue("direct_messages_topic_id", this.msg.directMessagesTopicId.toString())
+        if (includeDirectTopic) {
+            addDirectMessagesTopicIfPresent(payload)
         }
+        payload
+    }
+
+    private func draftReplyPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addInt("chat_id", orThrow(this.chatId, method))
+        if (this.msg.isTopicMessage) {
+            payload.addInt("message_thread_id", this.msg.messageThreadId)
+        }
+        payload
+    }
+
+    private func chatActionPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addInt("chat_id", orThrow(this.chatId, method))
+        if (!this.businessConnectionId.isEmpty()) {
+            payload.addValue("business_connection_id", this.businessConnectionId)
+        }
+        if (this.msg.messageThreadId != 0) {
+            payload.addInt("message_thread_id", this.msg.messageThreadId)
+        }
+        payload
+    }
+
+    private func invoiceReplyPayload(method: String): Payload {
+        let payload = Payload("")
+        payload.addInt("chat_id", orThrow(this.chatId, method))
+        if (this.msg.isTopicMessage) {
+            payload.addInt("message_thread_id", this.msg.messageThreadId)
+        }
+        addDirectMessagesTopicIfPresent(payload)
         payload
     }
 
@@ -1600,6 +1917,12 @@ public class Context {
     private func addBusinessConnectionIfPresent(payload: Payload): Unit {
         if (!this.businessConnectionId.isEmpty()) {
             payload.addValue("business_connection_id", this.businessConnectionId)
+        }
+    }
+
+    private func addDirectMessagesTopicIfPresent(payload: Payload): Unit {
+        if (this.msg.directMessagesTopicId != 0) {
+            payload.addInt("direct_messages_topic_id", this.msg.directMessagesTopicId)
         }
     }
 
@@ -2050,7 +2373,7 @@ public func triggerFn(trigger: TextTrigger): TextTrigger {
 private func validateCommandNames(commands: Array<String>): Unit {
     for (command in commands) {
         if (command.startsWith("/")) {
-            throw Exception("Do not include '/' when registering command handlers.")
+            throw Exception("Do not include '/' when registering command handlers (use '" + command[1..] + "' not '" + command + "')")
         }
     }
 }
@@ -2179,6 +2502,9 @@ private func matchesReaction(ctx: Context, wanted: Array<ReactionType>): Bool {
                 return true
             }
         }
+        if (reaction.kind != "emoji" && reaction.kind != "custom_emoji" && reaction.kind != "paid") {
+            return true
+        }
     }
     false
 }
@@ -2223,24 +2549,30 @@ private func reactionSummary(update: MessageReactionUpdated): ReactionSummary {
     for (reaction in update.newReaction) {
         if (reaction.kind == "emoji") {
             emoji.add(reaction.emoji)
-            if (reactionExists(update.oldReaction, reaction)) { emojiKept.add(reaction.emoji) } else { emojiAdded.add(reaction.emoji) }
         } else if (reaction.kind == "custom_emoji") {
             customEmoji.add(reaction.customEmojiId)
-            if (reactionExists(update.oldReaction, reaction)) { customEmojiKept.add(reaction.customEmojiId) } else { customEmojiAdded.add(reaction.customEmojiId) }
         } else if (reaction.kind == "paid") {
             summary.paid = true
-            summary.paidAdded = !reactionExists(update.oldReaction, reaction)
+            summary.paidAdded = true
         }
     }
     for (reaction in update.oldReaction) {
-        if (!reactionExists(update.newReaction, reaction)) {
-            if (reaction.kind == "emoji") {
-                emojiRemoved.add(reaction.emoji)
-            } else if (reaction.kind == "custom_emoji") {
-                customEmojiRemoved.add(reaction.customEmojiId)
-            }
+        if (reaction.kind == "emoji") {
+            emojiRemoved.add(reaction.emoji)
+        } else if (reaction.kind == "custom_emoji") {
+            customEmojiRemoved.add(reaction.customEmojiId)
+        } else if (reaction.kind == "paid") {
+            summary.paidAdded = false
         }
     }
+    for (value in emoji) {
+        emojiAdded.add(value)
+    }
+    for (value in customEmoji) {
+        customEmojiAdded.add(value)
+    }
+    moveCommonStrings(emojiRemoved, emojiAdded, emojiKept)
+    moveCommonStrings(customEmojiRemoved, customEmojiAdded, customEmojiKept)
     summary.emoji = emoji.toArray()
     summary.emojiAdded = emojiAdded.toArray()
     summary.emojiKept = emojiKept.toArray()
@@ -2250,6 +2582,31 @@ private func reactionSummary(update: MessageReactionUpdated): ReactionSummary {
     summary.customEmojiKept = customEmojiKept.toArray()
     summary.customEmojiRemoved = customEmojiRemoved.toArray()
     summary
+}
+
+private func moveCommonStrings(removed: ArrayList<String>, added: ArrayList<String>, kept: ArrayList<String>): Unit {
+    var i: Int64 = 0
+    while (i < removed.size) {
+        if (added.size == 0) {
+            return
+        }
+        let rem = removed[i]
+        var found = false
+        var j: Int64 = 0
+        while (j < added.size) {
+            if (rem == added[j]) {
+                kept.add(rem)
+                removed.remove(at: i)
+                added.remove(at: j)
+                found = true
+                break
+            }
+            j += 1
+        }
+        if (!found) {
+            i += 1
+        }
+    }
 }
 
 private func hasBotCommandEntity(message: Message): Bool {

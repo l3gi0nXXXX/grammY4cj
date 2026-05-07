@@ -5,9 +5,14 @@ import std.unittest.*
 import grammy4cj.core.Api
 import grammy4cj.types.CallbackQuery
 import grammy4cj.types.Chat
+import grammy4cj.types.ChosenInlineResult
 import grammy4cj.types.InlineQuery
 import grammy4cj.types.Message
 import grammy4cj.types.MessageEntity
+import grammy4cj.types.MessageReactionUpdated
+import grammy4cj.types.PreCheckoutQuery
+import grammy4cj.types.ReactionType
+import grammy4cj.types.ShippingQuery
 import grammy4cj.types.Update
 import grammy4cj.types.User
 import grammy4cj.types.UserFromGetMe
@@ -50,5 +55,127 @@ public class ContextTypeSurfaceTest {
         let inlineCtx = typeTestContext(Update.withInlineQuery(1402, InlineQuery(user, "inline-query")))
         @Expect(inlineCtx.hasInlineQuery("inline-query"), true)
         @Expect(inlineCtx.inlineQuery.query, "inline-query")
+    }
+
+    @TestCase
+    public func refineHelpersExposeTypedNarrowedWrappers(): Unit {
+        let chat = Chat(141, "private")
+        let user = User(241, false, "Ada", "ada")
+        let message = Message(541, chat, "/start payload", user)
+        message.addEntity(MessageEntity("bot_command", 0, 6))
+        let ctx = typeTestContext(Update.withMessage(1403, message))
+
+        match (ctx.refineText("/start payload")) {
+            case Some(narrowed) =>
+                let narrowedMessage: Message = narrowed.message
+                let narrowedMatch: String = narrowed.`match`
+                @Expect(narrowedMessage.text, "/start payload")
+                @Expect(narrowedMatch, "/start payload")
+            case None => @Expect(false, true)
+        }
+
+        match (ctx.refineCommand("start")) {
+            case Some(narrowed) =>
+                let narrowedMessage: Message = narrowed.message
+                let commandPayload: String = narrowed.`match`
+                @Expect(narrowedMessage.messageId, 541)
+                @Expect(commandPayload, "payload")
+            case None => @Expect(false, true)
+        }
+
+        match (ctx.refineChatType("private")) {
+            case Some(narrowed) =>
+                let narrowedChat: Chat = narrowed.chat
+                let chatType: String = narrowed.chatType
+                @Expect(narrowedChat.kind, "private")
+                @Expect(chatType, "private")
+            case None => @Expect(false, true)
+        }
+
+        let callbackCtx = typeTestContext(Update.withCallbackQuery(
+            1404,
+            CallbackQuery(user, "callback-data", "", message, "")
+        ))
+        match (callbackCtx.refineCallbackQuery("callback-data")) {
+            case Some(narrowed) =>
+                let callback: CallbackQuery = narrowed.callbackQuery
+                @Expect(callback.data, "callback-data")
+                @Expect(narrowed.`match`, "callback-data")
+            case None => @Expect(false, true)
+        }
+
+        let gameCtx = typeTestContext(Update.withCallbackQuery(
+            1405,
+            CallbackQuery(user, "", "game-short-name", message, "")
+        ))
+        match (gameCtx.refineGameQuery("game-short-name")) {
+            case Some(narrowed) =>
+                let gameCallback: CallbackQuery = narrowed.callbackQuery
+                @Expect(gameCallback.gameShortName, "game-short-name")
+                @Expect(narrowed.`match`, "game-short-name")
+            case None => @Expect(false, true)
+        }
+
+        let inlineCtx = typeTestContext(Update.withInlineQuery(1406, InlineQuery(user, "inline-query")))
+        match (inlineCtx.refineInlineQuery("inline-query")) {
+            case Some(narrowed) =>
+                let inline: InlineQuery = narrowed.inlineQuery
+                @Expect(inline.query, "inline-query")
+                @Expect(narrowed.`match`, "inline-query")
+            case None => @Expect(false, true)
+        }
+
+        let chosenCtx = typeTestContext(Update.withChosenInlineResult(
+            1407,
+            ChosenInlineResult(user, "chosen-result", "inline-message")
+        ))
+        match (chosenCtx.refineChosenInlineResult("chosen-result")) {
+            case Some(narrowed) =>
+                let chosen: ChosenInlineResult = narrowed.chosenInlineResult
+                @Expect(chosen.resultId, "chosen-result")
+                @Expect(narrowed.`match`, "chosen-result")
+            case None => @Expect(false, true)
+        }
+
+        let preCheckoutCtx = typeTestContext(Update.withPreCheckoutQuery(
+            1408,
+            PreCheckoutQuery(user, "pre-payload")
+        ))
+        match (preCheckoutCtx.refinePreCheckoutQuery("pre-payload")) {
+            case Some(narrowed) =>
+                let preCheckout: PreCheckoutQuery = narrowed.preCheckoutQuery
+                @Expect(preCheckout.invoicePayload, "pre-payload")
+                @Expect(narrowed.`match`, "pre-payload")
+            case None => @Expect(false, true)
+        }
+
+        let shippingCtx = typeTestContext(Update.withShippingQuery(
+            1409,
+            ShippingQuery(user, "shipping-payload")
+        ))
+        match (shippingCtx.refineShippingQuery("shipping-payload")) {
+            case Some(narrowed) =>
+                let shipping: ShippingQuery = narrowed.shippingQuery
+                @Expect(shipping.invoicePayload, "shipping-payload")
+                @Expect(narrowed.`match`, "shipping-payload")
+            case None => @Expect(false, true)
+        }
+
+        let reactionCtx = typeTestContext(Update.withMessageReaction(
+            1410,
+            MessageReactionUpdated(chat, user, 542, [], [ReactionType.emojiReaction("heart")])
+        ))
+        match (reactionCtx.refineReaction("heart")) {
+            case Some(narrowed) =>
+                let reaction: MessageReactionUpdated = narrowed.messageReaction
+                @Expect(reaction.messageId, 542)
+                @Expect(reaction.newReaction[0].emoji, "heart")
+            case None => @Expect(false, true)
+        }
+
+        match (ctx.refineText("missing")) {
+            case Some(_) => @Expect(false, true)
+            case None => @Expect(true, true)
+        }
     }
 }
