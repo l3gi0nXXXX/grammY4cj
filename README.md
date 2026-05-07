@@ -1,4 +1,4 @@
-<div align="center"><a href="https://grammy.dev"><img src="https://raw.githubusercontent.com/grammyjs/website/main/logos/grammY.png" alt="grammY"></a></h1></div>
+<div align="center"><a href="https://grammy.dev"><img src="./assets/grammy4cj-logo.svg" alt="grammY4cj"></a></div>
 
 <div align="right">
 
