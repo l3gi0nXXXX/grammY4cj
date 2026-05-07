@@ -115,6 +115,38 @@ public class ApiClientTest {
     }
 
     @TestCase
+    public func baseFetchConfigMergesRuntimeDefaultsWithOverrides(): Unit {
+        let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("ok"))
+        let base = BaseFetchConfig("", "", false, false, false)
+        let options = ApiClientOptions(
+            "https://api.telegram.org",
+            "prod",
+            500,
+            false,
+            { _method: String => false },
+            { root: String, token: String, method: String, env: String =>
+                let prefix = if (env == "test") { "test/" } else { "" }
+                root + "/bot" + token + "/" + prefix + method
+            },
+            base
+        )
+        let client = ApiClient(options, fake)
+
+        @Expect(client.callApi("token", "getMe", Payload("{}")), "ok")
+        @Expect(fake.baseFetchConfigSummary, "https:keepAlive=false:compress=false")
+    }
+
+    @TestCase
+    public func apiRootTrailingSlashMessageSuggestsCanonicalRoot(): Unit {
+        try {
+            ApiClientOptions("https://api.telegram.org/", "prod")
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message, "Remove the trailing '/' from the 'apiRoot' option (use 'https://api.telegram.org' instead of 'https://api.telegram.org/')")
+        }
+    }
+
+    @TestCase
     public func transformerInstallOrderIsRecorded(): Unit {
         let client = ApiClient(ApiClientOptions())
         client.use("first").use("second")
@@ -248,6 +280,38 @@ public class ApiClientTest {
     }
 
     @TestCase
+    public func apiClientParsesFetchJsonSuccessAndTelegramFailureBodies(): Unit {
+        let successFake = CoreTestFakeHttp().enqueue(CoreFetchResponse(200, "OK", "{\"ok\":true,\"result\":{\"id\":42}}"))
+        let successClient = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"), successFake)
+        @Expect(successClient.callApi("token", "getMe", Payload("{}")), "{\"id\":42}")
+
+        let failureFake = CoreTestFakeHttp().enqueue(CoreFetchResponse(200, "OK", "{\"ok\":false,\"error_code\":429,\"description\":\"Too Many Requests\",\"parameters\":{\"retry_after\":7}}"))
+        let failureClient = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"), failureFake)
+        try {
+            failureClient.callApi("token", "getMe", Payload("{}"))
+            @Expect(true, false)
+        } catch (err: GrammyError) {
+            @Expect(err.errorCode, 429)
+            @Expect(err.description, "Too Many Requests")
+            @Expect(err.parameters.retryAfter, 7)
+        }
+    }
+
+    @TestCase
+    public func apiClientMapsJsonParseFailuresToHttpError(): Unit {
+        let fake = CoreTestFakeHttp().enqueue(CoreFetchResponse(200, "OK", "not-json"))
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false), fake)
+
+        try {
+            client.callApi("secret-token", "getMe", Payload("{}"))
+            @Expect(true, false)
+        } catch (err: HttpError) {
+            @Expect(err.message.contains("Could not parse Telegram response JSON"), true)
+            @Expect(err.url, "https://api.telegram.org/botsecret-token/getMe")
+        }
+    }
+
+    @TestCase
     public func apiClientMapsHttpErrorResponses(): Unit {
         let fake = CoreTestFakeHttp().enqueue(CoreFetchResponse(502, "Bad Gateway", "upstream failed"))
         let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"), fake)
@@ -284,6 +348,29 @@ public class ApiClientTest {
         } catch (err: HttpError) {
             @Expect(err.message, "Network request for 'getMe' failed! fetch exploded")
             @Expect(err.error, "fetch exploded")
+        }
+    }
+
+    @TestCase
+    public func httpErrorsRecordRedactedUrlUnlessSensitiveLogsAreEnabled(): Unit {
+        let hiddenFake = CoreTestFakeHttp().enqueue(CoreFetchResponse.networkError("socket closed"))
+        let hiddenClient = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, false, false), hiddenFake)
+        try {
+            hiddenClient.callApi("secret-token", "getMe", Payload("{}"))
+            @Expect(true, false)
+        } catch (err: HttpError) {
+            @Expect(err.url, "https://api.telegram.org/bot<redacted>/getMe")
+            @Expect(err.message.contains("secret-token"), false)
+        }
+
+        let sensitiveFake = CoreTestFakeHttp().enqueue(CoreFetchResponse.networkError("socket closed"))
+        let sensitiveClient = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false), sensitiveFake)
+        try {
+            sensitiveClient.callApi("secret-token", "getMe", Payload("{}"))
+            @Expect(true, false)
+        } catch (err: HttpError) {
+            @Expect(err.url, "https://api.telegram.org/botsecret-token/getMe")
+            @Expect(err.message, "Network request for 'getMe' failed! socket closed")
         }
     }
 
@@ -339,6 +426,30 @@ public class ApiClientTest {
         @Expect(events[2], "first:after")
         @Expect(events[3], "second:after")
         @Expect(fake.body, "{\"chat_id\":\"42\",\"second\":\"2\",\"first\":\"1\"}")
+    }
+
+    @TestCase
+    public func transformerCanShortCircuitWithoutCallingFetch(): Unit {
+        let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("unused"))
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        client.use("short", { _prev: ApiCallFn, method: String, payload: Payload, _signal: CancelSignal =>
+            @Expect(method, "sendMessage")
+            @Expect(createJsonPayload(payload).body, "{\"chat_id\":\"42\"}")
+            ApiResponse.success("short-circuited")
+        })
+
+        @Expect(client.callApi("token", "sendMessage", Payload("").addValue("chat_id", "42")), "short-circuited")
+        @Expect(fake.called, false)
+    }
+
+    @TestCase
+    public func rawFacadeAllowsUnknownMethodsWithExplicitPayload(): Unit {
+        let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("ok"))
+        let api = createRawApi("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+
+        @Expect(api.raw.call("unknownMethod", Payload("").addValue("x", "1")), "ok")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/unknownMethod")
+        @Expect(fake.body, "{\"x\":\"1\"}")
     }
 
     @TestCase
@@ -416,5 +527,14 @@ public class ApiClientTest {
         } catch (err: HttpError) {
             @Expect(err.message.contains("delayed stream exploded"), true)
         }
+    }
+
+    @TestCase
+    public func immediateFetchWinsDelayedStreamErrorRace(): Unit {
+        let fake = CoreTestFakeHttp().enqueue(CoreFetchResponse.success("ok"))
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false), fake)
+        let payload = Payload("").addFile("document", coreTestDelayedFailingStreamFile("late stream exploded", "a.txt"))
+
+        @Expect(client.callApi("token", "sendDocument", payload), "ok")
     }
 }

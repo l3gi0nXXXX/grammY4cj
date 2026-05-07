@@ -48,4 +48,18 @@ public class CoreErrorTest {
         @Expect(err.status, 502)
         @Expect(err.statusText, "Bad Gateway")
     }
+
+    @TestCase
+    public func toHttpErrorRedactsTokenFromUrlByDefault(): Unit {
+        let err = toHttpError(
+            "getMe",
+            false,
+            "https://api.telegram.org/botsecret-token/getMe",
+            "secret-token",
+            Exception("network failed")
+        )
+
+        @Expect(err.url, "https://api.telegram.org/bot<redacted>/getMe")
+        @Expect(redactTokenForLogs("token=secret-token", "secret-token"), "token=<redacted>")
+    }
 }

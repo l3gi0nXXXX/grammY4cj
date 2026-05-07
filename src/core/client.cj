@@ -7,6 +7,7 @@ import grammy4cj.types.ResponseParameters
 
 public type ApiCallFn = (String, Payload, CancelSignal) -> ApiResponse
 public type Transformer = (ApiCallFn, String, Payload, CancelSignal) -> ApiResponse
+public type CoreFetchFn = (CoreHttpRequest, CancelSignal) -> CoreFetchResponse
 
 private func emptyBaseFetchConfig(): BaseFetchConfig {
     BaseFetchConfig("", "", false, false, true)
@@ -126,6 +127,18 @@ public class CoreFetchResponse {
 
 public interface CoreFetch {
     func fetch(request: CoreHttpRequest, signal: CancelSignal): CoreFetchResponse
+}
+
+public class FunctionCoreFetch <: CoreFetch {
+    private let fetchFn: CoreFetchFn
+
+    public init(fetchFn: CoreFetchFn) {
+        this.fetchFn = fetchFn
+    }
+
+    public func fetch(request: CoreHttpRequest, signal: CancelSignal): CoreFetchResponse {
+        this.fetchFn(request, signal)
+    }
 }
 
 public class NoopCoreFetch <: CoreFetch {
@@ -290,37 +303,45 @@ public class ApiClient {
         let request = CoreHttpRequest(this.endpoint(token, method), requestPayload, this.config.baseFetchConfig)
 
         if (requestPayload.stream.hasError && requestPayload.stream.errorAfterMillis == 0) {
-            throw toHttpError(method, this.config.sensitiveLogs, Exception(requestPayload.stream.errorMessage))
+            try {
+                requestPayload.stream.raiseError()
+            } catch (err: Exception) {
+                throw toHttpError(method, this.config.sensitiveLogs, request.url, token, err)
+            }
         }
 
         var response = CoreFetchResponse.success("")
         try {
             response = this.fetcher.fetch(request, signal)
         } catch (err: Exception) {
-            throw toHttpError(method, this.config.sensitiveLogs, err)
+            throw toHttpError(method, this.config.sensitiveLogs, request.url, token, err)
         }
-        this.resolveTransportRace(method, requestPayload, response, signal)
+        this.resolveTransportRace(method, token, request.url, requestPayload, response, signal)
     }
 
-    private func resolveTransportRace(method: String, requestPayload: RequestPayload, response: CoreFetchResponse, signal: CancelSignal): ApiResponse {
+    private func resolveTransportRace(method: String, token: String, url: String, requestPayload: RequestPayload, response: CoreFetchResponse, signal: CancelSignal): ApiResponse {
         signal.throwIfCancelled()
         let timeoutMillis = this.timeoutConfig().timeoutMillis
         let streamFails = requestPayload.stream.hasError
         let streamMillis = requestPayload.stream.errorAfterMillis
 
-        if (streamFails && streamMillis > 0 && (response.delayMillis == 0 || streamMillis <= response.delayMillis) && (timeoutMillis <= 0 || streamMillis <= timeoutMillis)) {
-            throw toHttpError(method, this.config.sensitiveLogs, Exception(requestPayload.stream.errorMessage))
+        if (streamFails && streamMillis > 0 && response.delayMillis > 0 && streamMillis <= response.delayMillis && (timeoutMillis <= 0 || streamMillis <= timeoutMillis)) {
+            try {
+                requestPayload.stream.raiseError()
+            } catch (err: Exception) {
+                throw toHttpError(method, this.config.sensitiveLogs, url, token, err)
+            }
         }
 
         if (timeoutMillis > 0 && response.delayMillis > timeoutMillis) {
             let seconds = this.config.timeoutSeconds.toString()
             signal.cancelled = true
             signal.reason = "Request to '" + method + "' timed out after " + seconds + " seconds"
-            throw toHttpError(method, this.config.sensitiveLogs, Exception(signal.reason))
+            throw toHttpError(method, this.config.sensitiveLogs, url, token, Exception(signal.reason))
         }
 
         if (response.hasTransportError) {
-            throw toHttpError(method, this.config.sensitiveLogs, response.status, response.statusText, response.transportErrorMessage)
+            throw toHttpError(method, this.config.sensitiveLogs, url, token, response.status, response.statusText, response.transportErrorMessage)
         }
 
         if (response.hasApiResponse) {
@@ -328,9 +349,13 @@ public class ApiClient {
         }
 
         if (response.status >= 400) {
-            throw toHttpError(method, this.config.sensitiveLogs, response.status, response.statusText, response.body)
+            throw toHttpError(method, this.config.sensitiveLogs, url, token, response.status, response.statusText, response.body)
         }
-        ApiResponse.success(response.body)
+        try {
+            return parseTelegramApiResponse(response.body)
+        } catch (err: Exception) {
+            throw toHttpError(method, this.config.sensitiveLogs, url, token, err)
+        }
     }
 }
 
@@ -394,6 +419,235 @@ public class RawApiFacade {
     public func sendDocument(payload: Payload): String {
         this.call("sendDocument", payload)
     }
+}
+
+private func parseTelegramApiResponse(body: String): ApiResponse {
+    let okValue = jsonFieldValue(body, "ok")
+    if (okValue == "true") {
+        let result = jsonFieldValue(body, "result")
+        if (result.isEmpty()) {
+            throw Exception("Could not parse Telegram response JSON: missing result")
+        }
+        return ApiResponse.success(result)
+    }
+    if (okValue == "false") {
+        let errorCode = parseJsonInt(jsonFieldValue(body, "error_code"))
+        let description = parseJsonString(jsonFieldValue(body, "description"))
+        let parametersValue = jsonFieldValue(body, "parameters")
+        return ApiResponse.failure(errorCode, description, parseResponseParameters(parametersValue))
+    }
+    throw Exception("Could not parse Telegram response JSON: missing ok")
+}
+
+private func parseResponseParameters(value: String): ResponseParameters {
+    if (value.isEmpty()) {
+        return ResponseParameters()
+    }
+    let migrateToChatId = parseJsonIntOrDefault(jsonFieldValue(value, "migrate_to_chat_id"), 0)
+    let retryAfter = parseJsonIntOrDefault(jsonFieldValue(value, "retry_after"), 0)
+    ResponseParameters(migrateToChatId, retryAfter)
+}
+
+private func jsonFieldValue(json: String, key: String): String {
+    let pattern = "\"" + key + "\""
+    let keyIndex = indexOfFrom(json, pattern, 0)
+    if (keyIndex < 0) {
+        return ""
+    }
+    var i = keyIndex + pattern.size
+    while (i < json.size && isJsonWhitespace(json[i..i + 1])) {
+        i += 1
+    }
+    if (i >= json.size || json[i..i + 1] != ":") {
+        return ""
+    }
+    readJsonValue(json, i + 1)
+}
+
+private func readJsonValue(json: String, startIndex: Int64): String {
+    var i = startIndex
+    while (i < json.size && isJsonWhitespace(json[i..i + 1])) {
+        i += 1
+    }
+    if (i >= json.size) {
+        return ""
+    }
+    let first = json[i..i + 1]
+    if (first == "\"") {
+        return readJsonStringValue(json, i)
+    }
+    if (first == "{" || first == "[") {
+        return readJsonCompositeValue(json, i)
+    }
+    let end = readJsonPrimitiveEnd(json, i)
+    trimJson(json[i..end])
+}
+
+private func readJsonStringValue(json: String, startIndex: Int64): String {
+    var i = startIndex + 1
+    var escaped = false
+    while (i < json.size) {
+        let ch = json[i..i + 1]
+        if (escaped) {
+            escaped = false
+        } else if (ch == "\\") {
+            escaped = true
+        } else if (ch == "\"") {
+            return json[startIndex..i + 1]
+        }
+        i += 1
+    }
+    throw Exception("Could not parse Telegram response JSON: unterminated string")
+}
+
+private func readJsonCompositeValue(json: String, startIndex: Int64): String {
+    var i = startIndex
+    var depth: Int64 = 0
+    var inString = false
+    var escaped = false
+    while (i < json.size) {
+        let ch = json[i..i + 1]
+        if (inString) {
+            if (escaped) {
+                escaped = false
+            } else if (ch == "\\") {
+                escaped = true
+            } else if (ch == "\"") {
+                inString = false
+            }
+        } else if (ch == "\"") {
+            inString = true
+        } else if (ch == "{" || ch == "[") {
+            depth += 1
+        } else if (ch == "}" || ch == "]") {
+            depth -= 1
+            if (depth == 0) {
+                return json[startIndex..i + 1]
+            }
+        }
+        i += 1
+    }
+    throw Exception("Could not parse Telegram response JSON: unterminated composite value")
+}
+
+private func readJsonPrimitiveEnd(json: String, startIndex: Int64): Int64 {
+    var i = startIndex
+    while (i < json.size) {
+        let ch = json[i..i + 1]
+        if (ch == "," || ch == "}" || ch == "]") {
+            return i
+        }
+        i += 1
+    }
+    i
+}
+
+private func parseJsonString(value: String): String {
+    let trimmed = trimJson(value)
+    if (trimmed.size < 2 || trimmed[0..1] != "\"" || trimmed[trimmed.size - 1..trimmed.size] != "\"") {
+        return trimmed
+    }
+    var out = ""
+    var i: Int64 = 1
+    while (i < trimmed.size - 1) {
+        let ch = trimmed[i..i + 1]
+        if (ch == "\\" && i + 1 < trimmed.size - 1) {
+            let next = trimmed[i + 1..i + 2]
+            if (next == "n") {
+                out += "\n"
+            } else if (next == "r") {
+                out += "\r"
+            } else if (next == "t") {
+                out += "\t"
+            } else {
+                out += next
+            }
+            i += 2
+        } else {
+            out += ch
+            i += 1
+        }
+    }
+    out
+}
+
+private func parseJsonIntOrDefault(value: String, fallback: Int64): Int64 {
+    if (value.isEmpty()) {
+        return fallback
+    }
+    parseJsonInt(value)
+}
+
+private func parseJsonInt(value: String): Int64 {
+    let trimmed = trimJson(value)
+    if (trimmed.isEmpty()) {
+        throw Exception("Could not parse Telegram response JSON: missing integer")
+    }
+    var sign: Int64 = 1
+    var i: Int64 = 0
+    if (trimmed[0..1] == "-") {
+        sign = -1
+        i = 1
+    }
+    var out: Int64 = 0
+    var hasDigit = false
+    while (i < trimmed.size) {
+        let digit = digitValue(trimmed[i..i + 1])
+        if (digit < 0) {
+            break
+        }
+        hasDigit = true
+        out = out * 10 + digit
+        i += 1
+    }
+    if (!hasDigit) {
+        throw Exception("Could not parse Telegram response JSON: invalid integer")
+    }
+    out * sign
+}
+
+private func digitValue(ch: String): Int64 {
+    if (ch == "0") { return 0 }
+    if (ch == "1") { return 1 }
+    if (ch == "2") { return 2 }
+    if (ch == "3") { return 3 }
+    if (ch == "4") { return 4 }
+    if (ch == "5") { return 5 }
+    if (ch == "6") { return 6 }
+    if (ch == "7") { return 7 }
+    if (ch == "8") { return 8 }
+    if (ch == "9") { return 9 }
+    -1
+}
+
+private func trimJson(value: String): String {
+    var start: Int64 = 0
+    var end = value.size
+    while (start < end && isJsonWhitespace(value[start..start + 1])) {
+        start += 1
+    }
+    while (end > start && isJsonWhitespace(value[end - 1..end])) {
+        end -= 1
+    }
+    value[start..end]
+}
+
+private func isJsonWhitespace(ch: String): Bool {
+    ch == " " || ch == "\n" || ch == "\r" || ch == "\t"
+}
+
+private func indexOfFrom(value: String, needle: String, startIndex: Int64): Int64 {
+    if (needle.isEmpty()) {
+        return startIndex
+    }
+    var i = startIndex
+    while (i + needle.size <= value.size) {
+        if (value[i..i + needle.size] == needle) {
+            return i
+        }
+        i += 1
+    }
+    -1
 }
 
 public class TransformableApi {

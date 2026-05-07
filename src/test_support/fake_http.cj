@@ -28,6 +28,7 @@ public class FakeHttp <: CoreFetch {
     public var url: String = ""
     public var headers: String = ""
     public var body: String = ""
+    public var baseFetchConfigSummary: String = ""
     public let requests: ArrayList<CoreHttpRequest> = ArrayList<CoreHttpRequest>()
     private let responses: ArrayList<CoreFetchResponse> = ArrayList<CoreFetchResponse>()
 
@@ -66,6 +67,7 @@ public class FakeHttp <: CoreFetch {
         this.url = request.url
         this.headers = request.headers
         this.body = request.body
+        this.baseFetchConfigSummary = request.baseFetchConfigSummary
         this.requests.add(request)
         if (this.responses.size == 0) {
             return CoreFetchResponse.success("{}")

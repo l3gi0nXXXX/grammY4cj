@@ -1,6 +1,7 @@
 package grammy4cj.core
 
 import grammy4cj.types.InputFile
+import std.collection.ArrayList
 import std.unittest.*
 
 @Test
@@ -64,13 +65,16 @@ public class PayloadTest {
     public func recursiveJsonPayloadSkipsObjectNullsAndKeepsArrayNulls(): Unit {
         let payload = Payload("")
         payload.addInt("chat_id", 42)
+        payload.addUndefined("disable_notification")
         let options = payload.addObject("options")
         options.addValue("parse_mode", "MarkdownV2")
         options.addNull("unused")
+        options.addNone("also_unused")
+        options.addFloat("latitude", 54.5)
         let flags = options.addArray("flags")
-        flags.addBoolItem(true).addNullItem().addNumberItem(7)
+        flags.addBoolItem(true).addNullItem().addUndefinedItem().addNumberItem(7)
 
-        @Expect(createJsonPayload(payload).body, "{\"chat_id\":42,\"options\":{\"parse_mode\":\"MarkdownV2\",\"flags\":[true,null,7]}}")
+        @Expect(createJsonPayload(payload).body, "{\"chat_id\":42,\"options\":{\"parse_mode\":\"MarkdownV2\",\"latitude\":54.500000,\"flags\":[true,null,null,7]}}")
     }
 
     @TestCase
@@ -139,5 +143,25 @@ public class PayloadTest {
         let second = createFormDataPayload(payload, "boundary", "attach")
 
         @Expect(first.body, second.body)
+    }
+
+    @TestCase
+    public func multipartStreamInvokesErrorCallbackWhenDrained(): Unit {
+        let errors = ArrayList<String>()
+        let payload = Payload("")
+        payload.addFile("document", InputFile("stream_error", "stream exploded", "a.txt"))
+
+        let req = createFormDataPayload(payload, "boundary", "attach", { err: Exception =>
+            errors.add(err.message)
+        })
+
+        try {
+            req.stream.drain()
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message, "stream exploded")
+            @Expect(errors.size, 1)
+            @Expect(errors[0], "stream exploded")
+        }
     }
 }

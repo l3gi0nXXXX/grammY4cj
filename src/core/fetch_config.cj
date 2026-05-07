@@ -23,6 +23,34 @@ public class BaseFetchConfig {
     }
 }
 
+public func defaultCoreBaseFetchConfig(apiRoot: String): BaseFetchConfig {
+    if (apiRoot.startsWith("https:")) {
+        return BaseFetchConfig(apiRoot, "https", true, true, false)
+    }
+    if (apiRoot.startsWith("http:")) {
+        return BaseFetchConfig(apiRoot, "http", true, false, false)
+    }
+    BaseFetchConfig(apiRoot, "", false, false, true)
+}
+
+public func mergeBaseFetchConfig(apiRoot: String, overrideConfig: BaseFetchConfig): BaseFetchConfig {
+    let base = defaultCoreBaseFetchConfig(apiRoot)
+    if (overrideConfig.isEmpty) {
+        return base
+    }
+    let mergedRoot = if (overrideConfig.apiRoot.isEmpty()) {
+        base.apiRoot
+    } else {
+        overrideConfig.apiRoot
+    }
+    let mergedAgent = if (overrideConfig.agentKind.isEmpty()) {
+        base.agentKind
+    } else {
+        overrideConfig.agentKind
+    }
+    BaseFetchConfig(mergedRoot, mergedAgent, overrideConfig.keepAlive, overrideConfig.compress, false)
+}
+
 private func boolString(value: Bool): String {
     if (value) { "true" } else { "false" }
 }

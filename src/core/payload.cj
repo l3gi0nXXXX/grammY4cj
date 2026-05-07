@@ -4,6 +4,8 @@ import std.collection.ArrayList
 
 import grammy4cj.types.InputFile
 
+public type MultipartStreamErrorCallback = (Exception) -> Unit
+
 public class PayloadField {
     public let key: String
     public let value: String
@@ -76,12 +78,20 @@ public class PayloadField {
         PayloadField("", value.toString(), "number")
     }
 
+    public static func floatItem(value: Float64): PayloadField {
+        PayloadField("", value.toString(), "number")
+    }
+
     public static func boolItem(value: Bool): PayloadField {
         PayloadField("", if (value) { "true" } else { "false" }, "bool")
     }
 
     public static func nullItem(): PayloadField {
         PayloadField("", "", true, false, "", "", "null")
+    }
+
+    public static func undefinedItem(): PayloadField {
+        PayloadField("", "", false, false, "", "", "undefined")
     }
 
     public static func fileItem(file: InputFile): PayloadField {
@@ -103,6 +113,11 @@ public class PayloadField {
         this
     }
 
+    public func addFloat(key: String, value: Float64): PayloadField {
+        this.children.add(PayloadField(key, value.toString(), "number"))
+        this
+    }
+
     public func addBool(key: String, value: Bool): PayloadField {
         this.children.add(PayloadField(key, if (value) { "true" } else { "false" }, "bool"))
         this
@@ -111,6 +126,15 @@ public class PayloadField {
     public func addNull(key: String): PayloadField {
         this.children.add(PayloadField(key, "", true, false, "", "", "null"))
         this
+    }
+
+    public func addUndefined(key: String): PayloadField {
+        this.children.add(PayloadField(key, "", false, false, "", "", "undefined"))
+        this
+    }
+
+    public func addNone(key: String): PayloadField {
+        this.addUndefined(key)
     }
 
     public func addFile(key: String, file: InputFile): PayloadField {
@@ -140,6 +164,11 @@ public class PayloadField {
         this
     }
 
+    public func addFloatItem(value: Float64): PayloadField {
+        this.children.add(PayloadField.floatItem(value))
+        this
+    }
+
     public func addBoolItem(value: Bool): PayloadField {
         this.children.add(PayloadField.boolItem(value))
         this
@@ -148,6 +177,15 @@ public class PayloadField {
     public func addNullItem(): PayloadField {
         this.children.add(PayloadField.nullItem())
         this
+    }
+
+    public func addUndefinedItem(): PayloadField {
+        this.children.add(PayloadField.undefinedItem())
+        this
+    }
+
+    public func addNoneItem(): PayloadField {
+        this.addUndefinedItem()
     }
 
     public func addFileItem(file: InputFile): PayloadField {
@@ -179,8 +217,15 @@ public class MultipartByteStream {
     public var hasError: Bool = false
     public var errorMessage: String = ""
     public var errorAfterMillis: Int64 = 0
+    private let onError: MultipartStreamErrorCallback
 
-    public init() {}
+    public init() {
+        this.onError = ignoreMultipartStreamError
+    }
+
+    public init(onError: MultipartStreamErrorCallback) {
+        this.onError = onError
+    }
 
     public func addText(data: String): MultipartByteStream {
         this.chunks.add(MultipartChunk("text", data, ""))
@@ -216,9 +261,15 @@ public class MultipartByteStream {
 
     public func drain(): String {
         if (this.hasError) {
-            throw Exception(this.errorMessage)
+            this.raiseError()
         }
         this.body()
+    }
+
+    public func raiseError(): Unit {
+        let err = Exception(this.errorMessage)
+        this.onError(err)
+        throw err
     }
 
     public func chunkCount(): Int64 {
@@ -278,6 +329,11 @@ public class Payload {
         this
     }
 
+    public func addFloat(key: String, value: Float64): Payload {
+        this.fields.add(PayloadField(key, value.toString(), "number"))
+        this
+    }
+
     public func addBool(key: String, value: Bool): Payload {
         this.fields.add(PayloadField(key, if (value) { "true" } else { "false" }, "bool"))
         this
@@ -286,6 +342,15 @@ public class Payload {
     public func addNull(key: String): Payload {
         this.fields.add(PayloadField(key, "", true, false, "", "", "null"))
         this
+    }
+
+    public func addUndefined(key: String): Payload {
+        this.fields.add(PayloadField(key, "", false, false, "", "", "undefined"))
+        this
+    }
+
+    public func addNone(key: String): Payload {
+        this.addUndefined(key)
     }
 
     public func addFile(key: String, file: InputFile): Payload {
@@ -317,6 +382,8 @@ private class CollectedFile {
         this.file = file
     }
 }
+
+private func ignoreMultipartStreamError(_err: Exception): Unit {}
 
 public func requiresFormDataUpload(payload: Payload): Bool {
     for (field in payload.fields) {
@@ -367,7 +434,7 @@ private func jsonPayloadBody(payload: Payload, method: String): String {
     var body = "{"
     var first = true
     for (field in payload.fields) {
-        if (field.isNull || field.valueKind == "null") {
+        if (fieldShouldSkipInObject(field)) {
             continue
         }
         if (!first) {
@@ -387,7 +454,7 @@ private func jsonPayloadBody(payload: Payload, method: String): String {
 }
 
 private func fieldToJson(field: PayloadField): String {
-    if (field.valueKind == "null" || field.isNull) {
+    if (field.valueKind == "null" || field.isNull || field.valueKind == "undefined" || field.valueKind == "none") {
         return "null"
     }
     if (field.valueKind == "number" || field.valueKind == "bool" || field.valueKind == "raw") {
@@ -397,7 +464,7 @@ private func fieldToJson(field: PayloadField): String {
         var body = "{"
         var first = true
         for (child in field.children) {
-            if (child.isNull || child.valueKind == "null") {
+            if (fieldShouldSkipInObject(child)) {
                 continue
             }
             if (!first) {
@@ -426,13 +493,17 @@ private func fieldToJson(field: PayloadField): String {
 }
 
 public func createFormDataPayload(payload: Payload, boundary: String, attachIdPrefix: String): RequestPayload {
-    let stream = MultipartByteStream()
+    createFormDataPayload(payload, boundary, attachIdPrefix, ignoreMultipartStreamError)
+}
+
+public func createFormDataPayload(payload: Payload, boundary: String, attachIdPrefix: String, onError: MultipartStreamErrorCallback): RequestPayload {
+    let stream = MultipartByteStream(onError)
     let fileParts = ArrayList<CollectedFile>()
 
     stream.addText("--" + boundary + "\r\n")
     var first = true
     for (field in payload.fields) {
-        if (field.isNull || field.valueKind == "null") {
+        if (fieldShouldSkipInObject(field)) {
             continue
         }
         if (!first) {
@@ -489,7 +560,7 @@ private func fieldToMultipartJson(field: PayloadField, fileParts: ArrayList<Coll
         var body = "{"
         var first = true
         for (child in field.children) {
-            if (child.isNull || child.valueKind == "null") {
+            if (fieldShouldSkipInObject(child)) {
                 continue
             }
             if (!first) {
@@ -518,7 +589,7 @@ private func fieldToMultipartJson(field: PayloadField, fileParts: ArrayList<Coll
 }
 
 private func multipartJsonValue(field: PayloadField, fileParts: ArrayList<CollectedFile>, attachIdPrefix: String, parentType: String): String {
-    if (field.valueKind == "null" || field.isNull) {
+    if (field.valueKind == "null" || field.isNull || field.valueKind == "undefined" || field.valueKind == "none") {
         return "null"
     }
     if (field.valueKind == "file" || field.isInputFile) {
@@ -531,6 +602,10 @@ private func multipartJsonValue(field: PayloadField, fileParts: ArrayList<Collec
         return field.value
     }
     "\"" + escapeJson(field.value) + "\""
+}
+
+private func fieldShouldSkipInObject(field: PayloadField): Bool {
+    field.isNull || field.valueKind == "null" || field.valueKind == "undefined" || field.valueKind == "none"
 }
 
 private func objectType(field: PayloadField): String {

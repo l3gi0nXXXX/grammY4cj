@@ -90,9 +90,14 @@ public func toGrammyError(err: ApiError, method: String, payload: Payload): Gram
 }
 
 public func toHttpError(method: String, sensitiveLogs: Bool, err: Exception): HttpError {
+    toHttpError(method, sensitiveLogs, "", "", err)
+}
+
+public func toHttpError(method: String, sensitiveLogs: Bool, url: String, token: String, err: Exception): HttpError {
     var message = "Network request for '" + method + "' failed!"
     var status: Int64 = 0
     var statusText = ""
+    let safeUrl = urlForLogs(url, token, sensitiveLogs)
     try {
         throw err
     } catch (e: TransportErrorInfo) {
@@ -102,14 +107,14 @@ public func toHttpError(method: String, sensitiveLogs: Bool, err: Exception): Ht
             message += " (" + e.status.toString() + ": " + e.statusText + ")"
         }
         if (sensitiveLogs && !e.message.isEmpty()) {
-            message += " " + e.message
+            message += " " + messageForLogs(e.message, token, sensitiveLogs)
         }
-        return HttpError(message, status, statusText, method, "", e.message)
+        return HttpError(message, status, statusText, method, safeUrl, e.message)
     } catch (e: Exception) {
         if (sensitiveLogs && !e.message.isEmpty()) {
-            message += " " + e.message
+            message += " " + messageForLogs(e.message, token, sensitiveLogs)
         }
-        return HttpError(message, status, statusText, method, "", e.message)
+        return HttpError(message, status, statusText, method, safeUrl, e.message)
     }
 }
 
@@ -117,6 +122,31 @@ public func toHttpError(method: String, sensitiveLogs: Bool, status: Int64, stat
     toHttpError(method, sensitiveLogs, TransportErrorInfo(status, statusText, errorMessage))
 }
 
+public func toHttpError(method: String, sensitiveLogs: Bool, url: String, token: String, status: Int64, statusText: String, errorMessage: String): HttpError {
+    toHttpError(method, sensitiveLogs, url, token, TransportErrorInfo(status, statusText, errorMessage))
+}
+
 public func toHttpError(method: String, sensitiveLogs: Bool, status: Int64): HttpError {
     toHttpError(method, sensitiveLogs, TransportErrorInfo(status, "", ""))
+}
+
+public func redactTokenForLogs(value: String, token: String): String {
+    if (token.isEmpty()) {
+        return value
+    }
+    value.replace(token, "<redacted>")
+}
+
+private func urlForLogs(url: String, token: String, sensitiveLogs: Bool): String {
+    if (sensitiveLogs) {
+        return url
+    }
+    redactTokenForLogs(url, token)
+}
+
+private func messageForLogs(message: String, token: String, sensitiveLogs: Bool): String {
+    if (sensitiveLogs) {
+        return message
+    }
+    redactTokenForLogs(message, token)
 }
