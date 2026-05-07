@@ -121,7 +121,7 @@ if [ -f "$GATE_STATUS" ]; then
     }
     END {print bad + 0}
   ' "$GATE_STATUS")"
-  g8_mostly_passed="$(awk -F '\t' 'NR > 1 && $1 == "G8" && $2 == "mostly_passed" {count += 1} END {print count + 0}' "$GATE_STATUS")"
+  g8_status="$(awk -F '\t' 'NR > 1 && $1 == "G8" {print $2; found = 1} END {if (!found) print ""}' "$GATE_STATUS")"
 
   printf 'gate status rows=%s\n' "$gate_rows"
   if [ "$gate_rows" != "11" ]; then
@@ -132,8 +132,8 @@ if [ -f "$GATE_STATUS" ]; then
     printf 'FAIL gate status invalid statuses=%s\n' "$gate_bad_status"
     record_failure
   fi
-  if [ "$g8_mostly_passed" != "0" ]; then
-    printf 'FAIL G8 must not remain mostly_passed after release engineering closeout\n'
+  if [ "$g8_status" != "passed" ]; then
+    printf 'FAIL G8 status expected=passed actual=%s\n' "$g8_status"
     record_failure
   fi
 fi
