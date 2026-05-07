@@ -67,6 +67,109 @@ public class TelegramTypeAliasTrace {
     }
 }
 
+public class TypeSourceMatrixRow {
+    public let upstreamFile: String
+    public let cangjieFiles: String
+    public let facade: String
+    public let inputFileSourceApi: String
+    public let coversApiMethods: Bool
+    public let coversOpts: Bool
+    public let coversInputFileGenericAliases: Bool
+    public let coversTelegramObjectSubset: Bool
+
+    public init(
+        upstreamFile: String,
+        cangjieFiles: String,
+        facade: String,
+        inputFileSourceApi: String,
+        coversApiMethods: Bool,
+        coversOpts: Bool,
+        coversInputFileGenericAliases: Bool,
+        coversTelegramObjectSubset: Bool
+    ) {
+        this.upstreamFile = upstreamFile
+        this.cangjieFiles = cangjieFiles
+        this.facade = facade
+        this.inputFileSourceApi = inputFileSourceApi
+        this.coversApiMethods = coversApiMethods
+        this.coversOpts = coversOpts
+        this.coversInputFileGenericAliases = coversInputFileGenericAliases
+        this.coversTelegramObjectSubset = coversTelegramObjectSubset
+    }
+}
+
+public class TelegramObjectSubsetTrace {
+    public let objectName: String
+    public let upstreamObject: String
+    public let cangjieType: String
+    public let requiredForGate: String
+
+    public init(objectName: String, upstreamObject: String, cangjieType: String, requiredForGate: String) {
+        this.objectName = objectName
+        this.upstreamObject = upstreamObject
+        this.cangjieType = cangjieType
+        this.requiredForGate = requiredForGate
+    }
+}
+
+public func typeSourceMatrix(): Array<TypeSourceMatrixRow> {
+    [
+        TypeSourceMatrixRow(
+            "src/types.ts",
+            "src/types/telegram_types.cj src/types/input_file.cj",
+            "root re-export facade",
+            "deno facade selected by upstream types.ts",
+            true,
+            true,
+            true,
+            true
+        ),
+        TypeSourceMatrixRow(
+            "src/types.deno.ts",
+            "src/types/telegram_types.cj src/types/input_file.cj",
+            "Deno type facade",
+            "path,url,url_like,bytes,blob,response,stream,iterable,async_iterable,supplier",
+            true,
+            true,
+            true,
+            true
+        ),
+        TypeSourceMatrixRow(
+            "src/types.node.ts",
+            "src/types/telegram_types.cj src/types/input_file.cj",
+            "Node type facade",
+            "path,url,url_like,bytes,stream,iterable,async_iterable,supplier",
+            true,
+            true,
+            true,
+            true
+        ),
+        TypeSourceMatrixRow(
+            "src/types.web.ts",
+            "src/types/telegram_types.cj src/types/input_file.cj",
+            "Web type facade",
+            "url,url_like,bytes,blob,stream,iterable,async_iterable",
+            true,
+            true,
+            true,
+            true
+        )
+    ]
+}
+
+public func typeSourceMatrixCount(): Int64 {
+    4
+}
+
+public func typeSourceMatrixFor(upstreamFile: String): TypeSourceMatrixRow {
+    for (row in typeSourceMatrix()) {
+        if (row.upstreamFile == upstreamFile) {
+            return row
+        }
+    }
+    TypeSourceMatrixRow(upstreamFile, "", "", "", false, false, false, false)
+}
+
 public func telegramInputFileAliasTrace(): Array<TelegramTypeAliasTrace> {
     [
         TelegramTypeAliasTrace("ApiMethods", "ApiMethodsF<InputFile>", "InputFile"),
@@ -92,6 +195,24 @@ public func telegramInputFileAliasTrace(): Array<TelegramTypeAliasTrace> {
 
 public func telegramInputFileAliasTraceCount(): Int64 {
     18
+}
+
+public func telegramObjectSubsetTrace(): Array<TelegramObjectSubsetTrace> {
+    [
+        TelegramObjectSubsetTrace("ResponseParameters", "ResponseParameters", "ResponseParameters", "API error retry/migrate fields"),
+        TelegramObjectSubsetTrace("ApiError", "ApiResponse error object", "ApiError", "error envelope"),
+        TelegramObjectSubsetTrace("ApiResponse", "ApiResponse", "ApiResponse", "raw API result envelope"),
+        TelegramObjectSubsetTrace("User", "User", "User", "message/user fixtures"),
+        TelegramObjectSubsetTrace("UserFromGetMe", "UserFromGetMe", "UserFromGetMe", "bot info"),
+        TelegramObjectSubsetTrace("Chat", "Chat", "Chat", "message/chat fixtures"),
+        TelegramObjectSubsetTrace("MessageEntity", "MessageEntity", "MessageEntity", "entity text extraction"),
+        TelegramObjectSubsetTrace("Message", "Message", "Message", "update/message subset"),
+        TelegramObjectSubsetTrace("Update", "Update", "Update", "bot update dispatch")
+    ]
+}
+
+public func telegramObjectSubsetTraceCount(): Int64 {
+    9
 }
 
 public class User {
