@@ -10,7 +10,8 @@ This directory contains the Cangjie source map for the pinned grammY baseline
 Run the port's full local gate from the repository root:
 
 ```sh
-rtk zsh -lc 'source /Users/l3gi0n/cangjie100/envsetup.sh && cjpm clean && cjpm build -i && cjpm test'
+source "$CANGJIE_SDK_HOME/envsetup.sh"
+cjpm clean && cjpm build -i && cjpm test
 ```
 
 Use fake fixtures for examples and tests. Do not call Telegram, do not load a
@@ -40,8 +41,8 @@ Layer layout:
 Trace commands:
 
 ```sh
-rtk sh scripts/check_source_trace_matrix.sh
-rtk env GRAMMY4CJ_TRACE_ARTIFACT_DIR=/tmp/grammy4cj-trace sh scripts/check_source_trace_matrix.sh
+sh scripts/check_source_trace_matrix.sh
+GRAMMY4CJ_TRACE_ARTIFACT_DIR="$TMPDIR/grammy4cj-trace" sh scripts/check_source_trace_matrix.sh
 ```
 
 The matrix covers all 25 upstream runtime files, including upstream

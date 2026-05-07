@@ -4,7 +4,6 @@ set -eu
 LC_ALL=C
 export LC_ALL
 
-GRAMMY_DIR="${GRAMMY_DIR:-/Users/l3gi0n/work/workspace_cangjie/grammY}"
 EXPECTED_HEAD="c865dd3a4d26911b01c83695e3845c7245870a5d"
 EXPECTED_TAG="v1.42.0-5-gc865dd3"
 HARD_FAIL="${GRAMMY4CJ_HARD_FAIL:-0}"
@@ -29,6 +28,12 @@ done
 
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
+GRAMMY_DIR="${GRAMMY_DIR:-$REPO_DIR/../grammY}"
+if [ ! -d "$GRAMMY_DIR" ]; then
+  printf 'GRAMMY_DIR must point to the upstream grammY checkout (default: ../grammY)\n'
+  exit 2
+fi
+GRAMMY_DIR="$(CDPATH= cd "$GRAMMY_DIR" && pwd)"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/grammy4cj-upstream.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

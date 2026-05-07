@@ -1,9 +1,14 @@
 #!/usr/bin/env sh
 set -eu
 
-GRAMMY_DIR="${GRAMMY_DIR:-/Users/l3gi0n/work/workspace_cangjie/grammY}"
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
+GRAMMY_DIR="${GRAMMY_DIR:-$REPO_DIR/../grammY}"
+if [ ! -d "$GRAMMY_DIR" ]; then
+  printf 'GRAMMY_DIR must point to the upstream grammY checkout (default: ../grammY)\n'
+  exit 2
+fi
+GRAMMY_DIR="$(CDPATH= cd "$GRAMMY_DIR" && pwd)"
 TRACE_ARTIFACT_DIR="${GRAMMY4CJ_TRACE_ARTIFACT_DIR:-${GRAMMY4CJ_ARTIFACT_DIR:-}}"
 
 runtime_rows=0

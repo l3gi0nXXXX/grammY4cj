@@ -11,18 +11,17 @@ pinned upstream checkout before handoff.
 - Do not rewrite, reset, revert, or cherry-pick over another agent's branch.
 - Preserve unrelated dirty files. If a required edit conflicts with another
   change, stop and ask before proceeding.
-- Every shell command issued by Codex in this workspace must begin with `rtk`.
 - Manual file edits must be made with `apply_patch`.
 
 ## Upstream References
 
-Before changing a gate, read the matching upstream files under
-`/Users/l3gi0n/work/workspace_cangjie/grammY`. Gate 8 and Gate 9 work must read
-at least:
+Before changing a gate, set `GRAMMY_DIR` to the upstream grammY checkout and
+read the matching upstream files under that directory. Gate 8 and Gate 9 work
+must read at least:
 
-- `/Users/l3gi0n/work/workspace_cangjie/grammY/README.md`
-- `/Users/l3gi0n/work/workspace_cangjie/grammY/src/README.md`
-- `/Users/l3gi0n/work/workspace_cangjie/grammY/CONTRIBUTING.md`
+- `$GRAMMY_DIR/README.md`
+- `$GRAMMY_DIR/src/README.md`
+- `$GRAMMY_DIR/CONTRIBUTING.md`
 - The local `README.md`, `src/README.md`, and `CONTRIBUTING.md`
 - `scripts/check_upstream_contract.sh`
 - `scripts/check_source_trace_matrix.sh`
@@ -32,7 +31,7 @@ at least:
 ## Gate Start Flow
 
 1. Create or enter the gate-specific worktree and verify the branch with
-   `rtk git status --short --branch`.
+   `git status --short --branch`.
 2. Read the matching upstream source and tests before changing Cangjie code or
    docs.
 3. Identify the public API, control-flow, payload, or docs contract that the
@@ -65,29 +64,33 @@ Run gates in this order unless a maintainer explicitly changes the plan:
 Run the full local acceptance set before handing off:
 
 ```sh
-rtk sh scripts/check_upstream_contract.sh
-rtk sh scripts/check_source_trace_matrix.sh
-rtk sh scripts/check_dependency_boundaries.sh
-rtk zsh -lc 'source /Users/l3gi0n/cangjie100/envsetup.sh && cjpm clean && cjpm build -i && cjpm test'
+sh scripts/check_upstream_contract.sh
+sh scripts/check_source_trace_matrix.sh
+sh scripts/check_dependency_boundaries.sh
+source "$CANGJIE_SDK_HOME/envsetup.sh"
+cjpm clean && cjpm build -i && cjpm test
 ```
 
-If OpenSSL linkage fails on macOS, keep the workaround in the same command:
+If OpenSSL linkage fails on macOS, export the OpenSSL 3 library path before
+running the same Cangjie gate:
 
 ```sh
-rtk zsh -lc 'export DYLD_LIBRARY_PATH="/opt/homebrew/opt/openssl@3/lib:$DYLD_LIBRARY_PATH" && source /Users/l3gi0n/cangjie100/envsetup.sh && cjpm clean && cjpm build -i && cjpm test'
+export DYLD_LIBRARY_PATH="$OPENSSL3_LIB_DIR:$DYLD_LIBRARY_PATH"
+source "$CANGJIE_SDK_HOME/envsetup.sh"
+cjpm clean && cjpm build -i && cjpm test
 ```
 
 The contract script has two modes:
 
 | Mode | Command | Behavior |
 |---|---|---|
-| Report mode | `rtk sh scripts/check_upstream_contract.sh` | Fails on pinned baseline drift and API wrapper drift; reports known implementation gaps. |
-| Hard-fail mode | `rtk env GRAMMY4CJ_HARD_FAIL=1 sh scripts/check_upstream_contract.sh` | Also fails on Context missing targets, Composer missing controls, upstream test ledger mismatches, and unexplained docs heading drift. |
+| Report mode | `sh scripts/check_upstream_contract.sh` | Fails on pinned baseline drift and API wrapper drift; reports known implementation gaps. |
+| Hard-fail mode | `GRAMMY4CJ_HARD_FAIL=1 sh scripts/check_upstream_contract.sh` | Also fails on Context missing targets, Composer missing controls, upstream test ledger mismatches, and unexplained docs heading drift. |
 
 Structured artifacts can be written without changing repository files:
 
 ```sh
-rtk env GRAMMY4CJ_ARTIFACT_DIR=/tmp/grammy4cj-sync sh scripts/check_upstream_contract.sh
+GRAMMY4CJ_ARTIFACT_DIR="$TMPDIR/grammy4cj-sync" sh scripts/check_upstream_contract.sh
 ```
 
 That command emits TSV files for source trace rows, source trace summary, and
