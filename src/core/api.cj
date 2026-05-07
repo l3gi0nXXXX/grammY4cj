@@ -127,6 +127,7 @@ private func clonePayloadField(field: PayloadField): PayloadField {
         field.sourceKind,
         field.valueKind
     )
+    copied.inputFile = field.inputFile
     for (child in field.children) {
         copied.children.add(clonePayloadField(child))
     }
@@ -138,6 +139,10 @@ private func mergeOtherPayload(payload: Payload, other: Payload): Payload {
         payload.fields.add(clonePayloadField(field))
     }
     payload
+}
+
+public func tracePayload(method: String, payload: Payload): Payload {
+    Payload("").addValue("__method", method).addValue("__payload", createJsonPayload(payload).body)
 }
 
 private func payloadHasField(payload: Payload, key: String): Bool {
@@ -282,28 +287,78 @@ public func apiWrapperMinimalPayloadGoldenRows(): ArrayList<String> {
 public class Api {
     public let token: String
     public let config: ApiClientOptions
+    public let raw: RawApiFacade
+    public let installedTransformers: ArrayList<String>
+    private let client: ApiClient
+    private let traceCompatibilityMode: Bool
 
     public init(token: String) {
         this.token = token
         this.config = ApiClientOptions()
+        this.client = ApiClient(this.config)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+        this.traceCompatibilityMode = true
     }
 
     public init(token: String, config: ApiClientOptions) {
         this.token = token
         this.config = config
+        this.client = ApiClient(config)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+        this.traceCompatibilityMode = true
+    }
+
+    public init(token: String, config: ApiClientOptions, fetcher: CoreFetch) {
+        this.token = token
+        this.config = config
+        this.client = ApiClient(config, fetcher)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+        this.traceCompatibilityMode = false
     }
 
     public func endpointFor(method: String): String {
         this.config.buildUrl(this.token, method)
     }
 
+    public func use(transformerName: String): Api {
+        this.client.use(transformerName)
+        this
+    }
+
+    public func use(transformer: Transformer): Api {
+        this.client.use(transformer)
+        this
+    }
+
+    public func use(transformerName: String, transformer: Transformer): Api {
+        this.client.use(transformerName, transformer)
+        this
+    }
+
     public func call(method: String, payload: Payload): Payload {
-        Payload("").addValue("__method", method).addValue("__payload", createJsonPayload(payload).body)
+        if (this.traceCompatibilityMode) {
+            return tracePayload(method, payload)
+        }
+        Payload(this.raw.call(method, payload))
     }
 
     public func call(method: String, payload: Payload, signal: CancelSignal): Payload {
-        signal.throwIfCancelled()
-        this.call(method, payload)
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracePayload(method, payload)
+        }
+        Payload(this.raw.call(method, payload, signal))
+    }
+
+    public func callResult(method: String, payload: Payload): String {
+        this.raw.call(method, payload)
+    }
+
+    public func callResult(method: String, payload: Payload, signal: CancelSignal): String {
+        this.raw.call(method, payload, signal)
     }
 
     public func sendMessage(chatId: Int64, text: String): Payload {

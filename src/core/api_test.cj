@@ -3,7 +3,31 @@ package grammy4cj.core
 import std.collection.ArrayList
 import std.unittest.*
 
+import grammy4cj.types.ApiResponse
 import grammy4cj.types.InputFile
+
+private class ApiTestFakeFetch <: CoreFetch {
+    public var called: Bool = false
+    public var method: String = ""
+    public var url: String = ""
+    public var headers: String = ""
+    public var body: String = ""
+    public let result: String
+
+    public init(result: String) {
+        this.result = result
+    }
+
+    public func fetch(request: CoreHttpRequest, signal: CancelSignal): CoreFetchResponse {
+        signal.throwIfCancelled()
+        this.called = true
+        this.method = request.method
+        this.url = request.url
+        this.headers = request.headers
+        this.body = request.body
+        CoreFetchResponse.api(ApiResponse.success(this.result))
+    }
+}
 
 private func methodName(payload: Payload): String {
     for (field in payload.fields) {
@@ -469,6 +493,65 @@ public class ApiWrapperTest {
         let business = api.setBusinessAccountName("bcid", "Ada", Payload("").addValue("last_name", "Lovelace"))
         @Expect(methodName(business), "setBusinessAccountName")
         @Expect(payloadBody(business), "{\"business_connection_id\":\"bcid\",\"first_name\":\"Ada\",\"last_name\":\"Lovelace\"}")
+    }
+
+    @TestCase
+    public func apiWrapperUsesRawApiAndReturnsTelegramResultWhenFetcherInjected(): Unit {
+        let fake = ApiTestFakeFetch("{\"message_id\":1}")
+        let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+
+        let result = api.sendMessage(42, "hi")
+
+        @Expect(result.body, "{\"message_id\":1}")
+        @Expect(fake.called, true)
+        @Expect(fake.url, "https://api.telegram.org/bottoken/sendMessage")
+        @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\"}")
+        @Expect(api.raw.call("getMe", Payload("{}")), "{\"message_id\":1}")
+    }
+
+    @TestCase
+    public func allPayloadWrappersReturnRawTelegramResultWhenFetcherInjected(): Unit {
+        let fake = ApiTestFakeFetch("{\"result\":\"ok\"}")
+        let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+
+        for (method in apiWrapperMethodNames()) {
+            let trace = apiWrapperSchemaTraceFor(method)
+            let result = callWrapper(api, method, apiWrapperMinimalPayloadFor(method))
+            @Expect(result.body, "{\"result\":\"ok\"}")
+            @Expect(fake.url, "https://api.telegram.org/bottoken/" + trace.rawMethodName)
+        }
+    }
+
+    @TestCase
+    public func rawModeWrappersMapAliasesInlineAndMultipartPayloads(): Unit {
+        let fake = ApiTestFakeFetch("{\"ok\":true}")
+        let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+
+        @Expect(api.kickChatMember(Payload("").addInt("chat_id", 42).addInt("user_id", 7)).body, "{\"ok\":true}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/banChatMember")
+        @Expect(api.editMessageTextInline("inline-id", "new text").body, "{\"ok\":true}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/editMessageText")
+        @Expect(api.sendPhoto(42, InputFile.fromBytes("photo-bytes", "photo.jpg")).body, "{\"ok\":true}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/sendPhoto")
+        @Expect(fake.headers.contains("multipart/form-data; boundary=----------"), true)
+        @Expect(fake.body.contains("name=\"photo\"\r\n\r\nattach://"), true)
+        @Expect(fake.body.contains("filename=photo.jpg"), true)
+    }
+
+    @TestCase
+    public func apiUseInstallsTransformersThatWrapWrapperCalls(): Unit {
+        let fake = ApiTestFakeFetch("{\"message_id\":1}")
+        let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+
+        api.use("annotate", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>
+            @Expect(method, "sendMessage")
+            prev(method, payload.addValue("via_transformer", "yes"), signal)
+        })
+
+        @Expect(api.sendMessage(42, "hi").body, "{\"message_id\":1}")
+        @Expect(api.installedTransformers.size, 1)
+        @Expect(api.installedTransformers[0], "annotate")
+        @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\",\"via_transformer\":\"yes\"}")
     }
 
     @TestCase

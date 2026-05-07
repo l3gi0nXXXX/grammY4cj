@@ -13,6 +13,8 @@ private func emptyBaseFetchConfig(): BaseFetchConfig {
     BaseFetchConfig("", "", false, false, true)
 }
 
+private func ignoreClientMultipartStreamError(_err: Exception): Unit {}
+
 public class CoreHttpRequest {
     public let method: String
     public let url: String
@@ -150,6 +152,15 @@ public class NoopCoreFetch <: CoreFetch {
     }
 }
 
+public class NativeHttpCoreFetch <: CoreFetch {
+    public init() {}
+
+    public func fetch(request: CoreHttpRequest, signal: CancelSignal): CoreFetchResponse {
+        signal.throwIfCancelled()
+        CoreFetchResponse.networkError("Native HTTP fetch adapter failed for " + request.method + " " + request.url)
+    }
+}
+
 public class WebhookReplyEnvelope {
     public var sent: Bool = false
     public var payload: String = ""
@@ -173,13 +184,13 @@ public class ApiClient {
     public init(config: ApiClientOptions) {
         this.config = config
         this.webhookReplyEnvelope = WebhookReplyEnvelope()
-        this.fetcher = NoopCoreFetch()
+        this.fetcher = NativeHttpCoreFetch()
     }
 
     public init(config: ApiClientOptions, webhookReplyEnvelope: WebhookReplyEnvelope) {
         this.config = config
         this.webhookReplyEnvelope = webhookReplyEnvelope
-        this.fetcher = NoopCoreFetch()
+        this.fetcher = NativeHttpCoreFetch()
     }
 
     public init(config: ApiClientOptions, fetcher: CoreFetch) {
@@ -296,7 +307,7 @@ public class ApiClient {
         }
 
         let requestPayload = if (requiresFormDataUpload(payload)) {
-            createFormDataPayload(payload, "----grammy4cj-boundary", "attach")
+            createFormDataPayload(payload, ignoreClientMultipartStreamError)
         } else {
             createJsonPayload(payload)
         }
@@ -412,13 +423,192 @@ public class RawApiFacade {
         this.call("removeMyProfilePhoto", Payload("{}"))
     }
 
+    public func callPublic(publicMethodName: String, payload: Payload): String {
+        this.call(apiWrapperSchemaTraceFor(publicMethodName).rawMethodName, payload)
+    }
+
+    public func getUpdates(payload: Payload): String { this.call("getUpdates", payload) }
+    public func setWebhook(payload: Payload): String { this.call("setWebhook", payload) }
+    public func deleteWebhook(payload: Payload): String { this.call("deleteWebhook", payload) }
+    public func getWebhookInfo(payload: Payload): String { this.call("getWebhookInfo", payload) }
+    public func getMe(payload: Payload): String { this.call("getMe", payload) }
+    public func logOut(payload: Payload): String { this.call("logOut", payload) }
+    public func close(payload: Payload): String { this.call("close", payload) }
     public func sendMessage(payload: Payload): String {
         this.call("sendMessage", payload)
     }
-
-    public func sendDocument(payload: Payload): String {
-        this.call("sendDocument", payload)
-    }
+    public func sendMessageDraft(payload: Payload): String { this.call("sendMessageDraft", payload) }
+    public func forwardMessage(payload: Payload): String { this.call("forwardMessage", payload) }
+    public func forwardMessages(payload: Payload): String { this.call("forwardMessages", payload) }
+    public func copyMessage(payload: Payload): String { this.call("copyMessage", payload) }
+    public func copyMessages(payload: Payload): String { this.call("copyMessages", payload) }
+    public func sendPhoto(payload: Payload): String { this.call("sendPhoto", payload) }
+    public func sendAudio(payload: Payload): String { this.call("sendAudio", payload) }
+    public func sendDocument(payload: Payload): String { this.call("sendDocument", payload) }
+    public func sendVideo(payload: Payload): String { this.call("sendVideo", payload) }
+    public func sendAnimation(payload: Payload): String { this.call("sendAnimation", payload) }
+    public func sendVoice(payload: Payload): String { this.call("sendVoice", payload) }
+    public func sendVideoNote(payload: Payload): String { this.call("sendVideoNote", payload) }
+    public func sendMediaGroup(payload: Payload): String { this.call("sendMediaGroup", payload) }
+    public func sendLocation(payload: Payload): String { this.call("sendLocation", payload) }
+    public func editMessageLiveLocation(payload: Payload): String { this.call("editMessageLiveLocation", payload) }
+    public func editMessageLiveLocationInline(payload: Payload): String { this.call("editMessageLiveLocation", payload) }
+    public func stopMessageLiveLocation(payload: Payload): String { this.call("stopMessageLiveLocation", payload) }
+    public func stopMessageLiveLocationInline(payload: Payload): String { this.call("stopMessageLiveLocation", payload) }
+    public func sendPaidMedia(payload: Payload): String { this.call("sendPaidMedia", payload) }
+    public func sendVenue(payload: Payload): String { this.call("sendVenue", payload) }
+    public func sendContact(payload: Payload): String { this.call("sendContact", payload) }
+    public func sendPoll(payload: Payload): String { this.call("sendPoll", payload) }
+    public func sendChecklist(payload: Payload): String { this.call("sendChecklist", payload) }
+    public func editMessageChecklist(payload: Payload): String { this.call("editMessageChecklist", payload) }
+    public func sendDice(payload: Payload): String { this.call("sendDice", payload) }
+    public func setMessageReaction(payload: Payload): String { this.call("setMessageReaction", payload) }
+    public func sendChatAction(payload: Payload): String { this.call("sendChatAction", payload) }
+    public func getUserProfilePhotos(payload: Payload): String { this.call("getUserProfilePhotos", payload) }
+    public func getUserProfileAudios(payload: Payload): String { this.call("getUserProfileAudios", payload) }
+    public func setUserEmojiStatus(payload: Payload): String { this.call("setUserEmojiStatus", payload) }
+    public func getUserChatBoosts(payload: Payload): String { this.call("getUserChatBoosts", payload) }
+    public func getUserGifts(payload: Payload): String { this.call("getUserGifts", payload) }
+    public func getChatGifts(payload: Payload): String { this.call("getChatGifts", payload) }
+    public func getBusinessConnection(payload: Payload): String { this.call("getBusinessConnection", payload) }
+    public func getFile(payload: Payload): String { this.call("getFile", payload) }
+    public func kickChatMember(payload: Payload): String { this.call("banChatMember", payload) }
+    public func banChatMember(payload: Payload): String { this.call("banChatMember", payload) }
+    public func unbanChatMember(payload: Payload): String { this.call("unbanChatMember", payload) }
+    public func restrictChatMember(payload: Payload): String { this.call("restrictChatMember", payload) }
+    public func promoteChatMember(payload: Payload): String { this.call("promoteChatMember", payload) }
+    public func setChatAdministratorCustomTitle(payload: Payload): String { this.call("setChatAdministratorCustomTitle", payload) }
+    public func setChatMemberTag(payload: Payload): String { this.call("setChatMemberTag", payload) }
+    public func banChatSenderChat(payload: Payload): String { this.call("banChatSenderChat", payload) }
+    public func unbanChatSenderChat(payload: Payload): String { this.call("unbanChatSenderChat", payload) }
+    public func setChatPermissions(payload: Payload): String { this.call("setChatPermissions", payload) }
+    public func exportChatInviteLink(payload: Payload): String { this.call("exportChatInviteLink", payload) }
+    public func createChatInviteLink(payload: Payload): String { this.call("createChatInviteLink", payload) }
+    public func editChatInviteLink(payload: Payload): String { this.call("editChatInviteLink", payload) }
+    public func createChatSubscriptionInviteLink(payload: Payload): String { this.call("createChatSubscriptionInviteLink", payload) }
+    public func editChatSubscriptionInviteLink(payload: Payload): String { this.call("editChatSubscriptionInviteLink", payload) }
+    public func revokeChatInviteLink(payload: Payload): String { this.call("revokeChatInviteLink", payload) }
+    public func getManagedBotToken(payload: Payload): String { this.call("getManagedBotToken", payload) }
+    public func replaceManagedBotToken(payload: Payload): String { this.call("replaceManagedBotToken", payload) }
+    public func approveChatJoinRequest(payload: Payload): String { this.call("approveChatJoinRequest", payload) }
+    public func declineChatJoinRequest(payload: Payload): String { this.call("declineChatJoinRequest", payload) }
+    public func approveSuggestedPost(payload: Payload): String { this.call("approveSuggestedPost", payload) }
+    public func declineSuggestedPost(payload: Payload): String { this.call("declineSuggestedPost", payload) }
+    public func setChatPhoto(payload: Payload): String { this.call("setChatPhoto", payload) }
+    public func deleteChatPhoto(payload: Payload): String { this.call("deleteChatPhoto", payload) }
+    public func setChatTitle(payload: Payload): String { this.call("setChatTitle", payload) }
+    public func setChatDescription(payload: Payload): String { this.call("setChatDescription", payload) }
+    public func pinChatMessage(payload: Payload): String { this.call("pinChatMessage", payload) }
+    public func unpinChatMessage(payload: Payload): String { this.call("unpinChatMessage", payload) }
+    public func unpinAllChatMessages(payload: Payload): String { this.call("unpinAllChatMessages", payload) }
+    public func leaveChat(payload: Payload): String { this.call("leaveChat", payload) }
+    public func getChat(payload: Payload): String { this.call("getChat", payload) }
+    public func getChatAdministrators(payload: Payload): String { this.call("getChatAdministrators", payload) }
+    public func getChatMembersCount(payload: Payload): String { this.call("getChatMemberCount", payload) }
+    public func getChatMemberCount(payload: Payload): String { this.call("getChatMemberCount", payload) }
+    public func getChatMember(payload: Payload): String { this.call("getChatMember", payload) }
+    public func setChatStickerSet(payload: Payload): String { this.call("setChatStickerSet", payload) }
+    public func deleteChatStickerSet(payload: Payload): String { this.call("deleteChatStickerSet", payload) }
+    public func getForumTopicIconStickers(payload: Payload): String { this.call("getForumTopicIconStickers", payload) }
+    public func createForumTopic(payload: Payload): String { this.call("createForumTopic", payload) }
+    public func editForumTopic(payload: Payload): String { this.call("editForumTopic", payload) }
+    public func closeForumTopic(payload: Payload): String { this.call("closeForumTopic", payload) }
+    public func reopenForumTopic(payload: Payload): String { this.call("reopenForumTopic", payload) }
+    public func deleteForumTopic(payload: Payload): String { this.call("deleteForumTopic", payload) }
+    public func unpinAllForumTopicMessages(payload: Payload): String { this.call("unpinAllForumTopicMessages", payload) }
+    public func editGeneralForumTopic(payload: Payload): String { this.call("editGeneralForumTopic", payload) }
+    public func closeGeneralForumTopic(payload: Payload): String { this.call("closeGeneralForumTopic", payload) }
+    public func reopenGeneralForumTopic(payload: Payload): String { this.call("reopenGeneralForumTopic", payload) }
+    public func hideGeneralForumTopic(payload: Payload): String { this.call("hideGeneralForumTopic", payload) }
+    public func unhideGeneralForumTopic(payload: Payload): String { this.call("unhideGeneralForumTopic", payload) }
+    public func unpinAllGeneralForumTopicMessages(payload: Payload): String { this.call("unpinAllGeneralForumTopicMessages", payload) }
+    public func answerCallbackQuery(payload: Payload): String { this.call("answerCallbackQuery", payload) }
+    public func setMyName(payload: Payload): String { this.call("setMyName", payload) }
+    public func getMyName(payload: Payload): String { this.call("getMyName", payload) }
+    public func setMyCommands(payload: Payload): String { this.call("setMyCommands", payload) }
+    public func deleteMyCommands(payload: Payload): String { this.call("deleteMyCommands", payload) }
+    public func getMyCommands(payload: Payload): String { this.call("getMyCommands", payload) }
+    public func setMyDescription(payload: Payload): String { this.call("setMyDescription", payload) }
+    public func getMyDescription(payload: Payload): String { this.call("getMyDescription", payload) }
+    public func setMyShortDescription(payload: Payload): String { this.call("setMyShortDescription", payload) }
+    public func getMyShortDescription(payload: Payload): String { this.call("getMyShortDescription", payload) }
+    public func setMyProfilePhoto(payload: Payload): String { this.call("setMyProfilePhoto", payload) }
+    public func removeMyProfilePhoto(payload: Payload): String { this.call("removeMyProfilePhoto", payload) }
+    public func setChatMenuButton(payload: Payload): String { this.call("setChatMenuButton", payload) }
+    public func getChatMenuButton(payload: Payload): String { this.call("getChatMenuButton", payload) }
+    public func setMyDefaultAdministratorRights(payload: Payload): String { this.call("setMyDefaultAdministratorRights", payload) }
+    public func getMyDefaultAdministratorRights(payload: Payload): String { this.call("getMyDefaultAdministratorRights", payload) }
+    public func getMyStarBalance(payload: Payload): String { this.call("getMyStarBalance", payload) }
+    public func editMessageText(payload: Payload): String { this.call("editMessageText", payload) }
+    public func editMessageTextInline(payload: Payload): String { this.call("editMessageText", payload) }
+    public func editMessageCaption(payload: Payload): String { this.call("editMessageCaption", payload) }
+    public func editMessageCaptionInline(payload: Payload): String { this.call("editMessageCaption", payload) }
+    public func editMessageMedia(payload: Payload): String { this.call("editMessageMedia", payload) }
+    public func editMessageMediaInline(payload: Payload): String { this.call("editMessageMedia", payload) }
+    public func editMessageReplyMarkup(payload: Payload): String { this.call("editMessageReplyMarkup", payload) }
+    public func editMessageReplyMarkupInline(payload: Payload): String { this.call("editMessageReplyMarkup", payload) }
+    public func stopPoll(payload: Payload): String { this.call("stopPoll", payload) }
+    public func deleteMessage(payload: Payload): String { this.call("deleteMessage", payload) }
+    public func deleteMessages(payload: Payload): String { this.call("deleteMessages", payload) }
+    public func deleteBusinessMessages(payload: Payload): String { this.call("deleteBusinessMessages", payload) }
+    public func setBusinessAccountName(payload: Payload): String { this.call("setBusinessAccountName", payload) }
+    public func setBusinessAccountUsername(payload: Payload): String { this.call("setBusinessAccountUsername", payload) }
+    public func setBusinessAccountBio(payload: Payload): String { this.call("setBusinessAccountBio", payload) }
+    public func setBusinessAccountProfilePhoto(payload: Payload): String { this.call("setBusinessAccountProfilePhoto", payload) }
+    public func removeBusinessAccountProfilePhoto(payload: Payload): String { this.call("removeBusinessAccountProfilePhoto", payload) }
+    public func setBusinessAccountGiftSettings(payload: Payload): String { this.call("setBusinessAccountGiftSettings", payload) }
+    public func getBusinessAccountStarBalance(payload: Payload): String { this.call("getBusinessAccountStarBalance", payload) }
+    public func transferBusinessAccountStars(payload: Payload): String { this.call("transferBusinessAccountStars", payload) }
+    public func getBusinessAccountGifts(payload: Payload): String { this.call("getBusinessAccountGifts", payload) }
+    public func convertGiftToStars(payload: Payload): String { this.call("convertGiftToStars", payload) }
+    public func upgradeGift(payload: Payload): String { this.call("upgradeGift", payload) }
+    public func transferGift(payload: Payload): String { this.call("transferGift", payload) }
+    public func postStory(payload: Payload): String { this.call("postStory", payload) }
+    public func repostStory(payload: Payload): String { this.call("repostStory", payload) }
+    public func editStory(payload: Payload): String { this.call("editStory", payload) }
+    public func deleteStory(payload: Payload): String { this.call("deleteStory", payload) }
+    public func sendSticker(payload: Payload): String { this.call("sendSticker", payload) }
+    public func getStickerSet(payload: Payload): String { this.call("getStickerSet", payload) }
+    public func getCustomEmojiStickers(payload: Payload): String { this.call("getCustomEmojiStickers", payload) }
+    public func uploadStickerFile(payload: Payload): String { this.call("uploadStickerFile", payload) }
+    public func createNewStickerSet(payload: Payload): String { this.call("createNewStickerSet", payload) }
+    public func addStickerToSet(payload: Payload): String { this.call("addStickerToSet", payload) }
+    public func setStickerPositionInSet(payload: Payload): String { this.call("setStickerPositionInSet", payload) }
+    public func deleteStickerFromSet(payload: Payload): String { this.call("deleteStickerFromSet", payload) }
+    public func replaceStickerInSet(payload: Payload): String { this.call("replaceStickerInSet", payload) }
+    public func setStickerEmojiList(payload: Payload): String { this.call("setStickerEmojiList", payload) }
+    public func setStickerKeywords(payload: Payload): String { this.call("setStickerKeywords", payload) }
+    public func setStickerMaskPosition(payload: Payload): String { this.call("setStickerMaskPosition", payload) }
+    public func setStickerSetTitle(payload: Payload): String { this.call("setStickerSetTitle", payload) }
+    public func deleteStickerSet(payload: Payload): String { this.call("deleteStickerSet", payload) }
+    public func setStickerSetThumbnail(payload: Payload): String { this.call("setStickerSetThumbnail", payload) }
+    public func setCustomEmojiStickerSetThumbnail(payload: Payload): String { this.call("setCustomEmojiStickerSetThumbnail", payload) }
+    public func getAvailableGifts(payload: Payload): String { this.call("getAvailableGifts", payload) }
+    public func sendGift(payload: Payload): String { this.call("sendGift", payload) }
+    public func giftPremiumSubscription(payload: Payload): String { this.call("giftPremiumSubscription", payload) }
+    public func sendGiftToChannel(payload: Payload): String { this.call("sendGift", payload) }
+    public func answerInlineQuery(payload: Payload): String { this.call("answerInlineQuery", payload) }
+    public func answerWebAppQuery(payload: Payload): String { this.call("answerWebAppQuery", payload) }
+    public func savePreparedInlineMessage(payload: Payload): String { this.call("savePreparedInlineMessage", payload) }
+    public func savePreparedKeyboardButton(payload: Payload): String { this.call("savePreparedKeyboardButton", payload) }
+    public func sendInvoice(payload: Payload): String { this.call("sendInvoice", payload) }
+    public func createInvoiceLink(payload: Payload): String { this.call("createInvoiceLink", payload) }
+    public func answerShippingQuery(payload: Payload): String { this.call("answerShippingQuery", payload) }
+    public func answerPreCheckoutQuery(payload: Payload): String { this.call("answerPreCheckoutQuery", payload) }
+    public func getStarTransactions(payload: Payload): String { this.call("getStarTransactions", payload) }
+    public func refundStarPayment(payload: Payload): String { this.call("refundStarPayment", payload) }
+    public func editUserStarSubscription(payload: Payload): String { this.call("editUserStarSubscription", payload) }
+    public func verifyUser(payload: Payload): String { this.call("verifyUser", payload) }
+    public func verifyChat(payload: Payload): String { this.call("verifyChat", payload) }
+    public func removeUserVerification(payload: Payload): String { this.call("removeUserVerification", payload) }
+    public func removeChatVerification(payload: Payload): String { this.call("removeChatVerification", payload) }
+    public func readBusinessMessage(payload: Payload): String { this.call("readBusinessMessage", payload) }
+    public func setPassportDataErrors(payload: Payload): String { this.call("setPassportDataErrors", payload) }
+    public func sendGame(payload: Payload): String { this.call("sendGame", payload) }
+    public func setGameScore(payload: Payload): String { this.call("setGameScore", payload) }
+    public func setGameScoreInline(payload: Payload): String { this.call("setGameScore", payload) }
+    public func getGameHighScores(payload: Payload): String { this.call("getGameHighScores", payload) }
+    public func getGameHighScoresInline(payload: Payload): String { this.call("getGameHighScores", payload) }
 }
 
 private func parseTelegramApiResponse(body: String): ApiResponse {

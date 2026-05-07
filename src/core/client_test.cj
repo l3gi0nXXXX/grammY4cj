@@ -72,11 +72,28 @@ private class MethodPredicateProbe {
 public class ApiClientTest {
     @TestCase
     public func apiClientOptionsBuildDefaultAndTestUrls(): Unit {
+        let defaults = ApiClientOptions()
         let prod = ApiClientOptions("https://api.telegram.org", "prod")
         let test = ApiClientOptions("https://api.telegram.org", "test")
 
+        @Expect(defaults.apiRoot, "https://api.telegram.org")
+        @Expect(defaults.environment, "prod")
+        @Expect(defaults.timeoutSeconds, 500)
         @Expect(prod.buildUrl("token", "getMe"), "https://api.telegram.org/bottoken/getMe")
         @Expect(test.buildUrl("token", "getMe"), "https://api.telegram.org/bottoken/test/getMe")
+    }
+
+    @TestCase
+    public func defaultApiClientUsesNativeFetchAdapterInsteadOfNoop(): Unit {
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false))
+
+        try {
+            client.callApi("token", "getMe", Payload("{}"))
+            @Expect(true, false)
+        } catch (err: HttpError) {
+            @Expect(err.message.contains("Native HTTP fetch adapter failed"), true)
+            @Expect(err.message.contains("No HTTP client configured"), false)
+        }
     }
 
     @TestCase
@@ -211,6 +228,19 @@ public class ApiClientTest {
     }
 
     @TestCase
+    public func callApiWebhookReplyShortCircuitsWithoutFetch(): Unit {
+        let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("unused"))
+        let envelope = WebhookReplyEnvelope()
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, false, true), envelope, fake)
+        let payload = Payload("").addValue("chat_id", "42")
+
+        @Expect(client.callApi("token", "sendMessage", payload), "true")
+        @Expect(fake.called, false)
+        @Expect(envelope.sent, true)
+        @Expect(envelope.payload, "{\"chat_id\":\"42\",\"method\":\"sendMessage\"}")
+    }
+
+    @TestCase
     public func multipartPayloadDisablesWebhookReply(): Unit {
         let predicate = MethodPredicateProbe("sendDocument")
         let envelope = WebhookReplyEnvelope()
@@ -263,6 +293,22 @@ public class ApiClientTest {
         @Expect(fake.called, true)
         @Expect(fake.url, "https://api.telegram.org/bottoken/getMe")
         @Expect(fake.body, "{}")
+    }
+
+    @TestCase
+    public func apiClientDispatchesMultipartWithRandomBoundaryAndAttachNames(): Unit {
+        let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("ok"))
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        let payload = Payload("").addValue("chat_id", "42").addFile("document", InputFile.fromBytes("abc", "a.txt"))
+
+        @Expect(client.callApi("token", "sendDocument", payload), "ok")
+        @Expect(fake.headers.contains("content-type=multipart/form-data; boundary=----------"), true)
+        @Expect(fake.headers.contains("----grammy4cj-boundary"), false)
+        @Expect(fake.body.startsWith("------------"), true)
+        @Expect(fake.body.contains("name=\"document\"\r\n\r\nattach://"), true)
+        @Expect(fake.body.contains("name=\"attach0\""), false)
+        @Expect(fake.body.contains("filename=a.txt"), true)
+        @Expect(fake.body.contains("abc\r\n--"), true)
     }
 
     @TestCase
@@ -399,6 +445,53 @@ public class ApiClientTest {
         @Expect(zeroArgRawMethodNames().size, 8)
         @Expect(isZeroArgRawMethod("getAvailableGifts"), true)
         @Expect(isZeroArgRawMethod("sendMessage"), false)
+    }
+
+    @TestCase
+    public func rawFacadeMapsEveryPublicWrapperNameToUpstreamRawMethod(): Unit {
+        let fake = CoreTestFakeHttp()
+        let api = createRawApi("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        let payload = Payload("").addValue("x", "1")
+
+        for (method in apiWrapperMethodNames()) {
+            let trace = apiWrapperSchemaTraceFor(method)
+            @Expect(api.raw.callPublic(method, payload), "{}")
+            @Expect(fake.url, "https://api.telegram.org/bottoken/" + trace.rawMethodName)
+        }
+    }
+
+    @TestCase
+    public func rawFacadeExposesDocumentedPayloadMethodsAndAliasTargets(): Unit {
+        let fake = CoreTestFakeHttp()
+        let api = createRawApi("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        let payload = Payload("").addInt("chat_id", 42).addInt("user_id", 7)
+
+        @Expect(api.raw.banChatMember(payload), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/banChatMember")
+        @Expect(api.raw.getChatMemberCount(Payload("").addInt("chat_id", 42)), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/getChatMemberCount")
+        @Expect(api.raw.kickChatMember(payload), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/banChatMember")
+        @Expect(api.raw.getChatMembersCount(Payload("").addInt("chat_id", 42)), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/getChatMemberCount")
+        @Expect(api.raw.editMessageLiveLocationInline(Payload("").addValue("inline_message_id", "iid").addFloat("latitude", 1.0).addFloat("longitude", 2.0)), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/editMessageLiveLocation")
+        @Expect(api.raw.stopMessageLiveLocationInline(Payload("").addValue("inline_message_id", "iid")), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/stopMessageLiveLocation")
+        @Expect(api.raw.editMessageTextInline(Payload("").addValue("inline_message_id", "iid").addValue("text", "hi")), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/editMessageText")
+        @Expect(api.raw.editMessageCaptionInline(Payload("").addValue("inline_message_id", "iid")), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/editMessageCaption")
+        @Expect(api.raw.editMessageMediaInline(Payload("").addValue("inline_message_id", "iid").addRawJson("media", "{\"type\":\"photo\",\"media\":\"file_id\"}")), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/editMessageMedia")
+        @Expect(api.raw.editMessageReplyMarkupInline(Payload("").addValue("inline_message_id", "iid")), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/editMessageReplyMarkup")
+        @Expect(api.raw.sendGiftToChannel(Payload("").addInt("chat_id", 42).addValue("gift_id", "gift")), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/sendGift")
+        @Expect(api.raw.setGameScoreInline(Payload("").addValue("inline_message_id", "iid").addInt("user_id", 7).addInt("score", 1)), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/setGameScore")
+        @Expect(api.raw.getGameHighScoresInline(Payload("").addValue("inline_message_id", "iid").addInt("user_id", 7)), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/getGameHighScores")
     }
 
     @TestCase

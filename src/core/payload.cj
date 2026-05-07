@@ -1,6 +1,7 @@
 package grammy4cj.core
 
 import std.collection.ArrayList
+import std.time.DateTime
 
 import grammy4cj.types.InputFile
 
@@ -15,6 +16,7 @@ public class PayloadField {
     public let sourceKind: String
     public let valueKind: String
     public let children: ArrayList<PayloadField> = ArrayList<PayloadField>()
+    public var inputFile: Option<InputFile> = None<InputFile>
 
     public init(key: String, value: String) {
         this.key = key
@@ -95,7 +97,9 @@ public class PayloadField {
     }
 
     public static func fileItem(file: InputFile): PayloadField {
-        PayloadField("", file.sourceValue, false, true, file.filename, file.sourceKind, "file")
+        let field = PayloadField("", file.sourceValue, false, true, file.filename, file.sourceKind, "file")
+        field.inputFile = Some(file)
+        field
     }
 
     public func addValue(key: String, value: String): PayloadField {
@@ -138,7 +142,9 @@ public class PayloadField {
     }
 
     public func addFile(key: String, file: InputFile): PayloadField {
-        this.children.add(PayloadField(key, file.sourceValue, false, true, file.filename, file.sourceKind, "file"))
+        let field = PayloadField(key, file.sourceValue, false, true, file.filename, file.sourceKind, "file")
+        field.inputFile = Some(file)
+        this.children.add(field)
         this
     }
 
@@ -354,7 +360,9 @@ public class Payload {
     }
 
     public func addFile(key: String, file: InputFile): Payload {
-        this.fields.add(PayloadField(key, file.sourceValue, false, true, file.filename, file.sourceKind, "file"))
+        let field = PayloadField(key, file.sourceValue, false, true, file.filename, file.sourceKind, "file")
+        field.inputFile = Some(file)
+        this.fields.add(field)
         this
     }
 
@@ -496,6 +504,10 @@ public func createFormDataPayload(payload: Payload, boundary: String, attachIdPr
     createFormDataPayload(payload, boundary, attachIdPrefix, ignoreMultipartStreamError)
 }
 
+public func createFormDataPayload(payload: Payload, onError: MultipartStreamErrorCallback): RequestPayload {
+    createFormDataPayload(payload, createBoundary(), "", onError)
+}
+
 public func createFormDataPayload(payload: Payload, boundary: String, attachIdPrefix: String, onError: MultipartStreamErrorCallback): RequestPayload {
     let stream = MultipartByteStream(onError)
     let fileParts = ArrayList<CollectedFile>()
@@ -516,14 +528,7 @@ public func createFormDataPayload(payload: Payload, boundary: String, attachIdPr
         if (!first) {
             stream.addText("\r\n--" + boundary + "\r\n")
         }
-        stream.addText(filePartHeader(part.id, part.origin, part.file.filename))
-        if (part.file.sourceKind == "stream_error_after") {
-            stream.fail(part.file.value, 100)
-        } else if (part.file.sourceKind == "stream_error") {
-            stream.fail(part.file.value, 0)
-        } else {
-            stream.addFile(part.file.sourceKind, part.file.value)
-        }
+        appendFilePart(stream, part)
         first = false
     }
     stream.addText("\r\n--" + boundary + "--\r\n")
@@ -531,9 +536,31 @@ public func createFormDataPayload(payload: Payload, boundary: String, attachIdPr
     RequestPayload("POST", "content-type=multipart/form-data; boundary=" + boundary + ";connection=keep-alive", body, stream)
 }
 
+private func createBoundary(): String {
+    "----------" + randomId(32)
+}
+
+private func randomId(length: Int64): String {
+    let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    var seed = DateTime.now().toUnixTimeStamp().toMilliseconds()
+    var out = ""
+    var i: Int64 = 0
+    while (i < length) {
+        seed = ((seed % 2147483647) + 1103515245 + i * 97) % 2147483647
+        let index = seed % chars.size
+        out += chars[index..index + 1]
+        i += 1
+    }
+    out
+}
+
 private func multipartFieldValue(field: PayloadField, fileParts: ArrayList<CollectedFile>, attachIdPrefix: String, parentType: String): String {
     if (field.valueKind == "file" || field.isInputFile) {
-        let attachId = attachIdPrefix + fileParts.size.toString()
+        let attachId = if (attachIdPrefix.isEmpty()) {
+            randomId(16)
+        } else {
+            attachIdPrefix + fileParts.size.toString()
+        }
         let origin = if (field.key == "media" && !parentType.isEmpty()) {
             parentType
         } else {
@@ -623,6 +650,29 @@ public func valuePart(key: String, value: String): String {
 
 public func filePart(attachId: String, origin: String, filename: String, body: String): String {
     filePartHeader(attachId, origin, filename) + body
+}
+
+private func appendFilePart(stream: MultipartByteStream, part: CollectedFile): Unit {
+    stream.addText(filePartHeader(part.id, part.origin, part.file.filename))
+    if (part.file.sourceKind == "stream_error_after") {
+        stream.fail(part.file.value, 100)
+        return
+    }
+    if (part.file.sourceKind == "stream_error") {
+        stream.fail(part.file.value, 0)
+        return
+    }
+    stream.addFile(part.file.sourceKind, inputFileBytes(part.file))
+}
+
+private func inputFileBytes(field: PayloadField): String {
+    match (field.inputFile) {
+        case Some(file) =>
+            let raw = file.toRaw()
+            raw.consume()
+            raw.body.sourceValue
+        case None => field.value
+    }
 }
 
 private func filePartHeader(attachId: String, origin: String, filename: String): String {
