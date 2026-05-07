@@ -3,6 +3,7 @@ package grammy4cj
 public import grammy4cj.bot.Bot
 public import grammy4cj.bot.BotConfig
 public import grammy4cj.bot.BotConfigError
+public import grammy4cj.bot.BotContextFactory
 public import grammy4cj.bot.BotUpdateError
 public import grammy4cj.bot.PollingOptions
 public import grammy4cj.composer.BotError

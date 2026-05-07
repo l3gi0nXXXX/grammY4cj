@@ -37,6 +37,7 @@ public class BotConfig {
     public let clock: BotClock
     public let retry: BotRetryConfig
     public let updateHandler: BotUpdateHandler
+    public let contextFactory: BotContextFactory
 
     public init(botInfo: UserFromGetMe) {
         this.client = ApiClientOptions()
@@ -45,6 +46,7 @@ public class BotConfig {
         this.clock = NoopBotClock()
         this.retry = BotRetryConfig()
         this.updateHandler = NoopBotUpdateHandler()
+        this.contextFactory = defaultContextFactory
     }
 
     public init(runtime: BotRuntime) {
@@ -54,6 +56,7 @@ public class BotConfig {
         this.clock = NoopBotClock()
         this.retry = BotRetryConfig()
         this.updateHandler = NoopBotUpdateHandler()
+        this.contextFactory = defaultContextFactory
     }
 
     public init(
@@ -62,7 +65,8 @@ public class BotConfig {
         runtime!: BotRuntime = OfflineBotRuntime(),
         clock!: BotClock = NoopBotClock(),
         retry!: BotRetryConfig = BotRetryConfig(),
-        updateHandler!: BotUpdateHandler = NoopBotUpdateHandler()
+        updateHandler!: BotUpdateHandler = NoopBotUpdateHandler(),
+        contextFactory!: BotContextFactory = defaultContextFactory
     ) {
         this.client = client
         this.botInfo = botInfo
@@ -70,6 +74,7 @@ public class BotConfig {
         this.clock = clock
         this.retry = retry
         this.updateHandler = updateHandler
+        this.contextFactory = contextFactory
     }
 }
 
@@ -81,6 +86,7 @@ public class Bot {
     private let runtime: BotRuntime
     private let clock: BotClock
     private let retry: BotRetryConfig
+    private let contextFactory: BotContextFactory
     private var updateHandler: BotUpdateHandler
     private var errorHandler: Option<BotErrorHandler> = None<BotErrorHandler>
     private var me: Option<UserFromGetMe>
@@ -105,6 +111,7 @@ public class Bot {
         this.runtime = config.runtime
         this.clock = config.clock
         this.retry = config.retry
+        this.contextFactory = config.contextFactory
         this.updateHandler = config.updateHandler
         this.me = config.botInfo
     }
@@ -119,6 +126,7 @@ public class Bot {
         this.runtime = config.runtime
         this.clock = config.clock
         this.retry = config.retry
+        this.contextFactory = config.contextFactory
         this.updateHandler = config.updateHandler
         this.me = config.botInfo
     }
@@ -243,17 +251,16 @@ public class Bot {
         if (!this.isInited()) {
             throw BotConfigError("Bot not initialized! Call bot.init() or pass botInfo to BotConfig.")
         }
-        let ctx = Context(update, Api(this.token, this.api.config), this.botInfo)
+        let updateApi = Api(this.token, this.api.config)
+        let ctx = this.contextFactory(update, updateApi, this.botInfo)
         try {
             run(this.composer, ctx)
-            let apiForUpdate = this.apiBoundary.copyForUpdate()
-            let boundary = BotUpdateContextBoundary(update, apiForUpdate, this.botInfo)
-            this.updateHandler.handle(boundary)
         } catch (e: BotError) {
             throw e
         } catch (e: Exception) {
             throw BotError(e, ctx)
         }
+        this.notifyTestUpdateHandler(update)
     }
 
     public func start(): Unit {
@@ -484,6 +491,12 @@ public class Bot {
                 }
                 throw error
         }
+    }
+
+    private func notifyTestUpdateHandler(update: Update): Unit {
+        let apiForUpdate = this.apiBoundary.copyForUpdate()
+        let boundary = BotUpdateContextBoundary(update, apiForUpdate, this.botInfo)
+        this.updateHandler.handle(boundary)
     }
 
     private func assertMiddlewareRegistrationAllowed(): Unit {

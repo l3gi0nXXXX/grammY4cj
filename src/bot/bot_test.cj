@@ -6,6 +6,7 @@ import std.unittest.*
 import grammy4cj.composer.BotError
 import grammy4cj.composer.NextFunction
 import grammy4cj.context.Context
+import grammy4cj.core.Api
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
 import grammy4cj.types.ResponseParameters
@@ -26,18 +27,6 @@ private class StartProbe {
     }
 }
 
-private class StoppingHandler <: BotUpdateHandler {
-    private let bot: Bot
-
-    public init(bot: Bot) {
-        this.bot = bot
-    }
-
-    override public func handle(ctx: BotUpdateContextBoundary): Unit {
-        this.bot.stop()
-    }
-}
-
 private class RecordingBotErrorHandler <: BotErrorHandler {
     public let errors: ArrayList<BotError> = ArrayList<BotError>()
 
@@ -45,6 +34,18 @@ private class RecordingBotErrorHandler <: BotErrorHandler {
 
     override public func handle(error: BotError): Unit {
         this.errors.add(error)
+    }
+}
+
+private class ContextFactoryProbe {
+    public let contexts: ArrayList<Context> = ArrayList<Context>()
+
+    public init() {}
+
+    public func create(update: Update, api: Api, me: UserFromGetMe): Context {
+        let ctx = Context(update, api, me)
+        this.contexts.add(ctx)
+        ctx
     }
 }
 
@@ -62,12 +63,44 @@ public class BotTest {
     }
 
     @TestCase
-    public func botInitializationStateIsExplicit(): Unit {
+    public func botRejectsEmptyToken(): Unit {
+        var thrown = false
+        try {
+            let _ = Bot("")
+        } catch (e: BotConfigError) {
+            thrown = true
+            @Expect(e.message, "Empty token!")
+        }
+
+        @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func botInfoAccessBeforeInitThrows(): Unit {
         let bot = Bot("fake-token")
-        bot.markInitialized()
+        var thrown = false
+
+        try {
+            let _ = bot.botInfo
+        } catch (e: BotConfigError) {
+            thrown = true
+            @Expect(e.message.contains("Bot information unavailable"), true)
+        }
+
+        @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func initSkipsGetMeWhenBotInfoIsProvided(): Unit {
+        let runtime = FakeBotRuntime()
+        let me = UserFromGetMe(43, true, "Cached", "cached_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me), runtime: runtime))
+
+        bot.`init`()
 
         @Expect(bot.isInited(), true)
-        @Expect(bot.botInfo.username, "grammy4cj_bot")
+        @Expect(bot.botInfo.username, "cached_bot")
+        @Expect(runtime.getMeCalls, 0)
     }
 
     @TestCase
@@ -88,6 +121,61 @@ public class BotTest {
         @Expect(bot.initRetryCount, 2)
         @Expect(clock.sleeps.size, 1)
         @Expect(clock.sleeps[0], 100)
+    }
+
+    @TestCase
+    public func initRethrowsPlainErrorsAndAllowsRetryAfterFailure(): Unit {
+        let runtime = FakeBotRuntime()
+        runtime.failGetMeOnce(Exception("plain init failure"))
+        runtime.getMeResult = UserFromGetMe(44, true, "Recovered", "recovered_bot")
+        let bot = Bot("fake-token", BotConfig(runtime: runtime))
+        var thrown = false
+
+        try {
+            bot.`init`()
+        } catch (e: Exception) {
+            thrown = true
+            @Expect(e.message, "plain init failure")
+        }
+
+        @Expect(thrown, true)
+        @Expect(bot.isInited(), false)
+        bot.`init`()
+        @Expect(bot.isInited(), true)
+        @Expect(bot.botInfo.username, "recovered_bot")
+        @Expect(runtime.getMeCalls, 2)
+    }
+
+    @TestCase
+    public func initRetriesFiveHundredGrammyErrors(): Unit {
+        let runtime = FakeBotRuntime()
+        runtime.failGetMeOnce(GrammyError("getMe", "{}", 502, "Bad Gateway", ResponseParameters()))
+        runtime.getMeResult = UserFromGetMe(45, true, "Gateway", "gateway_bot")
+        let bot = Bot("fake-token", BotConfig(runtime: runtime))
+
+        bot.`init`()
+
+        @Expect(bot.isInited(), true)
+        @Expect(bot.botInfo.username, "gateway_bot")
+        @Expect(runtime.getMeCalls, 2)
+        @Expect(bot.initRetryCount, 1)
+    }
+
+    @TestCase
+    public func initRetriesTooManyRequestsWithoutRetryAfter(): Unit {
+        let runtime = FakeBotRuntime()
+        let clock = FakeBotClock()
+        runtime.failGetMeOnce(GrammyError("getMe", "{}", 429, "Too Many Requests", ResponseParameters()))
+        runtime.getMeResult = UserFromGetMe(46, true, "Rate", "rate_bot")
+        let bot = Bot("fake-token", BotConfig(runtime: runtime, clock: clock))
+
+        bot.`init`()
+
+        @Expect(bot.isInited(), true)
+        @Expect(bot.botInfo.username, "rate_bot")
+        @Expect(runtime.getMeCalls, 2)
+        @Expect(bot.initRetryCount, 1)
+        @Expect(clock.sleeps.size, 0)
     }
 
     @TestCase
@@ -139,6 +227,74 @@ public class BotTest {
     }
 
     @TestCase
+    public func handleUpdateUsesConfiguredContextFactory(): Unit {
+        let probe = ContextFactoryProbe()
+        let me = UserFromGetMe(104, true, "Factory", "factory_bot")
+        let bot = Bot(
+            "fake-token",
+            BotConfig(
+                botInfo: Some(me),
+                contextFactory: { update: Update, api: Api, info: UserFromGetMe =>
+                    probe.create(update, api, info)
+                }
+            )
+        )
+
+        bot.handleUpdate(Update(1301, "message"))
+
+        @Expect(probe.contexts.size, 1)
+        @Expect(probe.contexts[0].update.updateId, 1301)
+        @Expect(probe.contexts[0].api.token, "fake-token")
+        @Expect(probe.contexts[0].botInfoUsername(), "factory_bot")
+    }
+
+    @TestCase
+    public func handleUpdateCreatesIndependentContextForEachUpdate(): Unit {
+        let contexts = ArrayList<Context>()
+        let me = UserFromGetMe(105, true, "Independent", "independent_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
+        bot.use({ ctx: Context, next: NextFunction =>
+            contexts.add(ctx)
+            next()
+        })
+
+        bot.handleUpdate(Update(1401, "message"))
+        bot.handleUpdate(Update(1402, "message"))
+
+        @Expect(contexts.size, 2)
+        @Expect(contexts[0].update.updateId, 1401)
+        @Expect(contexts[1].update.updateId, 1402)
+        @Expect(contexts[0].api.token, contexts[1].api.token)
+    }
+
+    @TestCase
+    public func handleUpdateFailureDoesNotPoisonNextUpdate(): Unit {
+        let handled = ArrayList<Int64>()
+        let me = UserFromGetMe(106, true, "Poison", "poison_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
+        bot.use({ ctx: Context, next: NextFunction =>
+            if (ctx.updateId() == 1501) {
+                throw Exception("first update failed")
+            }
+            handled.add(ctx.updateId())
+            next()
+        })
+
+        var thrown = false
+        try {
+            bot.handleUpdate(Update(1501, "message"))
+        } catch (e: BotError) {
+            thrown = true
+            @Expect(e.ctx.update.updateId, 1501)
+        }
+        bot.handleUpdate(Update(1502, "message"))
+
+        @Expect(thrown, true)
+        @Expect(handled.size, 1)
+        @Expect(handled[0], 1502)
+    }
+
+    @TestCase
     public func botOnObservesExpandedUpdateTypesForAllowedUpdateWarnings(): Unit {
         let runtime = FakeBotRuntime()
         let me = UserFromGetMe(102, true, "Observe", "observe_bot")
@@ -156,6 +312,17 @@ public class BotTest {
         @Expect(bot.observedUpdateTypes()[1], "channel_post")
         @Expect(bot.warningMessages().size, 1)
         @Expect(bot.warningMessages()[0].contains("channel_post"), true)
+    }
+
+    @TestCase
+    public func reactionObserverAddsMessageReactionUpdateType(): Unit {
+        let me = UserFromGetMe(107, true, "Reaction", "reaction_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
+
+        bot.reaction("👍", { _ctx: Context, _next: NextFunction => () })
+
+        @Expect(bot.observedUpdateTypes().size, 1)
+        @Expect(bot.observedUpdateTypes()[0], "message_reaction")
     }
 
     @TestCase
@@ -359,13 +526,45 @@ public class BotTest {
         let me = UserFromGetMe(8, true, "Stop", "stop_bot")
         runtime.enqueueUpdates([Update(50, "message")])
         let bot = Bot("fake-token", BotConfig(botInfo: Some(me), runtime: runtime))
-        bot.setUpdateHandler(StoppingHandler(bot))
+        bot.use({ _ctx: Context, _next: NextFunction =>
+            bot.stop()
+        })
 
         bot.start(PollingOptions(maxFetchCycles: 3))
 
         @Expect(runtime.getUpdatesCalls, 2)
         @Expect(runtime.pollingRequests[1].offset, 51)
         @Expect(runtime.pollingRequests[1].limit, 1)
+        @Expect(bot.isRunning(), false)
+    }
+
+    @TestCase
+    public func stopWhenNotRunningIsNoop(): Unit {
+        let runtime = FakeBotRuntime()
+        let me = UserFromGetMe(108, true, "StopNoop", "stop_noop_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me), runtime: runtime))
+
+        bot.stop()
+
+        @Expect(bot.isRunning(), false)
+        @Expect(runtime.getUpdatesCalls, 0)
+    }
+
+    @TestCase
+    public func startNoopsWhenAlreadyRunningDuringOnStart(): Unit {
+        let runtime = FakeBotRuntime()
+        let me = UserFromGetMe(109, true, "StartTwice", "start_twice_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me), runtime: runtime))
+
+        bot.start(PollingOptions(
+            maxFetchCycles: 1,
+            onStart: Some({ _info: UserFromGetMe =>
+                bot.start(PollingOptions(maxFetchCycles: 1))
+            })
+        ))
+
+        @Expect(runtime.deleteWebhookCalls, 1)
+        @Expect(runtime.getUpdatesCalls, 1)
         @Expect(bot.isRunning(), false)
     }
 
