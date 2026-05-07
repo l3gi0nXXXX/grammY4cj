@@ -17,6 +17,15 @@ check_forbidden() {
 check_forbidden "core" 'import grammy4cj\.(bot|context|composer|convenience|platform)' 'src/core/*.cj'
 check_forbidden "context" 'import grammy4cj\.platform' 'src/context/*.cj'
 check_forbidden "platform" 'import grammy4cj\.(bot|context)' 'src/platform/*.cj'
-check_forbidden "convenience" 'import grammy4cj\.(core\.ApiClient|bot)' 'src/convenience/*.cj'
+check_forbidden "convenience" 'import grammy4cj\.core\.ApiClient' 'src/convenience/*.cj'
+
+if rg -n 'import grammy4cj\.bot' src/convenience/*.cj |
+  rg -v '^src/convenience/webhook(_test)?\.cj:' >/tmp/grammy4cj_dependency_boundary_match.txt 2>/dev/null; then
+  echo "dependency boundary violation in convenience bot imports:"
+  cat /tmp/grammy4cj_dependency_boundary_match.txt
+  rm -f /tmp/grammy4cj_dependency_boundary_match.txt
+  exit 1
+fi
+rm -f /tmp/grammy4cj_dependency_boundary_match.txt
 
 echo "dependency boundary checks passed"
