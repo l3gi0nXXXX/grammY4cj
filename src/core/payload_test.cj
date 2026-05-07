@@ -51,8 +51,11 @@ public class PayloadTest {
     public func multipartPayloadUsesDefaultExtensions(): Unit {
         @Expect(defaultFileExtension("certificate"), "pem")
         @Expect(defaultFileExtension("photo"), "jpg")
+        @Expect(defaultFileExtension("thumbnail"), "jpg")
         @Expect(defaultFileExtension("voice"), "ogg")
+        @Expect(defaultFileExtension("audio"), "mp3")
         @Expect(defaultFileExtension("video"), "mp4")
+        @Expect(defaultFileExtension("video_note"), "mp4")
         @Expect(defaultFileExtension("sticker"), "webp")
         @Expect(defaultFileExtension("unknown"), "dat")
     }
@@ -83,6 +86,47 @@ public class PayloadTest {
         @Expect(requiresFormDataUpload(payload), true)
         @Expect(req.body.contains("\"media\":\"attach://attach0\""), true)
         @Expect(req.body.contains("name=\"attach0\";filename=photo.jpg"), true)
+    }
+
+    @TestCase
+    public func recursiveMultipartPayloadFindsFilesInNestedArraysAndObjects(): Unit {
+        let payload = Payload("")
+        payload.addInt("chat_id", 42)
+        let media = payload.addArray("media")
+        let first = media.addObjectItem()
+        first.addValue("type", "photo")
+        first.addFile("media", InputFile.fromBytes("photo-bytes", ""))
+        let second = media.addObjectItem()
+        second.addValue("type", "video")
+        second.addFile("thumbnail", InputFile.fromBytes("thumb-bytes", ""))
+        let meta = payload.addObject("meta")
+        let files = meta.addArray("files")
+        files.addFileItem(InputFile.fromBytes("document-bytes", "doc.txt"))
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+
+        @Expect(requiresFormDataUpload(payload), true)
+        @Expect(req.body.contains("\"media\":\"attach://attach0\""), true)
+        @Expect(req.body.contains("\"thumbnail\":\"attach://attach1\""), true)
+        @Expect(req.body.contains("\"files\":[\"attach://attach2\"]"), true)
+        @Expect(req.body.contains("name=\"attach0\";filename=photo.jpg"), true)
+        @Expect(req.body.contains("name=\"attach1\";filename=thumbnail.jpg"), true)
+        @Expect(req.body.contains("name=\"attach2\";filename=doc.txt"), true)
+    }
+
+    @TestCase
+    public func multipartPayloadRejectsCrLfFilenamesWithOriginInMessage(): Unit {
+        let payload = Payload("")
+        payload.addFile("document", InputFile.fromBytes("abc", "bad\nname.txt"))
+
+        try {
+            createFormDataPayload(payload, "boundary", "attach")
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message.contains("File paths cannot contain carriage-return (\\r) or newline (\\n) characters!"), true)
+            @Expect(err.message.contains("Filename for property 'document' was:"), true)
+            @Expect(err.message.contains("bad\nname.txt"), true)
+        }
     }
 
     @TestCase

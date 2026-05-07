@@ -1,11 +1,19 @@
 package grammy4cj.core
 
+import grammy4cj.platform.BaseFetchConfig
+
+public type ApiBuildUrl = (String, String, String, String) -> String
+public type WebhookReplyPredicate = (String) -> Bool
+
 public class ApiClientOptions {
     public let apiRoot: String
     public let environment: String
     public let timeoutSeconds: Int64
     public let sensitiveLogs: Bool
     public let canUseWebhookReply: Bool
+    public let buildUrlFn: ApiBuildUrl
+    public let canUseWebhookReplyFn: WebhookReplyPredicate
+    public let baseFetchConfig: BaseFetchConfig
 
     public init() {
         this.apiRoot = "https://api.telegram.org"
@@ -13,6 +21,9 @@ public class ApiClientOptions {
         this.timeoutSeconds = 500
         this.sensitiveLogs = false
         this.canUseWebhookReply = false
+        this.buildUrlFn = defaultBuildUrl
+        this.canUseWebhookReplyFn = rejectWebhookReply
+        this.baseFetchConfig = defaultBaseFetchConfig(this.apiRoot)
     }
 
     public init(apiRoot: String, environment: String) {
@@ -24,6 +35,9 @@ public class ApiClientOptions {
         this.timeoutSeconds = 500
         this.sensitiveLogs = false
         this.canUseWebhookReply = false
+        this.buildUrlFn = defaultBuildUrl
+        this.canUseWebhookReplyFn = rejectWebhookReply
+        this.baseFetchConfig = defaultBaseFetchConfig(this.apiRoot)
     }
 
     public init(apiRoot: String, environment: String, timeoutSeconds: Int64, sensitiveLogs: Bool, canUseWebhookReply: Bool) {
@@ -35,16 +49,75 @@ public class ApiClientOptions {
         this.timeoutSeconds = timeoutSeconds
         this.sensitiveLogs = sensitiveLogs
         this.canUseWebhookReply = canUseWebhookReply
+        this.buildUrlFn = defaultBuildUrl
+        this.canUseWebhookReplyFn = if (canUseWebhookReply) {
+            allowWebhookReply
+        } else {
+            rejectWebhookReply
+        }
+        this.baseFetchConfig = defaultBaseFetchConfig(this.apiRoot)
+    }
+
+    public init(
+        apiRoot: String,
+        environment: String,
+        timeoutSeconds: Int64,
+        sensitiveLogs: Bool,
+        canUseWebhookReply: WebhookReplyPredicate,
+        buildUrl: ApiBuildUrl,
+        baseFetchConfig: BaseFetchConfig
+    ) {
+        if (apiRoot.endsWith("/")) {
+            throw Exception("apiRoot must not end with a slash.")
+        }
+        this.apiRoot = apiRoot
+        this.environment = environment
+        this.timeoutSeconds = timeoutSeconds
+        this.sensitiveLogs = sensitiveLogs
+        this.canUseWebhookReply = true
+        this.buildUrlFn = buildUrl
+        this.canUseWebhookReplyFn = canUseWebhookReply
+        this.baseFetchConfig = baseFetchConfig
     }
 
     public func buildUrl(token: String, method: String): String {
-        let prefix = if (this.environment == "test") {
-            "test/"
-        } else {
-            ""
-        }
-        this.apiRoot + "/bot" + token + "/" + prefix + method
+        this.buildUrlFn(this.apiRoot, token, method, this.environment)
     }
+
+    public func canUseWebhookReplyFor(method: String): Bool {
+        this.canUseWebhookReplyFn(method)
+    }
+
+    public func baseFetchConfigSummary(): String {
+        this.baseFetchConfig.summary()
+    }
+}
+
+private func defaultBuildUrl(root: String, token: String, method: String, environment: String): String {
+    let prefix = if (environment == "test") {
+        "test/"
+    } else {
+        ""
+    }
+    root + "/bot" + token + "/" + prefix + method
+}
+
+private func defaultBaseFetchConfig(apiRoot: String): BaseFetchConfig {
+    if (apiRoot.startsWith("https:")) {
+        return BaseFetchConfig(apiRoot, "https", true, true, false)
+    }
+    if (apiRoot.startsWith("http:")) {
+        return BaseFetchConfig(apiRoot, "http", true, false, false)
+    }
+    BaseFetchConfig(apiRoot, "", false, false, true)
+}
+
+private func rejectWebhookReply(_method: String): Bool {
+    false
+}
+
+private func allowWebhookReply(_method: String): Bool {
+    true
 }
 
 public class Api {

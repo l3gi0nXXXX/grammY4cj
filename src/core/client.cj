@@ -2,11 +2,16 @@ package grammy4cj.core
 
 import std.collection.ArrayList
 
+import grammy4cj.platform.BaseFetchConfig
 import grammy4cj.types.ApiResponse
 import grammy4cj.types.ResponseParameters
 
 public type ApiCallFn = (String, Payload, CancelSignal) -> ApiResponse
 public type Transformer = (ApiCallFn, String, Payload, CancelSignal) -> ApiResponse
+
+private func emptyBaseFetchConfig(): BaseFetchConfig {
+    BaseFetchConfig("", "", false, false, true)
+}
 
 public class CoreHttpRequest {
     public let method: String
@@ -14,6 +19,8 @@ public class CoreHttpRequest {
     public let headers: String
     public let body: String
     public let payload: RequestPayload
+    public let baseFetchConfig: BaseFetchConfig
+    public let baseFetchConfigSummary: String
 
     public init(method: String, url: String, headers: String, body: String) {
         this.method = method
@@ -21,6 +28,18 @@ public class CoreHttpRequest {
         this.headers = headers
         this.body = body
         this.payload = RequestPayload(method, headers, body)
+        this.baseFetchConfig = emptyBaseFetchConfig()
+        this.baseFetchConfigSummary = this.baseFetchConfig.summary()
+    }
+
+    public init(method: String, url: String, headers: String, body: String, baseFetchConfig: BaseFetchConfig) {
+        this.method = method
+        this.url = url
+        this.headers = headers
+        this.body = body
+        this.payload = RequestPayload(method, headers, body)
+        this.baseFetchConfig = baseFetchConfig
+        this.baseFetchConfigSummary = baseFetchConfig.summary()
     }
 
     public init(url: String, payload: RequestPayload) {
@@ -29,6 +48,18 @@ public class CoreHttpRequest {
         this.headers = payload.headers
         this.body = payload.body
         this.payload = payload
+        this.baseFetchConfig = emptyBaseFetchConfig()
+        this.baseFetchConfigSummary = this.baseFetchConfig.summary()
+    }
+
+    public init(url: String, payload: RequestPayload, baseFetchConfig: BaseFetchConfig) {
+        this.method = payload.method
+        this.url = url
+        this.headers = payload.headers
+        this.body = payload.body
+        this.payload = payload
+        this.baseFetchConfig = baseFetchConfig
+        this.baseFetchConfigSummary = baseFetchConfig.summary()
     }
 }
 
@@ -174,16 +205,16 @@ public class ApiClient {
 
     public func jsonRequest(token: String, method: String, payload: Payload): CoreHttpRequest {
         let req = createJsonPayload(payload)
-        CoreHttpRequest(req.method, this.endpoint(token, method), req.headers, req.body)
+        CoreHttpRequest(req.method, this.endpoint(token, method), req.headers, req.body, this.config.baseFetchConfig)
     }
 
     public func formRequest(token: String, method: String, payload: Payload, boundary: String, attachIdPrefix: String): CoreHttpRequest {
         let req = createFormDataPayload(payload, boundary, attachIdPrefix)
-        CoreHttpRequest(this.endpoint(token, method), req)
+        CoreHttpRequest(this.endpoint(token, method), req, this.config.baseFetchConfig)
     }
 
     public func maybeUseWebhookReply(method: String, payload: Payload): Bool {
-        if (this.hasUsedWebhookReply || !this.config.canUseWebhookReply || requiresFormDataUpload(payload)) {
+        if (this.hasUsedWebhookReply || requiresFormDataUpload(payload) || !this.config.canUseWebhookReplyFor(method)) {
             return false
         }
         this.webhookReplyEnvelope.send(createJsonPayloadWithMethod(payload, method).body)
@@ -214,6 +245,16 @@ public class ApiClient {
         TimeoutConfig(this.config.timeoutSeconds * 1000)
     }
 
+    public func copyInstalledTransformersTo(target: ApiClient): ApiClient {
+        for (name in this.installedTransformers) {
+            target.installedTransformers.add(name)
+        }
+        for (transformer in this.installedTransformerFunctions) {
+            target.installedTransformerFunctions.add(transformer)
+        }
+        target
+    }
+
     public func callApi(token: String, method: String, payload: Payload): String {
         this.callApi(token, method, payload, CancelSignal())
     }
@@ -233,7 +274,11 @@ public class ApiClient {
     }
 
     private func performCall(token: String, method: String, payload: Payload, signal: CancelSignal): ApiResponse {
-        signal.throwIfCancelled()
+        try {
+            signal.throwIfCancelled()
+        } catch (err: Exception) {
+            throw toHttpError(method, this.config.sensitiveLogs, err)
+        }
         if (this.maybeUseWebhookReply(method, payload)) {
             return ApiResponse.success("true")
         }
@@ -243,13 +288,18 @@ public class ApiClient {
         } else {
             createJsonPayload(payload)
         }
-        let request = CoreHttpRequest(this.endpoint(token, method), requestPayload)
+        let request = CoreHttpRequest(this.endpoint(token, method), requestPayload, this.config.baseFetchConfig)
 
         if (requestPayload.stream.hasError && requestPayload.stream.errorAfterMillis == 0) {
             throw toHttpError(method, this.config.sensitiveLogs, Exception(requestPayload.stream.errorMessage))
         }
 
-        let response = this.fetcher.fetch(request, signal)
+        var response = CoreFetchResponse.success("")
+        try {
+            response = this.fetcher.fetch(request, signal)
+        } catch (err: Exception) {
+            throw toHttpError(method, this.config.sensitiveLogs, err)
+        }
         this.resolveTransportRace(method, requestPayload, response, signal)
     }
 
@@ -314,12 +364,28 @@ public class RawApiFacade {
         this.call("getWebhookInfo", Payload("{}"))
     }
 
+    public func getForumTopicIconStickers(): String {
+        this.call("getForumTopicIconStickers", Payload("{}"))
+    }
+
+    public func getAvailableGifts(): String {
+        this.call("getAvailableGifts", Payload("{}"))
+    }
+
     public func logOut(): String {
         this.call("logOut", Payload("{}"))
     }
 
     public func close(): String {
         this.call("close", Payload("{}"))
+    }
+
+    public func getMyStarBalance(): String {
+        this.call("getMyStarBalance", Payload("{}"))
+    }
+
+    public func removeMyProfilePhoto(): String {
+        this.call("removeMyProfilePhoto", Payload("{}"))
     }
 
     public func sendMessage(payload: Payload): String {
@@ -390,4 +456,26 @@ public func createRawApi(token: String, options: ApiClientOptions, fetcher: Core
 
 public func createRawApi(token: String, options: ApiClientOptions, webhookReplyEnvelope: WebhookReplyEnvelope, fetcher: CoreFetch): TransformableApi {
     TransformableApi(token, options, webhookReplyEnvelope, fetcher)
+}
+
+public func zeroArgRawMethodNames(): Array<String> {
+    [
+        "getMe",
+        "getWebhookInfo",
+        "getForumTopicIconStickers",
+        "getAvailableGifts",
+        "logOut",
+        "close",
+        "getMyStarBalance",
+        "removeMyProfilePhoto"
+    ]
+}
+
+public func isZeroArgRawMethod(method: String): Bool {
+    for (name in zeroArgRawMethodNames()) {
+        if (name == method) {
+            return true
+        }
+    }
+    false
 }
