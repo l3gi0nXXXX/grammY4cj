@@ -24,4 +24,25 @@ public class Grammy4cjRootTest {
         @Expect(API_CONSTANTS.defaultUpdateTypeCount, 23)
         @Expect(defaultPlatform().runtime, "cjnative")
     }
+
+    @TestCase
+    public func rootPackageReExportsCoreAndConvenienceSurface(): Unit {
+        let media = InputMediaBuilder.photo("photo-file-id")
+        let inline = InlineQueryResultBuilder.article("id-1", "title")
+        let keyboard = Keyboard()
+        let inlineKeyboard = InlineKeyboard()
+        let storage = MemorySessionStorage<String>()
+
+        keyboard.text("hello")
+        inlineKeyboard.text("press", "payload")
+        storage.write("session:1", "value")
+
+        @Expect(apiWrapperCount(), 180)
+        @Expect(media.kind, "photo")
+        @Expect(inline.toJSON().contains("\"type\":\"article\""), true)
+        @Expect(keyboard.buttonCount, 1)
+        @Expect(inlineKeyboard.buttonCount, 1)
+        @Expect(registeredFrameworkAdapterCount(), 22)
+        @Expect(storage.has("session:1"), true)
+    }
 }
