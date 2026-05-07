@@ -134,14 +134,51 @@ perl -0ne 'while(/^    (?!private|constructor)(?:async\s+)?([A-Za-z_]\w*)\s*\(/m
   "$GRAMMY_DIR/src/core/api.ts" | sort -u > "$TMP_DIR/upstream_api_methods"
 perl -ne 'if (/^public class Api\b/) {$in=1; next} if ($in && /^}/) {$in=0} if ($in && /^    public func (?!endpointFor\b|call\b)([A-Za-z_]\w*)\(/) {print "$1\n"}' \
   "$REPO_DIR/src/core/api.cj" | sort -u > "$TMP_DIR/port_api_methods"
-perl -ne 'while(/"([A-Za-z_]\w*)"/g){print "$1\n"}' \
-  "$REPO_DIR/src/core/api_wrapper_table.cj" | sort -u > "$TMP_DIR/port_api_table_methods"
+awk '
+  /public func apiWrapperMethodNames/ { in_table = 1; next }
+  in_table && /^}/ { in_table = 0 }
+  in_table {
+    line = $0
+    while (match(line, /"[^"]+"/)) {
+      value = substr(line, RSTART + 1, RLENGTH - 2)
+      print value
+      line = substr(line, RSTART + RLENGTH)
+    }
+  }
+' "$REPO_DIR/src/core/api_wrapper_table.cj" | sort -u > "$TMP_DIR/port_api_table_methods"
 
 check_eq "upstream public Api wrapper methods" "$(count_lines "$TMP_DIR/upstream_api_methods")" "180"
 check_eq "port Api wrapper methods" "$(count_lines "$TMP_DIR/port_api_methods")" "180"
 check_eq "port Api wrapper table methods" "$(count_lines "$TMP_DIR/port_api_table_methods")" "180"
 assert_no_set_diff "Api class methods vs upstream" "$TMP_DIR/upstream_api_methods" "$TMP_DIR/port_api_methods"
 assert_no_set_diff "Api wrapper table vs upstream" "$TMP_DIR/upstream_api_methods" "$TMP_DIR/port_api_table_methods"
+
+section "G8.1b API schema trace diff"
+perl -ne 'if (/^\s*"([^"~]+)~/) { print "$1\n" }' \
+  "$REPO_DIR/src/core/api_wrapper_table.cj" | sort -u > "$TMP_DIR/port_api_schema_methods"
+perl -ne 'if (/^\s*"([^"~]+)~([^"~]+)~/ && $1 ne $2) { print "$1 -> $2\n" }' \
+  "$REPO_DIR/src/core/api_wrapper_table.cj" | sort -u > "$TMP_DIR/port_api_schema_raw_variants"
+perl -ne 'if (/m === "([^"]+)"/ && $1 ne "toJSON") { print "$1\n" }' \
+  "$GRAMMY_DIR/src/core/client.ts" | sort -u > "$TMP_DIR/upstream_raw_zero_arg_methods"
+awk '
+  /public func apiRawZeroArgMethodNames/ { in_table = 1; next }
+  in_table && /^}/ { in_table = 0 }
+  in_table {
+    line = $0
+    while (match(line, /"[^"]+"/)) {
+      value = substr(line, RSTART + 1, RLENGTH - 2)
+      print value
+      line = substr(line, RSTART + RLENGTH)
+    }
+  }
+' "$REPO_DIR/src/core/api_wrapper_table.cj" | sort -u > "$TMP_DIR/port_raw_zero_arg_methods"
+
+check_eq "port Api schema trace methods" "$(count_lines "$TMP_DIR/port_api_schema_methods")" "180"
+check_eq "port Api public-to-raw variants" "$(count_lines "$TMP_DIR/port_api_schema_raw_variants")" "11"
+check_eq "upstream raw zero-arg methods" "$(count_lines "$TMP_DIR/upstream_raw_zero_arg_methods")" "8"
+check_eq "port raw zero-arg methods" "$(count_lines "$TMP_DIR/port_raw_zero_arg_methods")" "8"
+assert_no_set_diff "Api schema trace methods vs upstream" "$TMP_DIR/upstream_api_methods" "$TMP_DIR/port_api_schema_methods"
+assert_no_set_diff "Raw zero-arg methods" "$TMP_DIR/upstream_raw_zero_arg_methods" "$TMP_DIR/port_raw_zero_arg_methods"
 
 section "G8.2 Context this.api.* call target diff"
 perl -ne 'while(/this\.api\.([A-Za-z_]\w*)\s*\(/g){print "$1\n"}' \
