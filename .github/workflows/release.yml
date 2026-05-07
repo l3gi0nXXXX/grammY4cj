@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  GRAMMY_UPSTREAM_REF: c865dd3a4d26911b01c83695e3845c7245870a5d
+
+jobs:
+  release:
+    name: Release gate and artifact publication
+    runs-on:
+      - self-hosted
+      - cangjie
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout upstream grammY baseline
+        uses: actions/checkout@v4
+        with:
+          repository: grammyjs/grammY
+          ref: ${{ env.GRAMMY_UPSTREAM_REF }}
+          path: upstream-grammY
+
+      - name: Check release metadata
+        run: sh scripts/check_release_metadata.sh
+
+      - name: Check public docs
+        run: sh scripts/check_public_docs.sh
+
+      - name: Check architecture artifacts
+        run: sh scripts/check_architecture_artifacts.sh
+
+      - name: Check formal substitute ledger
+        run: sh scripts/check_formal_substitute_ledger.sh
+
+      - name: Check optional integration plan
+        run: sh scripts/check_optional_integration_plan.sh
+
+      - name: Check dependency boundaries
+        run: sh scripts/check_dependency_boundaries.sh
+
+      - name: Check upstream sync process
+        run: sh scripts/check_upstream_sync_process.sh
+
+      - name: Check upstream contract
+        run: GRAMMY_DIR="$GITHUB_WORKSPACE/upstream-grammY" sh scripts/check_upstream_contract.sh
+
+      - name: Check upstream contract hard fail
+        run: GRAMMY4CJ_HARD_FAIL=1 GRAMMY_DIR="$GITHUB_WORKSPACE/upstream-grammY" sh scripts/check_upstream_contract.sh
+
+      - name: Check source trace matrix
+        run: GRAMMY_DIR="$GITHUB_WORKSPACE/upstream-grammY" sh scripts/check_source_trace_matrix.sh
+
+      - name: Build and test
+        run: cjpm clean && cjpm build -i && cjpm test
+
+      - name: Package release artifact
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          tar --exclude=.git --exclude=dist --exclude=target -czf "dist/grammy4cj-${version}-source.tar.gz" \
+            LICENSE README.md cjpm.toml cjpm.lock src
+          if [ -d target ]; then
+            tar -czf "dist/grammy4cj-${version}-target.tar.gz" target
+          fi
+          shasum -a 256 dist/* > dist/SHA256SUMS
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grammy4cj-release-${{ github.ref_name }}
+          path: dist/*
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

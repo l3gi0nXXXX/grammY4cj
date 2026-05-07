@@ -1,0 +1,19 @@
+changelog:
+  exclude:
+    authors:
+      - allcontributors[bot]
+    labels:
+      - documentation
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking-change
+    - title: Features
+      labels:
+        - enhancement
+    - title: Fixes
+      labels:
+        - bug
+    - title: Other Changes
+      labels:
+        - "*"
