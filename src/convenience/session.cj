@@ -27,6 +27,7 @@ public interface StorageAdapter<T> {
     func write(key: String, value: T): Unit
     func delete(key: String): Unit
     func has(key: String): Bool
+    func readAll(): Array<T>
     func readAllKeys(): Array<String>
     func readAllValues(): Array<T>
     func readAllEntries(): Array<StorageEntry<T>>
@@ -99,6 +100,10 @@ public class MemorySessionStorage<T> <: StorageAdapter<T> {
             case Some(_) => true
             case None => false
         }
+    }
+
+    public func readAll(): Array<T> {
+        this.readAllValues()
     }
 
     public func readAllKeys(): Array<String> {
@@ -193,8 +198,10 @@ public class SessionOptions<T> {
 public class SessionContext<T> {
     public let ctx: Context
     public let key: String
+    private let hasKey: Bool
     private let storage: StorageAdapter<T>
     private let initial: Option<SessionInitializer<T>>
+    private let lazy: Bool
     private var value: Option<T> = None
     private var loaded: Bool = false
     private var readRequested: Bool = false
@@ -204,15 +211,27 @@ public class SessionContext<T> {
     public init(ctx: Context, key: String, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>) {
         this.ctx = ctx
         this.key = key
+        this.hasKey = true
         this.storage = storage
         this.initial = initial
+        this.lazy = false
+    }
+
+    public init(ctx: Context, key: Option<String>, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>, lazy: Bool) {
+        this.ctx = ctx
+        this.key = sessionKeyValue(key)
+        this.hasKey = sessionKeyPresent(key)
+        this.storage = storage
+        this.initial = initial
+        this.lazy = lazy
     }
 
     public func preload(): Unit {
-        this.ensureLoaded(false)
+        this.ensureLoaded(true)
     }
 
     public func session(): T {
+        this.requireKey("access")
         this.readRequested = true
         this.ensureLoaded(true)
         match (this.value) {
@@ -222,12 +241,14 @@ public class SessionContext<T> {
     }
 
     public func maybeSession(): Option<T> {
+        this.requireKey("access")
         this.readRequested = true
         this.ensureLoaded(true)
         this.value
     }
 
     public func setSession(value: T): Unit {
+        this.requireKey("assign")
         this.value = Some(value)
         this.loaded = true
         this.wrote = true
@@ -235,14 +256,25 @@ public class SessionContext<T> {
     }
 
     public func deleteSession(): Unit {
+        this.requireKey("assign")
         this.value = None
         this.loaded = true
         this.wrote = true
         this.deleted = true
     }
 
+    public func deleteSessionIfKeyPresent(): Unit {
+        if (this.hasKey) {
+            this.deleteSession()
+        }
+    }
+
     public func isLoaded(): Bool {
         this.loaded
+    }
+
+    public func hasSessionKey(): Bool {
+        this.hasKey
     }
 
     public func wasRead(): Bool {
@@ -254,6 +286,9 @@ public class SessionContext<T> {
     }
 
     public func finish(): Unit {
+        if (!this.hasKey) {
+            return
+        }
         if (this.readRequested && !this.loaded) {
             this.ensureLoaded(true)
         }
@@ -270,6 +305,9 @@ public class SessionContext<T> {
     }
 
     private func ensureLoaded(markInitialWrite: Bool): Unit {
+        if (!this.hasKey) {
+            return
+        }
         if (this.loaded || this.wrote) {
             return
         }
@@ -287,6 +325,12 @@ public class SessionContext<T> {
                 }
         }
         this.loaded = true
+    }
+
+    private func requireKey(op: String): Unit {
+        if (!this.hasKey) {
+            throw Exception(undefinedSessionKeyMessage(op, this.lazy))
+        }
     }
 }
 
@@ -314,8 +358,8 @@ public class SessionMiddleware<T> {
 
     private func createContext(ctx: Context): SessionContext<T> {
         match (this.options.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<T>(ctx, this.options.prefix + key, this.options.storage, this.options.initial)
-            case None => throw Exception("Cannot access session data because the session key is undefined for this update.")
+            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, false)
+            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, false)
         }
     }
 }
@@ -343,8 +387,82 @@ public class LazySessionMiddleware<T> {
 
     private func createContext(ctx: Context): SessionContext<T> {
         match (this.options.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<T>(ctx, this.options.prefix + key, this.options.storage, this.options.initial)
-            case None => throw Exception("Cannot access lazy session data because the session key is undefined for this update.")
+            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, true)
+            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, true)
+        }
+    }
+}
+
+public class MultiSessionOptions2<A, B> {
+    public var first: SessionOptions<A>
+    public var second: SessionOptions<B>
+
+    public init(first: SessionOptions<A>, second: SessionOptions<B>) {
+        this.first = first
+        this.second = second
+    }
+}
+
+public class MultiSessionContext2<A, B> {
+    public let ctx: Context
+    public let first: SessionContext<A>
+    public let second: SessionContext<B>
+
+    public init(ctx: Context, first: SessionContext<A>, second: SessionContext<B>) {
+        this.ctx = ctx
+        this.first = first
+        this.second = second
+    }
+
+    public func preload(): Unit {
+        this.first.preload()
+        this.second.preload()
+    }
+
+    public func deleteSession(): Unit {
+        this.first.deleteSessionIfKeyPresent()
+        this.second.deleteSessionIfKeyPresent()
+    }
+
+    public func finish(): Unit {
+        this.first.finish()
+        this.second.finish()
+    }
+}
+
+public class MultiSessionMiddleware2<A, B> {
+    private let options: MultiSessionOptions2<A, B>
+
+    public init(options: MultiSessionOptions2<A, B>) {
+        this.options = options
+    }
+
+    public func handle(ctx: Context, handler: (MultiSessionContext2<A, B>) -> Unit): Unit {
+        let sessionContext = this.createContext(ctx)
+        sessionContext.preload()
+        handler(sessionContext)
+        sessionContext.finish()
+    }
+
+    private func createContext(ctx: Context): MultiSessionContext2<A, B> {
+        MultiSessionContext2<A, B>(
+            ctx,
+            this.createFirstContext(ctx),
+            this.createSecondContext(ctx),
+        )
+    }
+
+    private func createFirstContext(ctx: Context): SessionContext<A> {
+        match (this.options.first.getSessionKey(ctx)) {
+            case Some(key) => SessionContext<A>(ctx, Some(this.options.first.prefix + key), this.options.first.storage, this.options.first.initial, false)
+            case None => SessionContext<A>(ctx, None<String>, this.options.first.storage, this.options.first.initial, false)
+        }
+    }
+
+    private func createSecondContext(ctx: Context): SessionContext<B> {
+        match (this.options.second.getSessionKey(ctx)) {
+            case Some(key) => SessionContext<B>(ctx, Some(this.options.second.prefix + key), this.options.second.storage, this.options.second.initial, false)
+            case None => SessionContext<B>(ctx, None<String>, this.options.second.storage, this.options.second.initial, false)
         }
     }
 }
@@ -357,6 +475,14 @@ public func session<T>(options: SessionOptions<T>): SessionMiddleware<T> {
     SessionMiddleware<T>(options)
 }
 
+public func session<A, B>(options: MultiSessionOptions2<A, B>): MultiSessionMiddleware2<A, B> {
+    MultiSessionMiddleware2<A, B>(options)
+}
+
+public func multiSession<A, B>(options: MultiSessionOptions2<A, B>): MultiSessionMiddleware2<A, B> {
+    MultiSessionMiddleware2<A, B>(options)
+}
+
 public func lazySession<T>(): LazySessionMiddleware<T> {
     LazySessionMiddleware<T>(SessionOptions<T>())
 }
@@ -367,6 +493,25 @@ public func lazySession<T>(options: SessionOptions<T>): LazySessionMiddleware<T>
 
 public func defaultGetSessionKey(ctx: Context): Option<String> {
     Some(ctx.updateId().toString())
+}
+
+private func sessionKeyValue(key: Option<String>): String {
+    match (key) {
+        case Some(value) => value
+        case None => ""
+    }
+}
+
+private func sessionKeyPresent(key: Option<String>): Bool {
+    match (key) {
+        case Some(_) => true
+        case None => false
+    }
+}
+
+private func undefinedSessionKeyMessage(op: String, lazy: Bool): String {
+    let kind = if (lazy) { "lazy session" } else { "session" }
+    "Cannot " + op + " " + kind + " data because the session key is undefined for this update."
 }
 
 public class SessionEnvelope<T> {
@@ -543,8 +688,19 @@ private class EnhancedStorage<T> <: StorageAdapter<T> {
         }
     }
 
+    public func readAll(): Array<T> {
+        this.readAllValues()
+    }
+
     public func readAllKeys(): Array<String> {
-        this.backing.readAllKeys()
+        let live = ArrayList<String>()
+        for (key in this.backing.readAllKeys()) {
+            match (this.read(key)) {
+                case Some(_) => live.add(key)
+                case None => ()
+            }
+        }
+        live.toArray()
     }
 
     public func readAllValues(): Array<T> {
