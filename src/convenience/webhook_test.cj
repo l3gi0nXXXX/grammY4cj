@@ -42,6 +42,10 @@ private class TimeoutCallbackProbe {
     }
 }
 
+private func webhookRequest(adapterName: String, updateId: Int64): WebhookRequest {
+    WebhookRequest(Update(updateId), "{\"update_id\":${updateId}}", WebhookHeaders(), adapterName)
+}
+
 @Test
 public class WebhookCallbackTest {
     @TestCase
@@ -261,5 +265,220 @@ public class WebhookCallbackTest {
         @Expect(result.response.responded, false)
         @Expect(result.response.lateWebhookReplySent, true)
         @Expect(result.response.lateWebhookReplyPayload, "{\"ok\":true}")
+    }
+
+    @TestCase
+    public func awsLambdaWebhookAdapterProcessesNormalRequest(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "aws-lambda")
+
+        let result = callback.handle(webhookRequest("aws-lambda", 216))
+
+        @Expect(result.response.ended, true)
+        @Expect(result.response.responseDelivery, "lambda-callback")
+        @Expect(handler.handleUpdateCount, 1)
+        @Expect(handler.lastUpdateId, 216)
+    }
+
+    @TestCase
+    public func awsLambdaAsyncWebhookAdapterResolvesHandlerReturn(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "aws-lambda-async")
+
+        let result = callback.handle(webhookRequest("aws-lambda-async", 217))
+
+        @Expect(result.response.ended, true)
+        @Expect(result.response.handlerReturnAvailable, true)
+        @Expect(result.response.handlerReturnResolved, true)
+        @Expect(result.response.handlerReturnKind, "promise-lambda-result")
+    }
+
+    @TestCase
+    public func azureWebhookAdapterUsesMutableResponse(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "azure")
+
+        let result = callback.handle(webhookRequest("azure", 218))
+
+        @Expect(result.response.ended, true)
+        @Expect(result.response.responseDelivery, "mutable-response")
+        @Expect(result.response.endProtocol, "context-res-status-200-empty-body")
+    }
+
+    @TestCase
+    public func azureV4WebhookAdapterUsesHandlerReturn(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        handler.webhookReplyJson = "{\"method\":\"sendMessage\"}"
+        let callback = webhookCallback(handler, "azure-v4")
+
+        let result = callback.handle(webhookRequest("azure-v4", 219))
+
+        @Expect(result.usedWebhookReply, true)
+        @Expect(result.response.handlerReturnAvailable, true)
+        @Expect(result.response.handlerReturnResolved, true)
+        @Expect(result.response.respondProtocol, "resolve-json-body")
+    }
+
+    @TestCase
+    public func bunWebhookAdapterUsesResponseHandlerReturn(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        handler.webhookReplyJson = "{\"method\":\"answerCallbackQuery\"}"
+        let callback = webhookCallback(handler, "bun")
+
+        let result = callback.handle(webhookRequest("bun", 220))
+
+        @Expect(result.response.handlerReturnKind, "promise-response")
+        @Expect(result.response.contentType, "application/json")
+        @Expect(result.response.body, "{\"method\":\"answerCallbackQuery\"}")
+    }
+
+    @TestCase
+    public func cloudflareWebhookAdapterUsesEventRespondWith(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "cloudflare")
+
+        let result = callback.handle(webhookRequest("cloudflare", 221))
+
+        @Expect(result.response.responseDelivery, "event-respond-with")
+        @Expect(result.response.ended, true)
+        @Expect(handler.lastUpdateId, 221)
+    }
+
+    @TestCase
+    public func cloudflareModuleWebhookAdapterReturnsResponsePromise(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "cloudflare-mod")
+
+        let result = callback.handle(webhookRequest("cloudflare-mod", 222))
+
+        @Expect(result.response.handlerReturnAvailable, true)
+        @Expect(result.response.handlerReturnKind, "promise-response")
+        @Expect(result.response.handlerReturnResolved, true)
+    }
+
+    @TestCase
+    public func elysiaWebhookAdapterReturnsStringPromise(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        handler.webhookReplyJson = "{\"ok\":true}"
+        let callback = webhookCallback(handler, "elysia")
+
+        let result = callback.handle(webhookRequest("elysia", 223))
+
+        @Expect(result.response.handlerReturnKind, "promise-string-or-response")
+        @Expect(result.response.respondProtocol, "set-content-type-resolve-json")
+        @Expect(result.response.body, "{\"ok\":true}")
+    }
+
+    @TestCase
+    public func expressWebhookAdapterUsesResponseEndAndSend(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "express")
+
+        let result = callback.handle(webhookRequest("express", 224))
+
+        @Expect(result.response.responseDelivery, "mutable-response")
+        @Expect(result.response.endProtocol, "response-end")
+        @Expect(result.response.statusCode, 200)
+    }
+
+    @TestCase
+    public func fastifyWebhookAdapterUsesReplySend(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        handler.webhookReplyJson = "{\"ok\":true}"
+        let callback = webhookCallback(handler, "fastify")
+
+        let result = callback.handle(webhookRequest("fastify", 225))
+
+        @Expect(result.response.respondProtocol, "reply-headers-send")
+        @Expect(result.response.responded, true)
+        @Expect(result.response.contentType, "application/json")
+    }
+
+    @TestCase
+    public func honoWebhookAdapterReturnsResponsePromise(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "hono")
+
+        let result = callback.handle(webhookRequest("hono", 226))
+
+        @Expect(result.response.handlerReturnAvailable, true)
+        @Expect(result.response.handlerReturnKind, "promise-string-or-response")
+        @Expect(result.response.endProtocol, "resolve-empty-body")
+    }
+
+    @TestCase
+    public func nodeHttpAndHttpsWebhookAdaptersShareRawJsonContract(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let http = webhookCallback(handler, "http")
+        let https = webhookCallback(handler, "https")
+
+        let httpResult = http.handle(webhookRequest("http", 227))
+        let httpsResult = https.handle(webhookRequest("https", 228))
+
+        @Expect(httpResult.response.updateSource, "node-raw-json-stream")
+        @Expect(httpsResult.response.updateSource, "node-raw-json-stream")
+        @Expect(handler.handleUpdateCount, 2)
+    }
+
+    @TestCase
+    public func koaNextNhttpOakWebhookAdaptersUseMutableResponses(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+
+        let koa = webhookCallback(handler, "koa").handle(webhookRequest("koa", 229))
+        let next = webhookCallback(handler, "next-js").handle(webhookRequest("next-js", 230))
+        let nhttp = webhookCallback(handler, "nhttp").handle(webhookRequest("nhttp", 231))
+        let oak = webhookCallback(handler, "oak").handle(webhookRequest("oak", 232))
+
+        @Expect(koa.response.responseDelivery, "mutable-response")
+        @Expect(next.response.responseDelivery, "mutable-response")
+        @Expect(nhttp.response.responseDelivery, "mutable-response")
+        @Expect(oak.response.responseDelivery, "mutable-response")
+        @Expect(handler.handleUpdateCount, 4)
+    }
+
+    @TestCase
+    public func serveStdSveltekitWorktopWebhookAdaptersExposeReturnProtocols(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+
+        let serve = webhookCallback(handler, "serveHttp").handle(webhookRequest("serveHttp", 233))
+        let std = webhookCallback(handler, "std/http").handle(webhookRequest("std/http", 234))
+        let svelte = webhookCallback(handler, "sveltekit").handle(webhookRequest("sveltekit", 235))
+        let worktop = webhookCallback(handler, "worktop").handle(webhookRequest("worktop", 236))
+
+        @Expect(serve.response.responseDelivery, "event-respond-with")
+        @Expect(std.response.handlerReturnAvailable, true)
+        @Expect(svelte.response.handlerReturnAvailable, true)
+        @Expect(worktop.response.responseDelivery, "mutable-response")
+        @Expect(handler.handleUpdateCount, 4)
+    }
+
+    @TestCase
+    public func updateErrorBeforeTimeoutIsPropagated(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        handler.failureMessage = "Update processing failed"
+        handler.delayMilliseconds = 20
+        let options = WebhookOptions(WEBHOOK_TIMEOUT_THROW, 200, "")
+        let callback = webhookCallback(handler, "callback", options)
+        var thrown = false
+
+        try {
+            let _ = callback.handle(webhookRequest("callback", 237))
+        } catch (e: WebhookUpdateFailureError) {
+            thrown = true
+            @Expect(e.message, "Update processing failed")
+        }
+
+        @Expect(thrown, true)
+        @Expect(handler.handleUpdateCount, 1)
+        let noTimeoutHandler = FakeWebhookUpdateHandler()
+        noTimeoutHandler.delayMilliseconds = 25
+        let noTimeoutOptions = WebhookOptions(WEBHOOK_TIMEOUT_THROW, -1, "")
+        let noTimeoutCallback = webhookCallback(noTimeoutHandler, "callback", noTimeoutOptions)
+
+        let result = noTimeoutCallback.handle(webhookRequest("callback", 238))
+
+        @Expect(result.timedOut, false)
+        @Expect(result.response.ended, true)
+        @Expect(noTimeoutHandler.handleUpdateCount, 1)
     }
 }

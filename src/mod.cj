@@ -72,6 +72,7 @@ public import grammy4cj.convenience.WEBHOOK_TIMEOUT_THROW
 public import grammy4cj.convenience.WRONG_TOKEN_ERROR
 public import grammy4cj.convenience.BotWebhookUpdateHandler
 public import grammy4cj.convenience.FakeWebhookUpdateHandler
+public import grammy4cj.convenience.FrameworkAdapterContract
 public import grammy4cj.convenience.WebhookCallback
 public import grammy4cj.convenience.WebhookCallbackResult
 public import grammy4cj.convenience.WebhookHeader
@@ -82,13 +83,20 @@ public import grammy4cj.convenience.WebhookRequest
 public import grammy4cj.convenience.WebhookResponse
 public import grammy4cj.convenience.WebhookTimeoutError
 public import grammy4cj.convenience.WebhookTimeoutCallback
+public import grammy4cj.convenience.WebhookUpdateFailureError
 public import grammy4cj.convenience.WebhookUpdateHandler
+public import grammy4cj.convenience.adapterEndProtocol
 public import grammy4cj.convenience.adapterEndBody
 public import grammy4cj.convenience.adapterEndStatusCode
+public import grammy4cj.convenience.adapterHeaderSource
 public import grammy4cj.convenience.adapterHandlerReturnKind
 public import grammy4cj.convenience.adapterHasHandlerReturn
 public import grammy4cj.convenience.adapterIsSupported
+public import grammy4cj.convenience.adapterRespondProtocol
+public import grammy4cj.convenience.adapterResponseDelivery
 public import grammy4cj.convenience.adapterStatus
+public import grammy4cj.convenience.adapterUnauthorizedProtocol
+public import grammy4cj.convenience.adapterUpdateSource
 public import grammy4cj.convenience.allChatPermissions
 public import grammy4cj.convenience.allChatPermissionKeys
 public import grammy4cj.convenience.allUpdateTypes
@@ -101,6 +109,8 @@ public import grammy4cj.convenience.defaultUpdateTypes
 public import grammy4cj.convenience.enhanceStorage
 public import grammy4cj.convenience.escapeConvenienceJson
 public import grammy4cj.convenience.expressAdapter
+public import grammy4cj.convenience.frameworkAdapterContract
+public import grammy4cj.convenience.frameworkAdapterContracts
 public import grammy4cj.convenience.hasAdapterStatus
 public import grammy4cj.convenience.headerNamesEqual
 public import grammy4cj.convenience.isSecretHeaderName

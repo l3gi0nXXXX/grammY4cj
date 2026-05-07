@@ -1,5 +1,7 @@
 package grammy4cj.convenience
 
+import std.collection.ArrayList
+
 import grammy4cj.bot.Bot
 import grammy4cj.core.WebhookReplyEnvelope
 import grammy4cj.types.Update
@@ -73,6 +75,12 @@ public class WebhookLongPollingConflictError <: Exception {
     }
 }
 
+public class WebhookUpdateFailureError <: Exception {
+    public init(message: String) {
+        super(message)
+    }
+}
+
 public interface WebhookUpdateHandler {
     func ensureInitialized(): Unit
     func handleUpdate(update: Update, webhookReplyEnvelope: WebhookReplyEnvelope): Unit
@@ -86,9 +94,12 @@ public class FakeWebhookUpdateHandler <: WebhookUpdateHandler {
     public var initCount: Int64 = 0
     public var handleUpdateCount: Int64 = 0
     public var lastUpdateId: Int64 = 0
+    public let handledUpdateIds: ArrayList<Int64> = ArrayList<Int64>()
     public var delayMilliseconds: Int64 = 0
     public var webhookReplyJson: String = ""
     public var timeoutCallbackCount: Int64 = 0
+    public var failureMessage: String = ""
+    public var failOnUpdateId: Int64 = -1
 
     public init() {}
 
@@ -102,6 +113,10 @@ public class FakeWebhookUpdateHandler <: WebhookUpdateHandler {
     override public func handleUpdate(update: Update, webhookReplyEnvelope: WebhookReplyEnvelope): Unit {
         this.handleUpdateCount += 1
         this.lastUpdateId = update.updateId
+        this.handledUpdateIds.add(update.updateId)
+        if (!this.failureMessage.isEmpty() && (this.failOnUpdateId < 0 || this.failOnUpdateId == update.updateId)) {
+            throw WebhookUpdateFailureError(this.failureMessage)
+        }
         if (!this.webhookReplyJson.isEmpty()) {
             webhookReplyEnvelope.send(this.webhookReplyJson)
         }
@@ -191,7 +206,7 @@ public class WebhookCallback {
 
         if (!secretTokenMatches(reqRes.header, this.options.secretToken, this.options.secretTokenConfigured, reqRes.headerPresent)) {
             reqRes.unauthorized()
-            return WebhookCallbackResult(reqRes.handlerReturn, true, false, false, reqRes.update.updateId)
+            return WebhookCallbackResult(reqRes.handlerReturn, true, false, false, 0)
         }
 
         if (this.shouldTimeout()) {
