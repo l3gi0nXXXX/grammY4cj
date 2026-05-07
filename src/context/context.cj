@@ -44,14 +44,62 @@ public class ContextShortcutMapping {
 
 public class TextTrigger {
     public let values: Array<String>
+    public let mode: String
 
     public init(values: Array<String>) {
         this.values = values
+        this.mode = "exact"
+    }
+
+    public init(values: Array<String>, mode: String) {
+        this.values = values
+        this.mode = mode
+    }
+
+    public static func exact(value: String): TextTrigger {
+        TextTrigger([value], "exact")
+    }
+
+    public static func exact(values: Array<String>): TextTrigger {
+        TextTrigger(values, "exact")
+    }
+
+    public static func contains(value: String): TextTrigger {
+        TextTrigger([value], "contains")
+    }
+
+    public static func contains(values: Array<String>): TextTrigger {
+        TextTrigger(values, "contains")
+    }
+
+    public static func prefix(value: String): TextTrigger {
+        TextTrigger([value], "prefix")
+    }
+
+    public static func prefix(values: Array<String>): TextTrigger {
+        TextTrigger(values, "prefix")
+    }
+
+    public static func suffix(value: String): TextTrigger {
+        TextTrigger([value], "suffix")
+    }
+
+    public static func suffix(values: Array<String>): TextTrigger {
+        TextTrigger(values, "suffix")
     }
 
     public func matchValue(content: String): String {
         for (value in this.values) {
-            if (content == value) {
+            if (this.mode == "exact" && content == value) {
+                return value
+            }
+            if (this.mode == "contains" && content.contains(value)) {
+                return value
+            }
+            if (this.mode == "prefix" && content.startsWith(value)) {
+                return value
+            }
+            if (this.mode == "suffix" && content.endsWith(value)) {
                 return value
             }
         }
@@ -74,6 +122,10 @@ public class ContextHas {
 
     public func text(triggers: Array<String>): ContextPredicate {
         ContextPredicate("text", toArray(triggers), [])
+    }
+
+    public func text(trigger: TextTrigger): ContextPredicate {
+        ContextPredicate("text", trigger, [])
     }
 
     public func command(command: String): ContextPredicate {
@@ -122,12 +174,20 @@ public class ContextHas {
         ContextPredicate("callbackQuery", toArray(triggers), [])
     }
 
+    public func callbackQuery(trigger: TextTrigger): ContextPredicate {
+        ContextPredicate("callbackQuery", trigger, [])
+    }
+
     public func gameQuery(trigger: String): ContextPredicate {
         ContextPredicate("gameQuery", toArray(trigger), [])
     }
 
     public func gameQuery(triggers: Array<String>): ContextPredicate {
         ContextPredicate("gameQuery", toArray(triggers), [])
+    }
+
+    public func gameQuery(trigger: TextTrigger): ContextPredicate {
+        ContextPredicate("gameQuery", trigger, [])
     }
 
     public func inlineQuery(trigger: String): ContextPredicate {
@@ -138,12 +198,20 @@ public class ContextHas {
         ContextPredicate("inlineQuery", toArray(triggers), [])
     }
 
+    public func inlineQuery(trigger: TextTrigger): ContextPredicate {
+        ContextPredicate("inlineQuery", trigger, [])
+    }
+
     public func chosenInlineResult(trigger: String): ContextPredicate {
         ContextPredicate("chosenInlineResult", toArray(trigger), [])
     }
 
     public func chosenInlineResult(triggers: Array<String>): ContextPredicate {
         ContextPredicate("chosenInlineResult", toArray(triggers), [])
+    }
+
+    public func chosenInlineResult(trigger: TextTrigger): ContextPredicate {
+        ContextPredicate("chosenInlineResult", trigger, [])
     }
 
     public func preCheckoutQuery(trigger: String): ContextPredicate {
@@ -154,6 +222,10 @@ public class ContextHas {
         ContextPredicate("preCheckoutQuery", toArray(triggers), [])
     }
 
+    public func preCheckoutQuery(trigger: TextTrigger): ContextPredicate {
+        ContextPredicate("preCheckoutQuery", trigger, [])
+    }
+
     public func shippingQuery(trigger: String): ContextPredicate {
         ContextPredicate("shippingQuery", toArray(trigger), [])
     }
@@ -161,16 +233,29 @@ public class ContextHas {
     public func shippingQuery(triggers: Array<String>): ContextPredicate {
         ContextPredicate("shippingQuery", toArray(triggers), [])
     }
+
+    public func shippingQuery(trigger: TextTrigger): ContextPredicate {
+        ContextPredicate("shippingQuery", trigger, [])
+    }
 }
 
 public class ContextPredicate {
     public let kind: String
     public let values: Array<String>
+    public let trigger: TextTrigger
     public let reactions: Array<ReactionType>
 
     public init(kind: String, values: Array<String>, reactions: Array<ReactionType>) {
         this.kind = kind
         this.values = values
+        this.trigger = TextTrigger(values)
+        this.reactions = reactions
+    }
+
+    public init(kind: String, trigger: TextTrigger, reactions: Array<ReactionType>) {
+        this.kind = kind
+        this.values = trigger.values
+        this.trigger = trigger
         this.reactions = reactions
     }
 
@@ -184,7 +269,7 @@ public class ContextPredicate {
             return false
         }
         if (this.kind == "text") {
-            return matchesText(ctx, TextTrigger(this.values))
+            return matchesText(ctx, this.trigger)
         }
         if (this.kind == "command") {
             return matchesCommand(ctx, this.values)
@@ -196,22 +281,22 @@ public class ContextPredicate {
             return ctx.chat.isPresent && containsString(this.values, ctx.chat.kind)
         }
         if (this.kind == "callbackQuery") {
-            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.data.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.data, TextTrigger(this.values))
+            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.data.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.data, this.trigger)
         }
         if (this.kind == "gameQuery") {
-            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.gameShortName.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.gameShortName, TextTrigger(this.values))
+            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.gameShortName.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.gameShortName, this.trigger)
         }
         if (this.kind == "inlineQuery") {
-            return ctx.inlineQuery.isPresent && matchAndStore(ctx, ctx.inlineQuery.query, TextTrigger(this.values))
+            return ctx.inlineQuery.isPresent && matchAndStore(ctx, ctx.inlineQuery.query, this.trigger)
         }
         if (this.kind == "chosenInlineResult") {
-            return ctx.chosenInlineResult.isPresent && matchAndStore(ctx, ctx.chosenInlineResult.resultId, TextTrigger(this.values))
+            return ctx.chosenInlineResult.isPresent && matchAndStore(ctx, ctx.chosenInlineResult.resultId, this.trigger)
         }
         if (this.kind == "preCheckoutQuery") {
-            return ctx.preCheckoutQuery.isPresent && matchAndStore(ctx, ctx.preCheckoutQuery.invoicePayload, TextTrigger(this.values))
+            return ctx.preCheckoutQuery.isPresent && matchAndStore(ctx, ctx.preCheckoutQuery.invoicePayload, this.trigger)
         }
         if (this.kind == "shippingQuery") {
-            return ctx.shippingQuery.isPresent && matchAndStore(ctx, ctx.shippingQuery.invoicePayload, TextTrigger(this.values))
+            return ctx.shippingQuery.isPresent && matchAndStore(ctx, ctx.shippingQuery.invoicePayload, this.trigger)
         }
         false
     }
@@ -471,6 +556,10 @@ public class Context {
         Context.has.text(triggers).matches(this)
     }
 
+    public func hasText(trigger: TextTrigger): Bool {
+        Context.has.text(trigger).matches(this)
+    }
+
     public func hasCommand(command: String): Bool {
         Context.has.command(command).matches(this)
     }
@@ -511,12 +600,20 @@ public class Context {
         Context.has.callbackQuery(triggers).matches(this)
     }
 
+    public func hasCallbackQuery(trigger: TextTrigger): Bool {
+        Context.has.callbackQuery(trigger).matches(this)
+    }
+
     public func hasGameQuery(trigger: String): Bool {
         Context.has.gameQuery(trigger).matches(this)
     }
 
     public func hasGameQuery(triggers: Array<String>): Bool {
         Context.has.gameQuery(triggers).matches(this)
+    }
+
+    public func hasGameQuery(trigger: TextTrigger): Bool {
+        Context.has.gameQuery(trigger).matches(this)
     }
 
     public func hasInlineQuery(trigger: String): Bool {
@@ -527,12 +624,20 @@ public class Context {
         Context.has.inlineQuery(triggers).matches(this)
     }
 
+    public func hasInlineQuery(trigger: TextTrigger): Bool {
+        Context.has.inlineQuery(trigger).matches(this)
+    }
+
     public func hasChosenInlineResult(trigger: String): Bool {
         Context.has.chosenInlineResult(trigger).matches(this)
     }
 
     public func hasChosenInlineResult(triggers: Array<String>): Bool {
         Context.has.chosenInlineResult(triggers).matches(this)
+    }
+
+    public func hasChosenInlineResult(trigger: TextTrigger): Bool {
+        Context.has.chosenInlineResult(trigger).matches(this)
     }
 
     public func hasPreCheckoutQuery(trigger: String): Bool {
@@ -543,12 +648,20 @@ public class Context {
         Context.has.preCheckoutQuery(triggers).matches(this)
     }
 
+    public func hasPreCheckoutQuery(trigger: TextTrigger): Bool {
+        Context.has.preCheckoutQuery(trigger).matches(this)
+    }
+
     public func hasShippingQuery(trigger: String): Bool {
         Context.has.shippingQuery(trigger).matches(this)
     }
 
     public func hasShippingQuery(triggers: Array<String>): Bool {
         Context.has.shippingQuery(triggers).matches(this)
+    }
+
+    public func hasShippingQuery(trigger: TextTrigger): Bool {
+        Context.has.shippingQuery(trigger).matches(this)
     }
 
     public func reply(text: String): Payload {
@@ -566,34 +679,42 @@ public class Context {
 
     public func forwardMessage(chatId: Int64): Payload {
         let payload = Payload("")
-        payload.addValue("chat_id", chatId.toString())
-        payload.addValue("from_chat_id", orThrow(this.chatId, "forwardMessage").toString())
-        payload.addValue("message_id", orThrow(this.msgId, "forwardMessage").toString())
+        payload.addInt("chat_id", chatId)
+        payload.addInt("from_chat_id", orThrow(this.chatId, "forwardMessage"))
+        payload.addInt("message_id", orThrow(this.msgId, "forwardMessage"))
         this.api.forwardMessage(payload)
     }
 
     public func forwardMessages(chatId: Int64, messageIds: String): Payload {
         let payload = Payload("")
-        payload.addValue("chat_id", chatId.toString())
-        payload.addValue("from_chat_id", orThrow(this.chatId, "forwardMessages").toString())
-        payload.addValue("message_ids", messageIds)
+        payload.addInt("chat_id", chatId)
+        payload.addInt("from_chat_id", orThrow(this.chatId, "forwardMessages"))
+        payload.addRawJson("message_ids", messageIds)
         this.api.forwardMessages(payload)
+    }
+
+    public func forwardMessages(chatId: Int64, messageIds: Array<Int64>): Payload {
+        forwardMessages(chatId, intArrayJson(messageIds))
     }
 
     public func copyMessage(chatId: Int64): Payload {
         let payload = Payload("")
-        payload.addValue("chat_id", chatId.toString())
-        payload.addValue("from_chat_id", orThrow(this.chatId, "copyMessage").toString())
-        payload.addValue("message_id", orThrow(this.msgId, "copyMessage").toString())
+        payload.addInt("chat_id", chatId)
+        payload.addInt("from_chat_id", orThrow(this.chatId, "copyMessage"))
+        payload.addInt("message_id", orThrow(this.msgId, "copyMessage"))
         this.api.copyMessage(payload)
     }
 
     public func copyMessages(chatId: Int64, messageIds: String): Payload {
         let payload = Payload("")
-        payload.addValue("chat_id", chatId.toString())
-        payload.addValue("from_chat_id", orThrow(this.chatId, "copyMessages").toString())
-        payload.addValue("message_ids", messageIds)
+        payload.addInt("chat_id", chatId)
+        payload.addInt("from_chat_id", orThrow(this.chatId, "copyMessages"))
+        payload.addRawJson("message_ids", messageIds)
         this.api.copyMessages(payload)
+    }
+
+    public func copyMessages(chatId: Int64, messageIds: Array<Int64>): Payload {
+        copyMessages(chatId, intArrayJson(messageIds))
     }
 
     public func replyWithPhoto(photo: String): Payload {
@@ -707,6 +828,24 @@ public class Context {
     public func react(reaction: String): Payload {
         let payload = messageTargetPayload("setMessageReaction")
         payload.addRawJson("reaction", "[{\"type\":\"emoji\",\"emoji\":\"" + reaction + "\"}]")
+        invokeApi("setMessageReaction", payload)
+    }
+
+    public func react(reactions: Array<String>): Payload {
+        let normalized = ArrayList<ReactionType>()
+        for (reaction in reactions) {
+            normalized.add(ReactionType.emojiReaction(reaction))
+        }
+        react(normalized.toArray())
+    }
+
+    public func react(reaction: ReactionType): Payload {
+        react([reaction])
+    }
+
+    public func react(reactions: Array<ReactionType>): Payload {
+        let payload = messageTargetPayload("setMessageReaction")
+        payload.addRawJson("reaction", reactionArrayJson(reactions))
         invokeApi("setMessageReaction", payload)
     }
 
@@ -1044,6 +1183,10 @@ public class Context {
         invokeApi("answerCallbackQuery", payload)
     }
 
+    public func answerCallbackQuery(): Payload {
+        invokeApi("answerCallbackQuery", callbackQueryPayload("answerCallbackQuery"))
+    }
+
     public func setChatMenuButton(): Payload {
         invokeApi("setChatMenuButton", Payload(""))
     }
@@ -1098,10 +1241,18 @@ public class Context {
         invokeApi("deleteMessages", payload)
     }
 
+    public func deleteMessages(messageIds: Array<Int64>): Payload {
+        deleteMessages(intArrayJson(messageIds))
+    }
+
     public func deleteBusinessMessages(messageIds: String): Payload {
         let payload = businessPayload("deleteBusinessMessages")
         payload.addRawJson("message_ids", messageIds)
         invokeApi("deleteBusinessMessages", payload)
+    }
+
+    public func deleteBusinessMessages(messageIds: Array<Int64>): Payload {
+        deleteBusinessMessages(intArrayJson(messageIds))
     }
 
     public func setBusinessAccountName(firstName: String): Payload {
@@ -1269,6 +1420,13 @@ public class Context {
     public func answerPreCheckoutQuery(ok: Bool): Payload {
         let payload = preCheckoutQueryPayload("answerPreCheckoutQuery")
         payload.addBool("ok", ok)
+        invokeApi("answerPreCheckoutQuery", payload)
+    }
+
+    public func answerPreCheckoutQuery(ok: Bool, errorMessage: String): Payload {
+        let payload = preCheckoutQueryPayload("answerPreCheckoutQuery")
+        payload.addBool("ok", ok)
+        payload.addValue("error_message", errorMessage)
         invokeApi("answerPreCheckoutQuery", payload)
     }
 
@@ -1885,6 +2043,10 @@ public func triggerFn(triggers: Array<String>): TextTrigger {
     TextTrigger(toArray(triggers))
 }
 
+public func triggerFn(trigger: TextTrigger): TextTrigger {
+    trigger
+}
+
 private func validateCommandNames(commands: Array<String>): Unit {
     for (command in commands) {
         if (command.startsWith("/")) {
@@ -1981,7 +2143,7 @@ private func commandMatches(ctx: Context, commands: Array<String>, raw: String):
     if (command == raw) {
         return containsString(commands, raw)
     }
-    commandTarget(raw) == ctx.me.username && containsString(commands, command)
+    asciiEqualsIgnoreCase(commandTarget(raw), ctx.me.username) && containsString(commands, command)
 }
 
 private func commandNameWithoutBot(raw: String): String {
@@ -2116,6 +2278,89 @@ private func containsString(values: Array<String>, value: String): Bool {
         }
     }
     false
+}
+
+private func intArrayJson(values: Array<Int64>): String {
+    var body = "["
+    var first = true
+    for (value in values) {
+        if (!first) {
+            body += ","
+        }
+        body += value.toString()
+        first = false
+    }
+    body + "]"
+}
+
+private func reactionArrayJson(values: Array<ReactionType>): String {
+    var body = "["
+    var first = true
+    for (value in values) {
+        if (!first) {
+            body += ","
+        }
+        body += reactionJson(value)
+        first = false
+    }
+    body + "]"
+}
+
+private func reactionJson(value: ReactionType): String {
+    if (value.kind == "emoji") {
+        return "{\"type\":\"emoji\",\"emoji\":\"" + value.emoji + "\"}"
+    }
+    if (value.kind == "custom_emoji") {
+        return "{\"type\":\"custom_emoji\",\"custom_emoji_id\":\"" + value.customEmojiId + "\"}"
+    }
+    if (value.kind == "paid") {
+        return "{\"type\":\"paid\"}"
+    }
+    "{\"type\":\"" + value.kind + "\"}"
+}
+
+private func asciiEqualsIgnoreCase(left: String, right: String): Bool {
+    if (left.size != right.size) {
+        return false
+    }
+    var index: Int64 = 0
+    while (index < left.size) {
+        if (asciiLowerChar(left[index..index + 1]) != asciiLowerChar(right[index..index + 1])) {
+            return false
+        }
+        index += 1
+    }
+    true
+}
+
+private func asciiLowerChar(value: String): String {
+    if (value == "A") { return "a" }
+    if (value == "B") { return "b" }
+    if (value == "C") { return "c" }
+    if (value == "D") { return "d" }
+    if (value == "E") { return "e" }
+    if (value == "F") { return "f" }
+    if (value == "G") { return "g" }
+    if (value == "H") { return "h" }
+    if (value == "I") { return "i" }
+    if (value == "J") { return "j" }
+    if (value == "K") { return "k" }
+    if (value == "L") { return "l" }
+    if (value == "M") { return "m" }
+    if (value == "N") { return "n" }
+    if (value == "O") { return "o" }
+    if (value == "P") { return "p" }
+    if (value == "Q") { return "q" }
+    if (value == "R") { return "r" }
+    if (value == "S") { return "s" }
+    if (value == "T") { return "t" }
+    if (value == "U") { return "u" }
+    if (value == "V") { return "v" }
+    if (value == "W") { return "w" }
+    if (value == "X") { return "x" }
+    if (value == "Y") { return "y" }
+    if (value == "Z") { return "z" }
+    value
 }
 
 private func reactionExists(values: Array<ReactionType>, reaction: ReactionType): Bool {

@@ -139,6 +139,29 @@ public class ContextGetterTest {
         }
 
         @Expect(ctx.message.isPresent, false)
+        @Expect(ctx.editedMessage.isPresent, false)
+        @Expect(ctx.channelPost.isPresent, false)
+        @Expect(ctx.editedChannelPost.isPresent, false)
+        @Expect(ctx.businessConnection.isPresent, false)
+        @Expect(ctx.businessMessage.isPresent, false)
+        @Expect(ctx.editedBusinessMessage.isPresent, false)
+        @Expect(ctx.deletedBusinessMessages.isPresent, false)
+        @Expect(ctx.messageReaction.isPresent, false)
+        @Expect(ctx.messageReactionCount.isPresent, false)
+        @Expect(ctx.inlineQuery.isPresent, false)
+        @Expect(ctx.chosenInlineResult.isPresent, false)
+        @Expect(ctx.callbackQuery.isPresent, false)
+        @Expect(ctx.shippingQuery.isPresent, false)
+        @Expect(ctx.preCheckoutQuery.isPresent, false)
+        @Expect(ctx.poll.isPresent, false)
+        @Expect(ctx.pollAnswer.isPresent, false)
+        @Expect(ctx.myChatMember.isPresent, false)
+        @Expect(ctx.chatMember.isPresent, false)
+        @Expect(ctx.managedBot.isPresent, false)
+        @Expect(ctx.chatJoinRequest.isPresent, false)
+        @Expect(ctx.chatBoost.isPresent, false)
+        @Expect(ctx.removedChatBoost.isPresent, false)
+        @Expect(ctx.purchasedPaidMedia.isPresent, false)
         @Expect(ctx.msg.isPresent, false)
         @Expect(ctx.chat.isPresent, false)
         @Expect(ctx.senderChat.isPresent, false)
@@ -184,6 +207,61 @@ public class ContextGetterTest {
     }
 
     @TestCase
+    public func aggregateGetterMatrixCoversMultipleSourcesAndSentinels(): Unit {
+        let chatA = Chat(121, "private")
+        let chatB = Chat(122, "supergroup")
+        let chatC = Chat(123, "channel")
+        let userA = User(221, false, "Ada", "ada")
+        let userB = User(222, false, "Grace", "grace")
+        let empty = testContext(Update(30))
+
+        let message = Message(321, chatA, "message", userA)
+        message.senderChat = chatC
+        message.businessConnectionId = "bc-message"
+        @Expect(testContext(Update.withMessage(31, message)).msg.messageId, 321)
+        @Expect(testContext(Update.withMessage(32, message)).chat.id, 121)
+        @Expect(testContext(Update.withMessage(33, message)).senderChat.id, 123)
+        @Expect(testContext(Update.withMessage(34, message)).from.id, 221)
+        @Expect(testContext(Update.withMessage(35, message)).msgId, 321)
+        @Expect(testContext(Update.withMessage(36, message)).chatId, 121)
+        @Expect(testContext(Update.withMessage(37, message)).businessConnectionId, "bc-message")
+
+        let callbackMessage = Message(322, chatB, "callback-message", userB)
+        callbackMessage.senderChat = chatC
+        let callback = CallbackQuery(userB, "callback-data", "", callbackMessage, "inline-callback")
+        @Expect(testContext(Update.withCallbackQuery(38, callback)).msg.messageId, 322)
+        @Expect(testContext(Update.withCallbackQuery(39, callback)).chat.id, 122)
+        @Expect(testContext(Update.withCallbackQuery(40, callback)).senderChat.id, 123)
+        @Expect(testContext(Update.withCallbackQuery(41, callback)).from.id, 222)
+        @Expect(testContext(Update.withCallbackQuery(42, callback)).inlineMessageId, "inline-callback")
+
+        let reaction = MessageReactionUpdated(chatB, userB, 323, [], [])
+        @Expect(testContext(Update.withMessageReaction(43, reaction)).chat.id, 122)
+        @Expect(testContext(Update.withMessageReaction(44, reaction)).from.id, 222)
+        @Expect(testContext(Update.withMessageReaction(45, reaction)).msgId, 323)
+        @Expect(testContext(Update.withMessageReaction(46, reaction)).chatId, 122)
+
+        let business = BusinessConnection("bc-update", userB, 4242)
+        @Expect(testContext(Update.withBusinessConnection(47, business)).from.id, 222)
+        @Expect(testContext(Update.withBusinessConnection(48, business)).chatId, 4242)
+        @Expect(testContext(Update.withBusinessConnection(49, business)).businessConnectionId, "bc-update")
+
+        let chosen = ChosenInlineResult(userA, "chosen-result", "inline-chosen")
+        @Expect(testContext(Update.withChosenInlineResult(50, chosen)).inlineMessageId, "inline-chosen")
+        let deleted = BusinessMessagesDeleted(chatB, "bc-deleted")
+        @Expect(testContext(Update.withDeletedBusinessMessages(51, deleted)).businessConnectionId, "bc-deleted")
+
+        @Expect(empty.msg.isPresent, false)
+        @Expect(empty.chat.isPresent, false)
+        @Expect(empty.senderChat.isPresent, false)
+        @Expect(empty.from.isPresent, false)
+        @Expect(empty.msgId, 0)
+        @Expect(empty.chatId, 0)
+        @Expect(empty.inlineMessageId, "")
+        @Expect(empty.businessConnectionId, "")
+    }
+
+    @TestCase
     public func entitiesAndReactionsMirrorContextHelpers(): Unit {
         let chat = Chat(111, "private")
         let user = User(222, false, "Ada", "ada")
@@ -198,8 +276,15 @@ public class ContextGetterTest {
         @Expect(ctx.entities("url")[0].text, "link")
         @Expect(ctx.entities(["bold"])[0].text, "hello")
 
+        let captionMessage = Message(33, chat, "")
+        captionMessage.caption = "caption link"
+        captionMessage.addCaptionEntity(MessageEntity("url", 8, 4))
+        let captionCtx = testContext(Update.withMessage(6, captionMessage))
+        @Expect(captionCtx.entities().size, 1)
+        @Expect(captionCtx.entities("url")[0].text, "link")
+
         let reactionUpdate = Update.withMessageReaction(
-            5,
+            7,
             MessageReactionUpdated(
                 chat,
                 user,
@@ -285,6 +370,32 @@ public class ContextHasTest {
     }
 
     @TestCase
+    public func textTriggerObjectsAreRegexpFunctionAlternative(): Unit {
+        let chat = Chat(128, "private")
+        let user = User(461, false, "Alonzo", "alonzo")
+        let ctx = testContext(Update.withMessage(18, Message(48, chat, "alpha beta", user)))
+
+        @Expect(ctx.hasText(TextTrigger.contains("pha")), true)
+        @Expect(ctx.`match`, "pha")
+        @Expect(ctx.hasText(TextTrigger.prefix("alpha")), true)
+        @Expect(ctx.`match`, "alpha")
+        @Expect(ctx.hasText(TextTrigger.suffix("beta")), true)
+        @Expect(ctx.`match`, "beta")
+        @Expect(ctx.hasText(TextTrigger.contains("gamma")), false)
+        @Expect(ctx.`match`, "beta")
+
+        let inlineCtx = testContext(Update.withInlineQuery(19, InlineQuery(user, "inline-value")))
+        @Expect(Context.has.inlineQuery(TextTrigger.contains("line")).matches(inlineCtx), true)
+        @Expect(inlineCtx.`match`, "line")
+
+        @Expect(triggerFn("exact").matchValue("exact"), "exact")
+        @Expect(triggerFn(["missing", "array"]).matchValue("array"), "array")
+        @Expect(triggerFn(TextTrigger.prefix("pre")).matchValue("prefix"), "pre")
+        @Expect(toArray("single").size, 1)
+        @Expect(toArray(["one", "two"]).size, 2)
+    }
+
+    @TestCase
     public func matchIsWrittenOnlyBySuccessfulTriggerProbes(): Unit {
         let chat = Chat(125, "private")
         let user = User(458, false, "Lin", "lin")
@@ -302,7 +413,7 @@ public class ContextHasTest {
         let chat = Chat(126, "private")
         let user = User(459, false, "Edsger", "edsger")
 
-        let targeted = Message(46, chat, "/start@grammy4cj_bot payload", user)
+        let targeted = Message(46, chat, "/start@GrAmMy4Cj_BoT payload", user)
         targeted.addEntity(MessageEntity("bot_command", 0, 20))
         let targetedCtx = testContext(Update.withMessage(16, targeted))
         @Expect(targetedCtx.hasCommand("start"), true)
@@ -325,6 +436,22 @@ public class ContextHasTest {
         }
 
         @Expect(threw, true)
+    }
+
+    @TestCase
+    public func orThrowAcceptsValuesAndRejectsSentinels(): Unit {
+        let chat = Chat(129, "private")
+        let user = User(462, false, "Barbara", "barbara")
+        let message = Message(49, chat, "payload", user)
+
+        @Expect(orThrow(1, "int"), 1)
+        @Expect(orThrow("value", "string"), "value")
+        @Expect(orThrow(user, "user").id, 462)
+        @Expect(orThrow(message, "message").messageId, 49)
+        @Expect(throwsException({ => orThrow(0, "int") }), true)
+        @Expect(throwsException({ => orThrow("", "string") }), true)
+        @Expect(throwsException({ => orThrow(User(), "user") }), true)
+        @Expect(throwsException({ => orThrow(Message(), "message") }), true)
     }
 }
 
@@ -376,6 +503,41 @@ public class ContextShortcutTest {
         @Expect(payloadBody(payload).contains("\"message_thread_id\":\"77\""), true)
         @Expect(payloadBody(payload).contains("\"direct_messages_topic_id\":\"88\""), true)
         @Expect(payloadBody(payload).contains("\"action\":\"typing\""), true)
+    }
+
+    @TestCase
+    public func forwardCopyDeleteAndReactionShortcutsUseTypedPayloads(): Unit {
+        let chat = Chat(706, "private")
+        let user = User(806, false, "Donald", "donald")
+        let message = Message(906, chat, "incoming", user)
+        let ctx = testContext(Update.withMessage(111, message))
+
+        let forward = ctx.forwardMessage(9001)
+        @Expect(methodName(forward), "forwardMessage")
+        @Expect(payloadBody(forward).contains("\"chat_id\":9001"), true)
+        @Expect(payloadBody(forward).contains("\"from_chat_id\":706"), true)
+        @Expect(payloadBody(forward).contains("\"message_id\":906"), true)
+
+        let forwardMany = ctx.forwardMessages(9002, [906, 907])
+        @Expect(methodName(forwardMany), "forwardMessages")
+        @Expect(payloadBody(forwardMany).contains("\"message_ids\":[906,907]"), true)
+
+        let copy = ctx.copyMessage(9003)
+        @Expect(methodName(copy), "copyMessage")
+        @Expect(payloadBody(copy).contains("\"from_chat_id\":706"), true)
+        @Expect(payloadBody(copy).contains("\"message_id\":906"), true)
+
+        let copyMany = ctx.copyMessages(9004, [908, 909])
+        @Expect(methodName(copyMany), "copyMessages")
+        @Expect(payloadBody(copyMany).contains("\"message_ids\":[908,909]"), true)
+
+        let deleteMany = ctx.deleteMessages([906, 907])
+        @Expect(methodName(deleteMany), "deleteMessages")
+        @Expect(payloadBody(deleteMany).contains("\"message_ids\":[906,907]"), true)
+
+        let reaction = ctx.react([ReactionType.emojiReaction("heart"), ReactionType.customEmojiReaction("custom-1")])
+        @Expect(methodName(reaction), "setMessageReaction")
+        @Expect(payloadBody(reaction).contains("\"reaction\":[{\"type\":\"emoji\",\"emoji\":\"heart\"},{\"type\":\"custom_emoji\",\"custom_emoji_id\":\"custom-1\"}]"), true)
     }
 
     @TestCase
@@ -452,6 +614,10 @@ public class ContextShortcutTest {
         let read = ctx.readBusinessMessage()
         @Expect(methodName(read), "readBusinessMessage")
         @Expect(payloadBody(read).contains("\"message_id\":904"), true)
+
+        let deleted = ctx.deleteBusinessMessages([904, 905])
+        @Expect(methodName(deleted), "deleteBusinessMessages")
+        @Expect(payloadBody(deleted).contains("\"message_ids\":[904,905]"), true)
     }
 
     @TestCase
@@ -463,6 +629,9 @@ public class ContextShortcutTest {
         let callback = callbackCtx.answerCallbackQuery("ok")
         @Expect(methodName(callback), "answerCallbackQuery")
         @Expect(payloadBody(callback).contains("\"callback_query_id\":\"callback-id\""), true)
+        let callbackWithoutText = callbackCtx.answerCallbackQuery()
+        @Expect(methodName(callbackWithoutText), "answerCallbackQuery")
+        @Expect(payloadBody(callbackWithoutText).contains("\"text\""), false)
 
         let inlineCtx = testContext(Update.withInlineQuery(107, InlineQuery(user, "inline-id")))
         let inline = inlineCtx.answerInlineQuery("[{\"type\":\"article\",\"id\":\"1\"}]")
@@ -474,6 +643,12 @@ public class ContextShortcutTest {
         let shipping = shippingCtx.answerShippingQuery(true)
         @Expect(methodName(shipping), "answerShippingQuery")
         @Expect(payloadBody(shipping).contains("\"shipping_query_id\":\"shipping-id\""), true)
+
+        let preCheckoutCtx = testContext(Update.withPreCheckoutQuery(108, PreCheckoutQuery(user, "pre-checkout-id")))
+        let preCheckout = preCheckoutCtx.answerPreCheckoutQuery(false, "sold out")
+        @Expect(methodName(preCheckout), "answerPreCheckoutQuery")
+        @Expect(payloadBody(preCheckout).contains("\"pre_checkout_query_id\":\"pre-checkout-id\""), true)
+        @Expect(payloadBody(preCheckout).contains("\"error_message\":\"sold out\""), true)
 
         let profileCtx = testContext(Update.withMessage(109, Message(906, chat, "pay", user)))
         let profile = profileCtx.getUserProfilePhotos()
@@ -487,6 +662,20 @@ public class ContextShortcutTest {
         let menu = profileCtx.setChatMenuButton()
         @Expect(methodName(menu), "setChatMenuButton")
         @Expect(payloadBody(menu), "{}")
+
+        let gift = profileCtx.replyWithGift("gift-1")
+        @Expect(methodName(gift), "sendGift")
+        @Expect(payloadBody(gift).contains("\"user_id\":805"), true)
+        @Expect(payloadBody(gift).contains("\"gift_id\":\"gift-1\""), true)
+
+        let premium = profileCtx.giftPremiumSubscription(3, 1000)
+        @Expect(methodName(premium), "giftPremiumSubscription")
+        @Expect(payloadBody(premium).contains("\"month_count\":3"), true)
+        @Expect(payloadBody(premium).contains("\"star_count\":1000"), true)
+
+        let refund = profileCtx.refundStarPayment("charge-805")
+        @Expect(methodName(refund), "refundStarPayment")
+        @Expect(payloadBody(refund).contains("\"telegram_payment_charge_id\":\"charge-805\""), true)
     }
 
     @TestCase
@@ -494,12 +683,23 @@ public class ContextShortcutTest {
         let empty = testContext(Update(110))
 
         @Expect(throwsException({ => empty.reply("no chat") }), true)
+        @Expect(throwsException({ => empty.forwardMessage(1) }), true)
+        @Expect(throwsException({ => empty.copyMessage(1) }), true)
+        @Expect(throwsException({ => empty.deleteMessage() }), true)
+        @Expect(throwsException({ => empty.react("heart") }), true)
         @Expect(throwsException({ => empty.banAuthor() }), true)
+        @Expect(throwsException({ => empty.getAuthor() }), true)
         @Expect(throwsException({ => empty.closeForumTopic() }), true)
         @Expect(throwsException({ => empty.getBusinessConnection() }), true)
+        @Expect(throwsException({ => empty.deleteBusinessMessages([1]) }), true)
+        @Expect(throwsException({ => empty.postStory("{\"type\":\"photo\"}", 86400) }), true)
         @Expect(throwsException({ => empty.answerInlineQuery("[]") }), true)
         @Expect(throwsException({ => empty.answerCallbackQuery("missing") }), true)
+        @Expect(throwsException({ => empty.answerShippingQuery(true) }), true)
+        @Expect(throwsException({ => empty.answerPreCheckoutQuery(true) }), true)
         @Expect(throwsException({ => empty.getUserProfilePhotos() }), true)
+        @Expect(throwsException({ => empty.replyWithGift("gift") }), true)
+        @Expect(throwsException({ => empty.refundStarPayment("charge") }), true)
         @Expect(throwsException({ => empty.readBusinessMessage() }), true)
     }
 }
