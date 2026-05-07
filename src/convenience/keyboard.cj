@@ -75,6 +75,14 @@ public class KeyboardButton {
     public func toJSON(): String {
         this.toTelegramObject().toJSON()
     }
+
+    public func schema(): TelegramObjectSchema {
+        keyboardButtonTelegramObjectSchema()
+    }
+
+    public func schemaIsValid(): Bool {
+        this.schema().isValid(this.toTelegramObject())
+    }
 }
 
 public class InlineKeyboardButton {
@@ -149,6 +157,14 @@ public class InlineKeyboardButton {
 
     public func toJSON(): String {
         this.toTelegramObject().toJSON()
+    }
+
+    public func schema(): TelegramObjectSchema {
+        inlineKeyboardButtonTelegramObjectSchema()
+    }
+
+    public func schemaIsValid(): Bool {
+        this.schema().isValid(this.toTelegramObject())
     }
 }
 
@@ -616,6 +632,22 @@ public class Keyboard {
         this.toTelegramObject().toJSON()
     }
 
+    public func schema(): TelegramObjectSchema {
+        TelegramObjectSchema("Keyboard")
+            .requireField("keyboard")
+            .allowFields([
+                "is_persistent",
+                "selective",
+                "one_time_keyboard",
+                "resize_keyboard",
+                "input_field_placeholder"
+            ])
+    }
+
+    public func schemaIsValid(): Bool {
+        this.schema().isValid(this.toTelegramObject())
+    }
+
     private func currentRow(): ArrayList<KeyboardButton> {
         if (this.keyboard.size == 0) {
             this.keyboard.add(ArrayList<KeyboardButton>())
@@ -1068,6 +1100,15 @@ public class InlineKeyboard {
         this.toTelegramObject().toJSON()
     }
 
+    public func schema(): TelegramObjectSchema {
+        TelegramObjectSchema("InlineKeyboard")
+            .requireField("inline_keyboard")
+    }
+
+    public func schemaIsValid(): Bool {
+        this.schema().isValid(this.toTelegramObject())
+    }
+
     private func currentRow(): ArrayList<InlineKeyboardButton> {
         if (this.inlineKeyboard.size == 0) {
             this.inlineKeyboard.add(ArrayList<InlineKeyboardButton>())
@@ -1094,6 +1135,39 @@ private func telegramStringField(options: TelegramObject, key: String): String {
         }
     }
     ""
+}
+
+private func keyboardButtonTelegramObjectSchema(): TelegramObjectSchema {
+    TelegramObjectSchema("KeyboardButton")
+        .requireField("text")
+        .allowFields(["style", "icon_custom_emoji_id"])
+        .exclusiveGroup([
+            "request_users",
+            "request_chat",
+            "request_contact",
+            "request_location",
+            "request_poll",
+            "request_managed_bot",
+            "web_app"
+        ])
+}
+
+private func inlineKeyboardButtonTelegramObjectSchema(): TelegramObjectSchema {
+    TelegramObjectSchema("InlineKeyboardButton")
+        .requireField("text")
+        .allowFields(["style", "icon_custom_emoji_id"])
+        .exclusiveGroup([
+            "url",
+            "callback_data",
+            "web_app",
+            "login_url",
+            "switch_inline_query",
+            "switch_inline_query_current_chat",
+            "switch_inline_query_chosen_chat",
+            "copy_text",
+            "callback_game",
+            "pay"
+        ])
 }
 
 private func copyKeyboardGrid(source: ArrayList<ArrayList<KeyboardButton>>): ArrayList<ArrayList<KeyboardButton>> {

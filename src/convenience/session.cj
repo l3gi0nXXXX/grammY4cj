@@ -12,6 +12,30 @@ public type SessionNowMillis = () -> Int64
 
 private let SESSION_TTL_DISABLED: Int64 = -1
 
+public class SessionPropertyContract {
+    public let upstreamProperty: String
+    public let strictRead: String
+    public let strictWrite: String
+    public let strictDelete: String
+    public let lazyRead: String
+    public let multiDelete: String
+    public let contextIntegration: String
+
+    public init() {
+        this.upstreamProperty = "ctx.session"
+        this.strictRead = "SessionContext.session()"
+        this.strictWrite = "SessionContext.setSession(value)"
+        this.strictDelete = "SessionContext.deleteSession()"
+        this.lazyRead = "LazySessionMiddleware + SessionContext.session()"
+        this.multiDelete = "MultiSessionContext2.deleteSession()"
+        this.contextIntegration = "explicit SessionContext until Context property flavors are available"
+    }
+}
+
+public func sessionPropertyContract(): SessionPropertyContract {
+    SessionPropertyContract()
+}
+
 public class StorageEntry<T> {
     public let key: String
     public let value: T

@@ -108,6 +108,14 @@ public class InlineQueryResult {
     public func toJSON(): String {
         this.template.toJSON()
     }
+
+    public func schema(): TelegramObjectSchema {
+        inlineQueryResultTelegramObjectSchema(this.template.stringField("type"))
+    }
+
+    public func schemaIsValid(): Bool {
+        this.schema().isValid(this.toTelegramObject())
+    }
 }
 
 public func labeledPrice(label: String, amount: Int64): TelegramObject {
@@ -472,6 +480,10 @@ public class InlineQueryResultBuilder {
         object.addAll(options)
         InlineQueryResult(object)
     }
+
+    public static func schema(kind: String): TelegramObjectSchema {
+        inlineQueryResultTelegramObjectSchema(kind)
+    }
 }
 
 private func typed(kind: String, id: String): TelegramObject {
@@ -479,4 +491,98 @@ private func typed(kind: String, id: String): TelegramObject {
     object.addString("type", kind)
     object.addString("id", id)
     object
+}
+
+private func inlineQueryResultTelegramObjectSchema(kind: String): TelegramObjectSchema {
+    let schema = TelegramObjectSchema("InlineQueryResult." + kind)
+        .requireString("type", kind)
+        .requireField("id")
+        .allowFields([
+            "title",
+            "caption",
+            "parse_mode",
+            "caption_entities",
+            "show_caption_above_media",
+            "description",
+            "reply_markup",
+            "input_message_content",
+            "thumbnail_url",
+            "thumbnail_width",
+            "thumbnail_height",
+            "audio_url",
+            "audio_file_id",
+            "audio_duration",
+            "performer",
+            "phone_number",
+            "first_name",
+            "last_name",
+            "vcard",
+            "mime_type",
+            "document_url",
+            "document_file_id",
+            "game_short_name",
+            "gif_url",
+            "gif_file_id",
+            "gif_width",
+            "gif_height",
+            "gif_duration",
+            "latitude",
+            "longitude",
+            "horizontal_accuracy",
+            "live_period",
+            "heading",
+            "proximity_alert_radius",
+            "mpeg4_url",
+            "mpeg4_file_id",
+            "mpeg4_width",
+            "mpeg4_height",
+            "mpeg4_duration",
+            "photo_url",
+            "photo_file_id",
+            "photo_width",
+            "photo_height",
+            "sticker_file_id",
+            "address",
+            "foursquare_id",
+            "foursquare_type",
+            "google_place_id",
+            "google_place_type",
+            "video_url",
+            "video_file_id",
+            "video_width",
+            "video_height",
+            "video_duration",
+            "voice_url",
+            "voice_file_id",
+            "voice_duration"
+        ])
+
+    if (kind == "article") {
+        schema.requireField("title").allowField("url").allowField("hide_url")
+    } else if (kind == "audio") {
+        schema.allowField("title").allowField("audio_url").allowField("audio_file_id")
+    } else if (kind == "contact") {
+        schema.requireField("phone_number").requireField("first_name")
+    } else if (kind == "document") {
+        schema.allowField("title").allowField("document_url").allowField("document_file_id").allowField("mime_type")
+    } else if (kind == "game") {
+        schema.requireField("game_short_name")
+    } else if (kind == "gif") {
+        schema.allowField("gif_url").allowField("gif_file_id").allowField("thumbnail_url")
+    } else if (kind == "location") {
+        schema.requireField("title").requireField("latitude").requireField("longitude")
+    } else if (kind == "mpeg4_gif") {
+        schema.allowField("mpeg4_url").allowField("mpeg4_file_id").allowField("thumbnail_url")
+    } else if (kind == "photo") {
+        schema.allowField("photo_url").allowField("photo_file_id").allowField("thumbnail_url")
+    } else if (kind == "sticker") {
+        schema.requireField("sticker_file_id")
+    } else if (kind == "venue") {
+        schema.requireField("title").requireField("latitude").requireField("longitude").requireField("address")
+    } else if (kind == "video") {
+        schema.allowField("title").allowField("video_url").allowField("video_file_id").allowField("mime_type").allowField("thumbnail_url")
+    } else if (kind == "voice") {
+        schema.allowField("title").allowField("voice_url").allowField("voice_file_id")
+    }
+    schema
 }
