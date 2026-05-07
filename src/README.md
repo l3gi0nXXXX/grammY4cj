@@ -1,11 +1,54 @@
-# grammY4cj Session Quickstart
+# grammY4cj Source Map
 
-This phase exposes session building blocks from `grammy4cj.convenience`.
-The root package should re-export them from `src/mod.cj` during final integration.
+This directory contains the Cangjie port of the pinned grammY baseline
+`c865dd3a4d26911b01c83695e3845c7245870a5d`
+(`v1.42.0-5-gc865dd3`). The port is organized by runtime layer rather than by a
+1:1 TypeScript file layout, so the source trace matrix is the authoritative map
+for upstream coverage.
 
-The current Cangjie port uses a static `SessionContext<T>` wrapper instead of mutating
-`Context` dynamically. This keeps the implementation compatible with the existing
-`Context` and `Composer` skeletons.
+## Layer Layout
+
+- `src/core`: API wrapper names, client options, payload handling, cancellation,
+  and error envelopes.
+- `src/types`: the Telegram object subset required by the current Layer 1
+  runtime.
+- `src/context`: Context properties, predicates, and the first shortcut slice.
+- `src/composer`: middleware composition, branching, routing, lazy middleware,
+  and error boundaries.
+- `src/convenience`: constants, keyboards, inline query helpers, input media,
+  sessions, framework adapters, and webhook callback helpers.
+- `src/platform`: Cangjie platform abstraction that represents the upstream
+  Deno, Node, web, and shim files.
+- `src/test_support`: local fakes used by the Cangjie unit tests.
+
+## Upstream Trace
+
+Run the trace matrix directly when reviewing source coverage:
+
+```sh
+rtk sh scripts/check_source_trace_matrix.sh
+```
+
+The matrix covers all 25 upstream runtime files, including `src/README.md`, and
+all 18 upstream test files. The main contract script also embeds the matrix and
+adds API, Context, Composer, test, and heading diffs.
+
+## Known Gate 8 Diffs
+
+- API wrappers: 180 upstream methods are present in `src/core/api.cj` and
+  `src/core/api_wrapper_table.cj`.
+- Context shortcuts: upstream has 142 `this.api.*` callsites and 136 unique
+  targets; this port currently exposes the Layer 1 shortcut subset.
+- Composer controls: upstream exposes 20 controls; this port implements the
+  middleware core subset and reports missing controls in the sync script.
+- Tests: upstream declarations are counted per file and compared with local
+  `@TestCase` counts. This is a parity ledger, not a pass/fail coverage claim.
+
+## Session Quickstart
+
+The current Cangjie port uses a static `SessionContext<T>` wrapper instead of
+mutating `Context` dynamically. This keeps the implementation compatible with
+the existing `Context` and `Composer` skeletons.
 
 ```cangjie
 import grammy4cj.convenience.{MemorySessionStorage, SessionContext, SessionOptions, session}
