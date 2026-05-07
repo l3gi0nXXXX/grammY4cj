@@ -25,9 +25,7 @@ public class ApiClientOptions {
     }
 
     public init(apiRoot: String, environment: String) {
-        if (apiRoot.endsWith("/")) {
-            throw Exception("apiRoot must not end with a slash.")
-        }
+        validateApiRoot(apiRoot)
         this.apiRoot = apiRoot
         this.environment = environment
         this.timeoutSeconds = 500
@@ -35,13 +33,11 @@ public class ApiClientOptions {
         this.canUseWebhookReply = false
         this.buildUrlFn = defaultBuildUrl
         this.canUseWebhookReplyFn = rejectWebhookReply
-        this.baseFetchConfig = defaultBaseFetchConfig(this.apiRoot)
+        this.baseFetchConfig = defaultCoreBaseFetchConfig(this.apiRoot)
     }
 
     public init(apiRoot: String, environment: String, timeoutSeconds: Int64, sensitiveLogs: Bool, canUseWebhookReply: Bool) {
-        if (apiRoot.endsWith("/")) {
-            throw Exception("apiRoot must not end with a slash.")
-        }
+        validateApiRoot(apiRoot)
         this.apiRoot = apiRoot
         this.environment = environment
         this.timeoutSeconds = timeoutSeconds
@@ -53,7 +49,7 @@ public class ApiClientOptions {
         } else {
             rejectWebhookReply
         }
-        this.baseFetchConfig = defaultBaseFetchConfig(this.apiRoot)
+        this.baseFetchConfig = defaultCoreBaseFetchConfig(this.apiRoot)
     }
 
     public init(
@@ -65,9 +61,7 @@ public class ApiClientOptions {
         buildUrl: ApiBuildUrl,
         baseFetchConfig: BaseFetchConfig
     ) {
-        if (apiRoot.endsWith("/")) {
-            throw Exception("apiRoot must not end with a slash.")
-        }
+        validateApiRoot(apiRoot)
         this.apiRoot = apiRoot
         this.environment = environment
         this.timeoutSeconds = timeoutSeconds
@@ -75,7 +69,7 @@ public class ApiClientOptions {
         this.canUseWebhookReply = true
         this.buildUrlFn = buildUrl
         this.canUseWebhookReplyFn = canUseWebhookReply
-        this.baseFetchConfig = baseFetchConfig
+        this.baseFetchConfig = mergeBaseFetchConfig(this.apiRoot, baseFetchConfig)
     }
 
     public func buildUrl(token: String, method: String): String {
@@ -101,13 +95,14 @@ private func defaultBuildUrl(root: String, token: String, method: String, enviro
 }
 
 private func defaultBaseFetchConfig(apiRoot: String): BaseFetchConfig {
-    if (apiRoot.startsWith("https:")) {
-        return BaseFetchConfig(apiRoot, "https", true, true, false)
+    defaultCoreBaseFetchConfig(apiRoot)
+}
+
+private func validateApiRoot(apiRoot: String): Unit {
+    if (apiRoot.endsWith("/")) {
+        let suggested = apiRoot[0..apiRoot.size - 1]
+        throw Exception("Remove the trailing '/' from the 'apiRoot' option (use '" + suggested + "' instead of '" + apiRoot + "')")
     }
-    if (apiRoot.startsWith("http:")) {
-        return BaseFetchConfig(apiRoot, "http", true, false, false)
-    }
-    BaseFetchConfig(apiRoot, "", false, false, true)
 }
 
 private func rejectWebhookReply(_method: String): Bool {
