@@ -263,6 +263,13 @@ public class MemorySessionStorageTest {
 public class SessionMiddlewareTest {
     @TestCase
     public func defaultKeyUsesChatIdAndSkipsNoChatUpdates(): Unit {
+        let contract = sessionPropertyContract()
+        @Expect(contract.upstreamProperty, "ctx.session")
+        @Expect(contract.strictRead, "SessionContext.session()")
+        @Expect(contract.strictWrite, "SessionContext.setSession(value)")
+        @Expect(contract.strictDelete, "SessionContext.deleteSession()")
+        @Expect(contract.lazyRead, "LazySessionMiddleware + SessionContext.session()")
+        @Expect(contract.multiDelete, "MultiSessionContext2.deleteSession()")
         @Expect(stringValue(defaultGetSessionKey(testCtx(7))), "7")
         @Expect(stringValue(defaultGetSessionKey(noChatCtx(8))), "")
     }

@@ -50,6 +50,14 @@ public class InputMedia {
     public func toJSON(): String {
         this.toTelegramObject().toJSON()
     }
+
+    public func schema(): TelegramObjectSchema {
+        inputMediaTelegramObjectSchema(this.kind)
+    }
+
+    public func schemaIsValid(): Bool {
+        this.schema().isValid(this.toTelegramObject())
+    }
 }
 
 public class InputMediaBuilder {
@@ -132,4 +140,31 @@ public class InputMediaBuilder {
     public static func document(media: InputFile, options: TelegramObject): InputMedia {
         InputMedia("document", media, options)
     }
+
+    public static func schema(kind: String): TelegramObjectSchema {
+        inputMediaTelegramObjectSchema(kind)
+    }
+}
+
+private func inputMediaTelegramObjectSchema(kind: String): TelegramObjectSchema {
+    TelegramObjectSchema("InputMedia." + kind)
+        .requireString("type", kind)
+        .requireField("media")
+        .allowFields([
+            "caption",
+            "parse_mode",
+            "caption_entities",
+            "show_caption_above_media",
+            "has_spoiler",
+            "thumbnail",
+            "cover",
+            "start_timestamp",
+            "width",
+            "height",
+            "duration",
+            "supports_streaming",
+            "performer",
+            "title",
+            "disable_content_type_detection"
+        ])
 }

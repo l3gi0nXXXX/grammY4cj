@@ -2,6 +2,11 @@ package grammy4cj.convenience
 
 import std.collection.ArrayList
 
+public let TELEGRAM_BOT_API_VERSION: String = "9.6"
+public let GRAMMY_TYPES_VERSION: String = "v3.26.0"
+public let GRAMMY_UPSTREAM_BASELINE_HEAD: String = "c865dd3a4d26911b01c83695e3845c7245870a5d"
+public let GRAMMY_UPSTREAM_BASELINE_TAG: String = "v1.42.0-5-gc865dd3"
+
 public class APIConstants {
     public let defaultUpdateTypeCount: Int64
     public let maxInlineKeyboardColumns: Int64
@@ -258,6 +263,52 @@ public class TelegramObject {
         object
     }
 
+    public func hasField(key: String): Bool {
+        for (field in this.fields) {
+            if (field.key == key) {
+                return true
+            }
+        }
+        false
+    }
+
+    public func fieldKind(key: String): String {
+        for (field in this.fields) {
+            if (field.key == key) {
+                return field.value.kind
+            }
+        }
+        ""
+    }
+
+    public func stringField(key: String): String {
+        for (field in this.fields) {
+            if (field.key == key && field.value.kind == "string") {
+                return field.value.literal
+            }
+        }
+        ""
+    }
+
+    public func rawField(key: String): String {
+        for (field in this.fields) {
+            if (field.key == key && field.value.kind == "raw") {
+                return field.value.literal
+            }
+        }
+        ""
+    }
+
+    public func matchingFieldCount(keys: Array<String>): Int64 {
+        var count: Int64 = 0
+        for (field in this.fields) {
+            if (containsConvenienceString(keys, field.key)) {
+                count += 1
+            }
+        }
+        count
+    }
+
     private func putValue(key: String, value: TelegramValue): Unit {
         let next = ArrayList<TelegramField>()
         var replaced = false
@@ -275,6 +326,115 @@ public class TelegramObject {
             next.add(TelegramField(key, value.copy()))
         }
         this.fields = next
+    }
+}
+
+public class TelegramStringLiteralRule {
+    public let key: String
+    public let literal: String
+
+    public init(key: String, literal: String) {
+        this.key = key
+        this.literal = literal
+    }
+}
+
+public class TelegramObjectSchemaResult {
+    public let valid: Bool
+    public let message: String
+
+    public init(valid: Bool, message: String) {
+        this.valid = valid
+        this.message = message
+    }
+}
+
+public class TelegramObjectSchema {
+    public let name: String
+    private let requiredFields: ArrayList<String> = ArrayList<String>()
+    private let allowedFields: ArrayList<String> = ArrayList<String>()
+    private let stringLiteralRules: ArrayList<TelegramStringLiteralRule> = ArrayList<TelegramStringLiteralRule>()
+    private let exclusiveGroups: ArrayList<Array<String>> = ArrayList<Array<String>>()
+
+    public init(name: String) {
+        this.name = name
+    }
+
+    public func requireField(key: String): TelegramObjectSchema {
+        this.addUnique(this.requiredFields, key)
+        this.allowField(key)
+    }
+
+    public func requireString(key: String, literal: String): TelegramObjectSchema {
+        this.requireField(key)
+        this.stringLiteralRules.add(TelegramStringLiteralRule(key, literal))
+        this
+    }
+
+    public func allowField(key: String): TelegramObjectSchema {
+        this.addUnique(this.allowedFields, key)
+        this
+    }
+
+    public func allowFields(keys: Array<String>): TelegramObjectSchema {
+        for (key in keys) {
+            this.allowField(key)
+        }
+        this
+    }
+
+    public func exclusiveGroup(keys: Array<String>): TelegramObjectSchema {
+        this.exclusiveGroups.add(keys)
+        for (key in keys) {
+            this.allowField(key)
+        }
+        this
+    }
+
+    public func validate(object: TelegramObject): TelegramObjectSchemaResult {
+        for (key in this.requiredFields) {
+            if (!object.hasField(key)) {
+                return TelegramObjectSchemaResult(false, this.name + " missing required field `" + key + "`")
+            }
+        }
+        for (field in object.fields) {
+            if (this.allowedFields.size > 0 && !this.containsAllowed(field.key)) {
+                return TelegramObjectSchemaResult(false, this.name + " contains unsupported field `" + field.key + "`")
+            }
+        }
+        for (rule in this.stringLiteralRules) {
+            if (object.fieldKind(rule.key) != "string" || object.stringField(rule.key) != rule.literal) {
+                return TelegramObjectSchemaResult(false, this.name + " requires `" + rule.key + "` to be `" + rule.literal + "`")
+            }
+        }
+        for (group in this.exclusiveGroups) {
+            if (object.matchingFieldCount(group) > 1) {
+                return TelegramObjectSchemaResult(false, this.name + " contains mutually exclusive fields")
+            }
+        }
+        TelegramObjectSchemaResult(true, "")
+    }
+
+    public func isValid(object: TelegramObject): Bool {
+        this.validate(object).valid
+    }
+
+    private func addUnique(target: ArrayList<String>, key: String): Unit {
+        for (value in target) {
+            if (value == key) {
+                return
+            }
+        }
+        target.add(key)
+    }
+
+    private func containsAllowed(key: String): Bool {
+        for (value in this.allowedFields) {
+            if (value == key) {
+                return true
+            }
+        }
+        false
     }
 }
 
@@ -312,4 +472,13 @@ public func objectArrayValue(values: ArrayList<TelegramObject>): TelegramValue {
 
 public func escapeConvenienceJson(value: String): String {
     value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+}
+
+private func containsConvenienceString(values: Array<String>, target: String): Bool {
+    for (value in values) {
+        if (value == target) {
+            return true
+        }
+    }
+    false
 }

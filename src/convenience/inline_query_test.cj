@@ -64,18 +64,24 @@ private func horizontalAccuracy(): TelegramObject {
 public class InlineQueryResultBuilderTest {
     @TestCase
     public func upstream001ArticleFromStringGolden(): Unit {
+        let result = InlineQueryResultBuilder.article("id", "title", optionString("description", "description")).text("text")
         @Expect(
-            InlineQueryResultBuilder.article("id", "title", optionString("description", "description")).text("text").toJSON(),
+            result.toJSON(),
             "{\"type\":\"article\",\"id\":\"id\",\"title\":\"title\",\"description\":\"description\",\"input_message_content\":{\"message_text\":\"text\"}}"
         )
+        @Expect(result.schemaIsValid(), true)
+        @Expect(result.toTelegramObject().hasField("input_message_content"), true)
     }
 
     @TestCase
     public func upstream002AudioFromStringGolden(): Unit {
+        let result = InlineQueryResultBuilder.audio("id", "title", "https://grammy.dev/", caption("cap"))
         @Expect(
-            InlineQueryResultBuilder.audio("id", "title", "https://grammy.dev/", caption("cap")).toJSON(),
+            result.toJSON(),
             "{\"type\":\"audio\",\"id\":\"id\",\"title\":\"title\",\"audio_url\":\"https://grammy.dev/\",\"caption\":\"cap\"}"
         )
+        @Expect(result.schemaIsValid(), true)
+        @Expect(result.toTelegramObject().hasField("audio_url"), true)
     }
 
     @TestCase
@@ -128,10 +134,13 @@ public class InlineQueryResultBuilderTest {
 
     @TestCase
     public func upstream009CachedAudioGolden(): Unit {
+        let result = InlineQueryResultBuilder.audioCached("id", "file_id", caption("my cached audio"))
         @Expect(
-            InlineQueryResultBuilder.audioCached("id", "file_id", caption("my cached audio")).toJSON(),
+            result.toJSON(),
             "{\"type\":\"audio\",\"id\":\"id\",\"audio_file_id\":\"file_id\",\"caption\":\"my cached audio\"}"
         )
+        @Expect(result.schemaIsValid(), true)
+        @Expect(result.toTelegramObject().hasField("audio_file_id"), true)
     }
 
     @TestCase
@@ -512,10 +521,13 @@ public class InlineQueryResultBuilderTest {
 
     @TestCase
     public func upstream057PhotoExplicitThumbnailOverridesDefaultGolden(): Unit {
+        let result = InlineQueryResultBuilder.photo("id", "https://grammy.dev/", optionString("thumbnail_url", "https://grammy.dev/thumb"))
         @Expect(
-            InlineQueryResultBuilder.photo("id", "https://grammy.dev/", optionString("thumbnail_url", "https://grammy.dev/thumb")).toJSON(),
+            result.toJSON(),
             "{\"type\":\"photo\",\"id\":\"id\",\"photo_url\":\"https://grammy.dev/\",\"thumbnail_url\":\"https://grammy.dev/thumb\"}"
         )
+        @Expect(result.schemaIsValid(), true)
+        @Expect(result.toTelegramObject().stringField("thumbnail_url"), "https://grammy.dev/thumb")
     }
 
     @TestCase
@@ -664,10 +676,13 @@ public class InlineQueryResultBuilderTest {
 
     @TestCase
     public func upstream076VideoHtmlFromStringsGolden(): Unit {
+        let result = InlineQueryResultBuilder.videoHtml("id", "title", "https://grammy.dev/", "https://grammy.dev/thumb", caption("cap")).text("#Text", markdown())
         @Expect(
-            InlineQueryResultBuilder.videoHtml("id", "title", "https://grammy.dev/", "https://grammy.dev/thumb", caption("cap")).text("#Text", markdown()).toJSON(),
+            result.toJSON(),
             "{\"type\":\"video\",\"mime_type\":\"text/html\",\"id\":\"id\",\"title\":\"title\",\"video_url\":\"https://grammy.dev/\",\"thumbnail_url\":\"https://grammy.dev/thumb\",\"caption\":\"cap\",\"input_message_content\":{\"message_text\":\"#Text\",\"parse_mode\":\"Markdown\"}}"
         )
+        @Expect(result.schemaIsValid(), true)
+        @Expect(result.toTelegramObject().hasField("input_message_content"), true)
     }
 
     @TestCase

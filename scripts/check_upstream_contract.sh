@@ -81,6 +81,19 @@ check_eq() {
   fi
 }
 
+check_ordered_file_eq() {
+  name="$1"
+  actual_file="$2"
+  expected_file="$3"
+  if cmp -s "$actual_file" "$expected_file"; then
+    printf 'ok %s ordered diff is empty\n' "$name"
+  else
+    printf 'FAIL %s ordered diff is not empty\n' "$name"
+    diff -u "$expected_file" "$actual_file" || true
+    record_failure
+  fi
+}
+
 check_ge() {
   name="$1"
   actual="$2"
@@ -91,6 +104,63 @@ check_ge() {
     printf 'FAIL %s minimum=%s actual=%s\n' "$name" "$minimum" "$actual"
     record_failure
   fi
+}
+
+extract_bot_api_badge_version() {
+  sed -n 's/.*Bot%20API-\([0-9.][0-9.]*\)-blue.*/\1/p' "$1" | head -n 1
+}
+
+extract_string_constant() {
+  name="$1"
+  file="$2"
+  awk -v n="$name" '$0 ~ "public let " n { split($0, parts, "\""); print parts[2]; exit }' "$file"
+}
+
+extract_ts_string_array() {
+  marker="$1"
+  file="$2"
+  awk -v marker="$marker" '
+    index($0, marker) { in_array = 1; next }
+    in_array && index($0, "]") { exit }
+    in_array {
+      line = $0
+      while (match(line, /"[^"]+"/)) {
+        print substr(line, RSTART + 1, RLENGTH - 2)
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' "$file"
+}
+
+extract_cj_string_array_func() {
+  marker="$1"
+  file="$2"
+  awk -v marker="$marker" '
+    index($0, marker) { in_func = 1; next }
+    in_func && index($0, "]") { exit }
+    in_func {
+      line = $0
+      while (match(line, /"[^"]+"/)) {
+        print substr(line, RSTART + 1, RLENGTH - 2)
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' "$file"
+}
+
+extract_ts_chat_permissions() {
+  file="$1"
+  awk '
+    /const ALL_CHAT_PERMISSIONS = \{/ { in_object = 1; next }
+    in_object && /\}/ { exit }
+    in_object {
+      line = $0
+      sub(/^[[:space:]]*/, "", line)
+      if (match(line, /^can_[A-Za-z0-9_]+/)) {
+        print substr(line, RSTART, RLENGTH)
+      }
+    }
+  ' "$file"
 }
 
 test_count_for() {
@@ -355,6 +425,39 @@ check_eq "upstream runtime ts files" "$runtime_ts_files" "24"
 check_eq "upstream test ts files" "$test_files" "18"
 check_eq "upstream BDD it(...) tests" "$bdd_tests" "317"
 check_eq "upstream Deno.test tests" "$deno_tests" "10"
+
+section "G7 Convenience constants sync"
+upstream_bot_api_version="$(extract_bot_api_badge_version "$GRAMMY_DIR/README.md")"
+port_bot_api_version="$(extract_bot_api_badge_version "$REPO_DIR/README.md")"
+port_constant_bot_api_version="$(extract_string_constant TELEGRAM_BOT_API_VERSION "$REPO_DIR/src/convenience/constants.cj")"
+port_constant_grammy_types_version="$(extract_string_constant GRAMMY_TYPES_VERSION "$REPO_DIR/src/convenience/constants.cj")"
+actual_grammy_types_version="$(sed -n 's#.*grammy_types@\([^/]*\)/mod\.ts.*#\1#p' "$GRAMMY_DIR/src/types.deno.ts" | head -n 1)"
+port_constant_head="$(extract_string_constant GRAMMY_UPSTREAM_BASELINE_HEAD "$REPO_DIR/src/convenience/constants.cj")"
+port_constant_tag="$(extract_string_constant GRAMMY_UPSTREAM_BASELINE_TAG "$REPO_DIR/src/convenience/constants.cj")"
+
+check_eq "port README Bot API badge version" "$port_bot_api_version" "$upstream_bot_api_version"
+check_eq "port constants Bot API version" "$port_constant_bot_api_version" "$upstream_bot_api_version"
+check_eq "port constants grammY types version" "$port_constant_grammy_types_version" "$actual_grammy_types_version"
+check_eq "port constants upstream HEAD" "$port_constant_head" "$EXPECTED_HEAD"
+check_eq "port constants upstream tag" "$port_constant_tag" "$EXPECTED_TAG"
+
+extract_ts_string_array "export const DEFAULT_UPDATE_TYPES" "$GRAMMY_DIR/src/bot.ts" > "$TMP_DIR/upstream_default_update_types"
+extract_ts_string_array "const ALL_UPDATE_TYPES" "$GRAMMY_DIR/src/convenience/constants.ts" > "$TMP_DIR/upstream_optional_update_types"
+cat "$TMP_DIR/upstream_default_update_types" "$TMP_DIR/upstream_optional_update_types" > "$TMP_DIR/upstream_all_update_types"
+extract_cj_string_array_func "public func defaultUpdateTypes" "$REPO_DIR/src/convenience/constants.cj" > "$TMP_DIR/port_default_update_types"
+extract_cj_string_array_func "public func allUpdateTypes" "$REPO_DIR/src/convenience/constants.cj" > "$TMP_DIR/port_all_update_types"
+extract_ts_chat_permissions "$GRAMMY_DIR/src/convenience/constants.ts" > "$TMP_DIR/upstream_chat_permissions"
+extract_cj_string_array_func "public func allChatPermissionKeys" "$REPO_DIR/src/convenience/constants.cj" > "$TMP_DIR/port_chat_permissions"
+
+check_eq "upstream default update types" "$(count_lines "$TMP_DIR/upstream_default_update_types")" "21"
+check_eq "port default update types" "$(count_lines "$TMP_DIR/port_default_update_types")" "21"
+check_eq "upstream all update types" "$(count_lines "$TMP_DIR/upstream_all_update_types")" "24"
+check_eq "port all update types" "$(count_lines "$TMP_DIR/port_all_update_types")" "24"
+check_eq "upstream chat permissions" "$(count_lines "$TMP_DIR/upstream_chat_permissions")" "15"
+check_eq "port chat permissions" "$(count_lines "$TMP_DIR/port_chat_permissions")" "15"
+check_ordered_file_eq "DEFAULT_UPDATE_TYPES vs upstream" "$TMP_DIR/port_default_update_types" "$TMP_DIR/upstream_default_update_types"
+check_ordered_file_eq "ALL_UPDATE_TYPES vs upstream" "$TMP_DIR/port_all_update_types" "$TMP_DIR/upstream_all_update_types"
+check_ordered_file_eq "ALL_CHAT_PERMISSIONS keys vs upstream" "$TMP_DIR/port_chat_permissions" "$TMP_DIR/upstream_chat_permissions"
 
 section "G8.1 API method diff"
 perl -0ne 'while(/^    (?!private|constructor)(?:async\s+)?([A-Za-z_]\w*)\s*\(/mg){print "$1\n"}' \

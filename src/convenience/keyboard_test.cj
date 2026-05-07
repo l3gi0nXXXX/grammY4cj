@@ -56,6 +56,7 @@ public class KeyboardBuilderTest {
             keyboard.toJSON(),
             "{\"keyboard\":[[{\"text\":\"A\"},{\"text\":\"B\"}],[{\"text\":\"Phone\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"icon-contact\",\"request_contact\":true}]],\"is_persistent\":true,\"selective\":false,\"one_time_keyboard\":true,\"resize_keyboard\":true,\"input_field_placeholder\":\"Pick\"}"
         )
+        @Expect(keyboard.schemaIsValid(), true)
     }
 
     @TestCase
@@ -162,6 +163,12 @@ public class KeyboardBuilderTest {
             users.actionFieldCount() + chat.actionFieldCount() + managed.actionFieldCount() + web.actionFieldCount()
 
         @Expect(actionCount, 7)
+        @Expect(contact.schemaIsValid(), true)
+        let invalid = TelegramObject()
+        invalid.addString("text", "bad")
+        invalid.addBool("request_contact", true)
+        invalid.addBool("request_location", true)
+        @Expect(contact.schema().isValid(invalid), false)
         @Expect(
             golden,
             "{\"text\":\"contact\",\"request_contact\":true}\n" +
@@ -264,6 +271,7 @@ public class InlineKeyboardBuilderTest {
             keyboard.toJSON(),
             "{\"inline_keyboard\":[[{\"text\":\"A\",\"callback_data\":\"a\"},{\"text\":\"Docs\",\"url\":\"https://example.test\"}],[{\"text\":\"Copy\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"icon-copy\",\"copy_text\":{\"text\":\"value\"}}]]}"
         )
+        @Expect(keyboard.schemaIsValid(), true)
     }
 
     @TestCase
@@ -375,6 +383,12 @@ public class InlineKeyboardBuilderTest {
             chosenButton.actionFieldCount() + copy.actionFieldCount() + game.actionFieldCount() + pay.actionFieldCount()
 
         @Expect(actionCount, 10)
+        @Expect(copy.schemaIsValid(), true)
+        let invalid = TelegramObject()
+        invalid.addString("text", "bad")
+        invalid.addString("url", "https://example.test")
+        invalid.addString("callback_data", "data")
+        @Expect(copy.schema().isValid(invalid), false)
         @Expect(
             golden,
             "{\"text\":\"url\",\"url\":\"https://example.test\"}\n" +
