@@ -1,0 +1,49 @@
+upstream_path	gate	required_checks	docs_impact	note
+.all-contributorsrc	G8	README.md;CONTRIBUTING.md	public-docs	contributor metadata can affect generated public documentation
+README.md	G8	scripts/check_upstream_contract.sh	public-docs	root README heading and public documentation policy
+deno.jsonc	G8	scripts/check_upstream_contract.sh;README.md	release-metadata	Deno task or lint contract changed upstream
+package.json	G8	scripts/check_upstream_contract.sh;CONTRIBUTING.md	release-metadata	package identity dependency or release script changed upstream
+tsconfig.json	G8	scripts/check_upstream_contract.sh	release-metadata	TypeScript build target or node output contract changed upstream
+src/README.md	G8	scripts/check_upstream_contract.sh;src/README.md	source-map	src README heading and source map policy
+src/mod.ts	G9.5	src/mod_test.cj;scripts/check_source_trace_matrix.sh	source-map	root export surface changed
+src/bot.ts	G5	src/bot/bot_test.cj;scripts/check_source_trace_matrix.sh	none	Bot runtime constructor init polling and update handling changed
+src/composer.ts	G4	src/composer/composer_test.cj;scripts/check_upstream_contract.sh	none	Composer control flow or middleware semantics changed
+src/context.ts	G4	src/context/context_test.cj;scripts/check_upstream_contract.sh	none	Context getters has probes shortcuts or type helpers changed
+src/filter.ts	G4	src/filter/filter_test.cj;scripts/check_source_trace_matrix.sh	none	Filter query parser matcher or shortcuts changed
+src/platform.deno.ts	G1	src/platform/platform_test.cj;scripts/check_source_trace_matrix.sh	none	Deno platform fetch stream or adapter changed
+src/platform.node.ts	G1	src/platform/platform_test.cj;scripts/check_source_trace_matrix.sh	none	Node platform fetch stream or adapter changed
+src/platform.web.ts	G1	src/platform/platform_test.cj;scripts/check_source_trace_matrix.sh	none	Web platform fetch stream or adapter changed
+src/shim.node.ts	G1	src/platform/platform_test.cj;scripts/check_source_trace_matrix.sh	none	Node shim contract changed
+src/types.deno.ts	G1	src/types/types_test.cj;scripts/check_source_trace_matrix.sh	none	Deno type facade or InputFile raw behavior changed
+src/types.node.ts	G1	src/types/types_test.cj;scripts/check_source_trace_matrix.sh	none	Node type facade or InputFile raw behavior changed
+src/types.web.ts	G1	src/types/types_test.cj;scripts/check_source_trace_matrix.sh	none	Web type facade or InputFile raw behavior changed
+src/types.ts	G1	src/types/types_test.cj;scripts/check_source_trace_matrix.sh	none	Telegram type facade or InputFile public type changed
+src/core/api.ts	G3	src/core/api_test.cj;scripts/check_upstream_contract.sh	none	Api wrapper method signature or method set changed
+src/core/client.ts	G2	src/core/client_test.cj;scripts/check_upstream_contract.sh	none	ApiClient transport raw API transformer or webhook reply changed
+src/core/error.ts	G2	src/core/error_test.cj;scripts/check_source_trace_matrix.sh	none	GrammyError or HttpError mapping changed
+src/core/payload.ts	G2	src/core/payload_test.cj;scripts/check_source_trace_matrix.sh	none	JSON or multipart payload behavior changed
+src/convenience/constants.ts	G7	src/convenience/constants_test.cj;scripts/check_source_trace_matrix.sh	none	API constants update types or permissions changed
+src/convenience/frameworks.ts	G6	src/convenience/frameworks_test.cj;src/convenience/webhook_test.cj	none	Framework adapter request response or secret header behavior changed
+src/convenience/inline_query.ts	G7	src/convenience/inline_query_test.cj;scripts/check_source_trace_matrix.sh	none	Inline query result builders changed
+src/convenience/input_media.ts	G7	src/convenience/input_media_test.cj;scripts/check_source_trace_matrix.sh	none	Input media builders changed
+src/convenience/keyboard.ts	G7	src/convenience/keyboard_test.cj;scripts/check_source_trace_matrix.sh	none	Keyboard or inline keyboard builders changed
+src/convenience/session.ts	G7	src/convenience/session_test.cj;scripts/check_source_trace_matrix.sh	none	Session middleware storage lazy or enhance behavior changed
+src/convenience/webhook.ts	G6	src/convenience/webhook_test.cj;scripts/check_source_trace_matrix.sh	none	Webhook callback timeout secret or reply envelope changed
+test/bot.test.ts	G5	src/bot/bot_test.cj;scripts/check_upstream_contract.sh	none	Bot upstream test contract changed
+test/composer.test.ts	G4	src/composer/composer_test.cj;scripts/check_upstream_contract.sh	none	Composer runtime upstream test contract changed
+test/composer.type.test.ts	G4	src/composer/composer_test.cj;scripts/check_upstream_contract.sh	none	Composer compile surface upstream test contract changed
+test/context.test.ts	G4	src/context/context_test.cj;scripts/check_upstream_contract.sh	none	Context runtime upstream test contract changed
+test/context.type.test.ts	G4	src/context/context_test.cj;scripts/check_upstream_contract.sh	none	Context compile surface upstream test contract changed
+test/deps.test.ts	G7	scripts/check_dependency_boundaries.sh;src/architecture/dependency_boundary_test.cj	none	Shared test dependency or boundary helper changed
+test/filter.test.ts	G4	src/filter/filter_test.cj;scripts/check_upstream_contract.sh	none	Filter upstream test contract changed
+test/types.test.ts	G1	src/types/types_test.cj;scripts/check_upstream_contract.sh	none	Type upstream test contract changed
+test/core/client.test.ts	G2	src/core/client_test.cj;scripts/check_upstream_contract.sh	none	Core client upstream test contract changed
+test/core/error.test.ts	G2	src/core/error_test.cj;scripts/check_upstream_contract.sh	none	Core error upstream test contract changed
+test/core/payload.test.ts	G2	src/core/payload_test.cj;scripts/check_upstream_contract.sh	none	Core payload upstream test contract changed
+test/convenience/constants.test.ts	G7	src/convenience/constants_test.cj;scripts/check_upstream_contract.sh	none	Constants upstream test contract changed
+test/convenience/frameworks.test.ts	G6	src/convenience/frameworks_test.cj;scripts/check_upstream_contract.sh	none	Framework upstream test contract changed
+test/convenience/inline_query.test.ts	G7	src/convenience/inline_query_test.cj;scripts/check_upstream_contract.sh	none	Inline query upstream test contract changed
+test/convenience/input_media.test.ts	G7	src/convenience/input_media_test.cj;scripts/check_upstream_contract.sh	none	Input media upstream test contract changed
+test/convenience/keyboard.test.ts	G7	src/convenience/keyboard_test.cj;scripts/check_upstream_contract.sh	none	Keyboard upstream test contract changed
+test/convenience/session.test.ts	G7	src/convenience/session_test.cj;scripts/check_upstream_contract.sh	none	Session upstream test contract changed
+test/convenience/webhook.test.ts	G6	src/convenience/webhook_test.cj;scripts/check_upstream_contract.sh	none	Webhook upstream test contract changed

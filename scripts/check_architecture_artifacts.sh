@@ -1,0 +1,149 @@
+#!/usr/bin/env sh
+set -eu
+
+SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
+
+PARITY_LEDGER="$REPO_DIR/src/architecture/upstream_test_parity_ledger.tsv"
+PHASE_STATUS="$REPO_DIR/src/architecture/phase_status.tsv"
+GATE_STATUS="$REPO_DIR/src/architecture/gate_status.tsv"
+WORKFLOW_LEDGER="$REPO_DIR/src/architecture/upstream_diff_workflow.tsv"
+
+failures=0
+
+record_failure() {
+  failures=$((failures + 1))
+}
+
+check_header() {
+  file="$1"
+  expected="$2"
+  if [ ! -f "$file" ]; then
+    printf 'FAIL missing architecture artifact: %s\n' "$file"
+    record_failure
+    return
+  fi
+
+  actual="$(sed -n '1p' "$file")"
+  if [ "$actual" = "$expected" ]; then
+    printf 'ok header %s\n' "${file#$REPO_DIR/}"
+  else
+    printf 'FAIL header %s\n' "${file#$REPO_DIR/}"
+    printf '  expected: %s\n' "$expected"
+    printf '  actual:   %s\n' "$actual"
+    record_failure
+  fi
+}
+
+check_header "$PARITY_LEDGER" 'key	upstream_count	port_count	classification	gate	upstream_file	port_files	owner_artifact	rationale'
+check_header "$PHASE_STATUS" 'phase	phase_group	status	evidence	next_action'
+check_header "$GATE_STATUS" 'gate	status	owner_artifact	acceptance	next_action'
+check_header "$WORKFLOW_LEDGER" 'upstream_path	gate	required_checks	docs_impact	note'
+
+if [ -f "$PARITY_LEDGER" ]; then
+  parity_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$PARITY_LEDGER")"
+  parity_bad_class="$(awk -F '\t' '
+    NR > 1 && $1 != "" && $4 != "necessary-extra" && $4 != "mapped-different-file" && $4 != "true-gap" {bad += 1}
+    END {print bad + 0}
+  ' "$PARITY_LEDGER")"
+  parity_true_gap="$(awk -F '\t' 'NR > 1 && $4 == "true-gap" {count += 1} END {print count + 0}' "$PARITY_LEDGER")"
+  parity_true_gap_gate_missing="$(awk -F '\t' 'NR > 1 && $4 == "true-gap" && $5 == "" {count += 1} END {print count + 0}' "$PARITY_LEDGER")"
+
+  printf 'parity ledger rows=%s true_gaps=%s\n' "$parity_rows" "$parity_true_gap"
+  if [ "$parity_rows" != "13" ]; then
+    printf 'FAIL parity ledger rows expected=13 actual=%s\n' "$parity_rows"
+    record_failure
+  fi
+  if [ "$parity_bad_class" != "0" ]; then
+    printf 'FAIL parity ledger invalid classifications=%s\n' "$parity_bad_class"
+    record_failure
+  fi
+  if [ "$parity_true_gap" = "0" ]; then
+    printf 'FAIL parity ledger must preserve at least one true-gap row\n'
+    record_failure
+  fi
+  if [ "$parity_true_gap_gate_missing" != "0" ]; then
+    printf 'FAIL parity ledger true-gap rows missing gate=%s\n' "$parity_true_gap_gate_missing"
+    record_failure
+  fi
+fi
+
+if [ -f "$PHASE_STATUS" ]; then
+  phase_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$PHASE_STATUS")"
+  phase_bad_status="$(awk -F '\t' '
+    NR > 1 && $1 != "" {
+      ok = $3 == "passed" || $3 == "partial" || $3 == "surface_passed" || $3 == "name_passed_semantic_partial" || $3 == "count_passed_semantic_partial" || $3 == "basic_passed" || $3 == "mostly_passed"
+      if (!ok) bad += 1
+    }
+    END {print bad + 0}
+  ' "$PHASE_STATUS")"
+
+  printf 'phase status rows=%s\n' "$phase_rows"
+  if [ "$phase_rows" != "63" ]; then
+    printf 'FAIL phase status rows expected=63 actual=%s\n' "$phase_rows"
+    record_failure
+  fi
+  if [ "$phase_bad_status" != "0" ]; then
+    printf 'FAIL phase status invalid statuses=%s\n' "$phase_bad_status"
+    record_failure
+  fi
+fi
+
+if [ -f "$GATE_STATUS" ]; then
+  gate_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$GATE_STATUS")"
+  gate_bad_status="$(awk -F '\t' '
+    NR > 1 && $1 != "" {
+      ok = $2 == "passed" || $2 == "partial" || $2 == "mostly_passed" || $2 == "failed" || $2 == "name_count_passed_semantic_partial" || $2 == "count_passed_semantic_partial"
+      if (!ok) bad += 1
+    }
+    END {print bad + 0}
+  ' "$GATE_STATUS")"
+
+  printf 'gate status rows=%s\n' "$gate_rows"
+  if [ "$gate_rows" != "11" ]; then
+    printf 'FAIL gate status rows expected=11 actual=%s\n' "$gate_rows"
+    record_failure
+  fi
+  if [ "$gate_bad_status" != "0" ]; then
+    printf 'FAIL gate status invalid statuses=%s\n' "$gate_bad_status"
+    record_failure
+  fi
+fi
+
+if ! sh "$SCRIPT_DIR/check_upstream_diff_workflow.sh" --validate-only; then
+  record_failure
+fi
+
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/grammy4cj-artifacts.XXXXXX")"
+trap 'rm -rf "$TMP_DIR"' EXIT
+cat > "$TMP_DIR/changed_files" <<'EOF'
+src/context.ts
+test/core/client.test.ts
+README.md
+EOF
+
+if sh "$SCRIPT_DIR/check_upstream_diff_workflow.sh" --changed-files "$TMP_DIR/changed_files" > "$TMP_DIR/diff_output"; then
+  if ! grep -F 'src/context.ts	G4	' "$TMP_DIR/diff_output" >/dev/null 2>&1; then
+    printf 'FAIL workflow fixture missing src/context.ts -> G4 mapping\n'
+    record_failure
+  fi
+  if ! grep -F 'test/core/client.test.ts	G2	' "$TMP_DIR/diff_output" >/dev/null 2>&1; then
+    printf 'FAIL workflow fixture missing test/core/client.test.ts -> G2 mapping\n'
+    record_failure
+  fi
+  if ! grep -F 'README.md	G8	' "$TMP_DIR/diff_output" >/dev/null 2>&1; then
+    printf 'FAIL workflow fixture missing README.md -> G8 mapping\n'
+    record_failure
+  fi
+  printf 'upstream diff workflow fixture passed\n'
+else
+  cat "$TMP_DIR/diff_output"
+  record_failure
+fi
+
+if [ "$failures" -ne 0 ]; then
+  printf 'architecture artifact checks failed: %s issue(s)\n' "$failures"
+  exit 1
+fi
+
+printf 'architecture artifact checks passed\n'
