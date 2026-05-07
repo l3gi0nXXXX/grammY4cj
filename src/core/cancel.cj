@@ -6,6 +6,11 @@ public class CancelSignal {
 
     public init() {}
 
+    public func cancel(reason: String): Unit {
+        this.cancelled = true
+        this.reason = reason
+    }
+
     public func throwIfCancelled(): Unit {
         if (this.cancelled) {
             throw Exception("Operation cancelled: " + this.reason)
@@ -21,8 +26,7 @@ public class CancelController {
     }
 
     public func cancel(reason: String): Unit {
-        this.signal.cancelled = true
-        this.signal.reason = reason
+        this.signal.cancel(reason)
     }
 }
 
