@@ -4,10 +4,25 @@ set -eu
 GRAMMY_DIR="${GRAMMY_DIR:-/Users/l3gi0n/work/workspace_cangjie/grammY}"
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
+TRACE_ARTIFACT_DIR="${GRAMMY4CJ_TRACE_ARTIFACT_DIR:-${GRAMMY4CJ_ARTIFACT_DIR:-}}"
 
 runtime_rows=0
 test_rows=0
 missing_files=0
+
+if [ -n "$TRACE_ARTIFACT_DIR" ]; then
+  mkdir -p "$TRACE_ARTIFACT_DIR"
+  RUNTIME_TRACE_ARTIFACT="$TRACE_ARTIFACT_DIR/source_trace_runtime.tsv"
+  TEST_TRACE_ARTIFACT="$TRACE_ARTIFACT_DIR/source_trace_tests.tsv"
+  SUMMARY_TRACE_ARTIFACT="$TRACE_ARTIFACT_DIR/source_trace_summary.tsv"
+  printf 'kind\tupstream\tgrammy4cj_trace\tgate\tnote\tstatus\n' > "$RUNTIME_TRACE_ARTIFACT"
+  printf 'kind\tupstream\tgrammy4cj_trace\tgate\tnote\tstatus\n' > "$TEST_TRACE_ARTIFACT"
+  printf 'metric\tvalue\n' > "$SUMMARY_TRACE_ARTIFACT"
+else
+  RUNTIME_TRACE_ARTIFACT=""
+  TEST_TRACE_ARTIFACT=""
+  SUMMARY_TRACE_ARTIFACT=""
+fi
 
 print_header() {
   printf '%-38s | %-58s | %-6s | %s\n' "upstream" "grammY4cj trace" "gate" "note"
@@ -45,6 +60,12 @@ trace_row() {
   done
 
   printf '%-38s | %-58s | %-6s | %s\n' "$upstream" "$port_files" "$gate" "$status"
+  if [ "$kind" = "runtime" ] && [ -n "$RUNTIME_TRACE_ARTIFACT" ]; then
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$kind" "$upstream" "$port_files" "$gate" "$note" "$status" >> "$RUNTIME_TRACE_ARTIFACT"
+  fi
+  if [ "$kind" = "test" ] && [ -n "$TEST_TRACE_ARTIFACT" ]; then
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$kind" "$upstream" "$port_files" "$gate" "$note" "$status" >> "$TEST_TRACE_ARTIFACT"
+  fi
 }
 
 printf 'Runtime source trace\n'
@@ -98,6 +119,14 @@ trace_row test "test/types.test.ts" "src/types/types_test.cj" "G1" "type shape t
 
 printf '\nsource trace matrix summary: runtime_rows=%s test_rows=%s missing_files=%s\n' \
   "$runtime_rows" "$test_rows" "$missing_files"
+
+if [ -n "$SUMMARY_TRACE_ARTIFACT" ]; then
+  printf 'runtime_rows\t%s\n' "$runtime_rows" >> "$SUMMARY_TRACE_ARTIFACT"
+  printf 'test_rows\t%s\n' "$test_rows" >> "$SUMMARY_TRACE_ARTIFACT"
+  printf 'missing_files\t%s\n' "$missing_files" >> "$SUMMARY_TRACE_ARTIFACT"
+  printf 'source trace artifacts: %s %s %s\n' \
+    "$RUNTIME_TRACE_ARTIFACT" "$TEST_TRACE_ARTIFACT" "$SUMMARY_TRACE_ARTIFACT"
+fi
 
 if [ "$runtime_rows" != "25" ] || [ "$test_rows" != "18" ] || [ "$missing_files" != "0" ]; then
   exit 1
