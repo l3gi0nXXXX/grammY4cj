@@ -94,6 +94,11 @@ public class ComposerTypeSurfaceTest {
         let predicate: Predicate = { _ctx: Context => true }
         let composer: Composer = Composer().filter(predicate)
         composer.drop(predicate, { _ctx: Context, next: NextFunction => next() })
+        let decision = composerMaybePromiseDecision()
+
+        @Expect(decision.callbackContract, "sync-callback")
+        @Expect(decision.futureBoundary, "Future work must be joined before the callback returns")
+        @Expect(decision.routeFallbackContract, "None<String> route values select fallback")
         @Expect(composer.layerName(), "Composer")
     }
 

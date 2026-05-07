@@ -137,11 +137,12 @@ public class ComposerMiddlewareTest {
     @TestCase
     public func concatRejectsRepeatedNextCalls(): Unit {
         let composer = Composer()
+        let events = ArrayList<String>()
         composer.use({ _ctx: Context, next: NextFunction =>
             next()
             next()
         })
-        composer.use({ _ctx: Context, _next: NextFunction => () })
+        composer.use(eventMiddleware(events, "child"))
 
         var thrown = false
         try {
@@ -152,6 +153,7 @@ public class ComposerMiddlewareTest {
         }
 
         @Expect(thrown, true)
+        @Expect(events.size, 1)
     }
 
     @TestCase
@@ -213,7 +215,7 @@ public class ComposerMiddlewareTest {
             next()
         }
         composer.route(
-            { ctx: Context => if (ctx.update.kind == "message:text") { "route" } else { "" } },
+            { ctx: Context => if (ctx.update.kind == "message:text") { Some("route") } else { None<String> } },
             routes,
             { _ctx: Context, next: NextFunction =>
                 events.add("fallback")
@@ -374,6 +376,21 @@ public class ComposerMiddlewareTest {
         @Expect(events.size, 2)
         @Expect(events[0], "root")
         @Expect(events[1], "child")
+    }
+
+    @TestCase
+    public func useAcceptsComposerMiddlewareObjects(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let external = Composer(eventMiddleware(events, "external-root"))
+        composer.use(external)
+        external.use(eventMiddleware(events, "external-child"))
+
+        run(composer, testCtx(30, "message"))
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "external-root")
+        @Expect(events[1], "external-child")
     }
 
     @TestCase
@@ -750,12 +767,38 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func lazyRunsCreatedComposersAndPropagatesFactoryErrors(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        composer.lazy({ _ctx: Context => Composer(eventMiddleware(events, "composer")) })
+
+        run(composer, testCtx(32, "message"))
+
+        @Expect(events.size, 1)
+        @Expect(events[0], "composer")
+
+        let throwing = Composer()
+        throwing.lazy({ _ctx: Context =>
+            throw Exception("lazy factory boom")
+            eventMiddleware(events, "never")
+        })
+        var thrown = false
+        try {
+            run(throwing, testCtx(33, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "lazy factory boom")
+        }
+        @Expect(thrown, true)
+    }
+
+    @TestCase
     public func routeRoutesContextObjects(): Unit {
         let events = ArrayList<String>()
         let composer = Composer()
         let routes = HashMap<String, MiddlewareFn>()
         routes["key"] = eventMiddleware(events, "route")
-        composer.route({ _ctx: Context => "key" }, routes)
+        composer.route({ _ctx: Context => Some("key") }, routes)
 
         run(composer, testCtx(75, "message"))
 
@@ -769,12 +812,30 @@ public class ComposerMiddlewareTest {
         let composer = Composer()
         let routes = HashMap<String, MiddlewareFn>()
         routes["a"] = eventMiddleware(events, "a")
-        composer.route({ _ctx: Context => "missing" }, routes, eventMiddleware(events, "fallback"))
+        composer.route({ _ctx: Context => Some("missing") }, routes, eventMiddleware(events, "fallback"))
 
         run(composer, testCtx(76, "message"))
 
         @Expect(events.size, 1)
         @Expect(events[0], "fallback")
+    }
+
+    @TestCase
+    public func routeSupportsNoneFallbackAndRouteHits(): Unit {
+        let events = ArrayList<String>()
+        let routes = HashMap<String, MiddlewareFn>()
+        routes["key"] = eventMiddleware(events, "route")
+        let missing: Router = { _ctx: Context => None<String> }
+        let hit: Router = { _ctx: Context => Some("key") }
+
+        Composer().route(missing, routes, eventMiddleware(events, "fallback"))
+            .middleware()(testCtx(34, "message"), { => () })
+        Composer().route(hit, routes, eventMiddleware(events, "unused"))
+            .middleware()(testCtx(35, "message"), { => () })
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "fallback")
+        @Expect(events[1], "route")
     }
 
     @TestCase
@@ -793,6 +854,45 @@ public class ComposerMiddlewareTest {
             @Expect(err.message, "handler boom")
         }
         @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func errorBoundaryCatchesChildMiddlewareAndCanContinue(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        composer.errorBoundary(
+            { err: BotError, next: NextFunction =>
+                events.add("caught:" + err.error.message)
+                next()
+            },
+        ).use({ _ctx: Context, _next: NextFunction => throw Exception("child boom") })
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(36, "message"))
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "caught:child boom")
+        @Expect(events[1], "after")
+    }
+
+    @TestCase
+    public func errorBoundaryDoesNotCatchDownstreamErrors(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        composer.errorBoundary(
+            { _err: BotError, _next: NextFunction => events.add("caught") },
+        )
+        composer.use({ _ctx: Context, _next: NextFunction => throw Exception("downstream boom") })
+
+        var thrown = false
+        try {
+            run(composer, testCtx(37, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "downstream boom")
+        }
+        @Expect(thrown, true)
+        @Expect(events.size, 0)
     }
 
     @TestCase
