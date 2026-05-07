@@ -1,9 +1,24 @@
 upstream_path	gate	required_checks	docs_impact	note
 .all-contributorsrc	G8	README.md;CONTRIBUTING.md	public-docs	contributor metadata can affect generated public documentation
+.editorconfig	G8	scripts/check_architecture_artifacts.sh	none	repository editor policy changed upstream
+.github/release.yml	G8	scripts/check_upstream_contract.sh	release-metadata	GitHub release automation changed upstream
+.github/scripts/update-contributors.ts	G8	README.md;CONTRIBUTING.md	public-docs	contributor update automation changed upstream
+.github/workflows/deno.yml	G8	scripts/check_upstream_contract.sh	release-metadata	upstream CI task matrix or Deno version policy changed
+.github/workflows/release.yml	G8	scripts/check_upstream_contract.sh	release-metadata	upstream release workflow changed
+.github/workflows/third_party.yml	G8	scripts/check_upstream_contract.sh	release-metadata	upstream third-party check workflow changed
+.github/workflows/update-contributors.yml	G8	README.md;CONTRIBUTING.md	public-docs	upstream contributor update workflow changed
+.gitignore	G8	scripts/check_architecture_artifacts.sh	none	repository ignore policy changed upstream
+.vscode/extensions.json	G8	scripts/check_architecture_artifacts.sh	none	repository editor recommendation changed upstream
+.vscode/settings.json	G8	scripts/check_architecture_artifacts.sh	none	repository editor settings changed upstream
+CODE_OF_CONDUCT.md	G8	CONTRIBUTING.md	public-docs	public contributor policy changed upstream
+CONTRIBUTING.md	G8	CONTRIBUTING.md	public-docs	public contribution guide changed upstream
+LICENSE	G8	LICENSE	public-docs	license text changed upstream
 README.md	G8	scripts/check_upstream_contract.sh	public-docs	root README heading and public documentation policy
+bundling/bundle-web.ts	G1	src/platform/platform_test.cj;scripts/check_upstream_contract.sh	release-metadata	web bundle platform rewrite or package artifact changed upstream
 deno.jsonc	G8	scripts/check_upstream_contract.sh;README.md	release-metadata	Deno task or lint contract changed upstream
 package.json	G8	scripts/check_upstream_contract.sh;CONTRIBUTING.md	release-metadata	package identity dependency or release script changed upstream
 tsconfig.json	G8	scripts/check_upstream_contract.sh	release-metadata	TypeScript build target or node output contract changed upstream
+types.d.ts	G1	src/types/types_test.cj;scripts/check_upstream_contract.sh	release-metadata	public TypeScript facade changed upstream
 src/README.md	G8	scripts/check_upstream_contract.sh;src/README.md	source-map	src README heading and source map policy
 src/mod.ts	G9.5	src/mod_test.cj;scripts/check_source_trace_matrix.sh	source-map	root export surface changed
 src/bot.ts	G5	src/bot/bot_test.cj;scripts/check_source_trace_matrix.sh	none	Bot runtime constructor init polling and update handling changed
