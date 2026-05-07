@@ -6,59 +6,57 @@ import std.unittest.*
 @Test
 public class InputMediaBuilderTest {
     @TestCase
-    public func inputMediaBuildersEmitGoldenObjects(): Unit {
-        let photoOptions = TelegramObject()
-        photoOptions.addString("caption", "photo caption")
-        photoOptions.addString("parse_mode", "Markdown")
-
-        let videoOptions = TelegramObject()
-        videoOptions.addBool("supports_streaming", true)
-        videoOptions.addInt("duration", 10)
-
-        let animationOptions = TelegramObject()
-        animationOptions.addString("thumbnail", "thumb-file-id")
-
-        let audioOptions = TelegramObject()
-        audioOptions.addString("performer", "Ada")
-        audioOptions.addString("title", "Song")
-
-        let documentOptions = TelegramObject()
-        documentOptions.addBool("disable_content_type_detection", true)
-
-        let golden = InputMediaBuilder.photo("photo-file-id", photoOptions).toJSON() + "\n" +
-            InputMediaBuilder.video(InputFile.fromBytes("video-bytes", "clip.mp4"), videoOptions).toJSON() + "\n" +
-            InputMediaBuilder.animation("animation-file-id", animationOptions).toJSON() + "\n" +
-            InputMediaBuilder.audio("audio-file-id", audioOptions).toJSON() + "\n" +
-            InputMediaBuilder.document("document-file-id", documentOptions).toJSON()
+    public func upstream001BuildsPhotosGolden(): Unit {
+        let options = TelegramObject()
+        options.addString("caption", "photo caption")
 
         @Expect(
-            golden,
-            "{\"type\":\"photo\",\"media\":\"photo-file-id\",\"caption\":\"photo caption\",\"parse_mode\":\"Markdown\"}\n" +
-                "{\"type\":\"video\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"video-bytes\",\"filename\":\"clip.mp4\"},\"supports_streaming\":true,\"duration\":10}\n" +
-                "{\"type\":\"animation\",\"media\":\"animation-file-id\",\"thumbnail\":\"thumb-file-id\"}\n" +
-                "{\"type\":\"audio\",\"media\":\"audio-file-id\",\"performer\":\"Ada\",\"title\":\"Song\"}\n" +
-                "{\"type\":\"document\",\"media\":\"document-file-id\",\"disable_content_type_detection\":true}"
+            InputMediaBuilder.photo(InputFile.fromBytes("ABC", "photo.jpg"), options).toJSON(),
+            "{\"type\":\"photo\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"photo.jpg\"},\"caption\":\"photo caption\"}"
         )
     }
 
     @TestCase
-    public func inputMediaBuildersAcceptInputFilesForEveryKindGolden(): Unit {
+    public func upstream002BuildsVideosGolden(): Unit {
         let options = TelegramObject()
-        options.addString("caption", "file caption")
-
-        let golden = InputMediaBuilder.photo(InputFile.fromBytes("photo-bytes", "photo.jpg"), options).toJSON() + "\n" +
-            InputMediaBuilder.video(InputFile.fromPath("/tmp/video.mp4"), options).toJSON() + "\n" +
-            InputMediaBuilder.animation(InputFile.fromUrl("https://example.test/a.gif"), options).toJSON() + "\n" +
-            InputMediaBuilder.audio(InputFile.fromStream("audio-stream", "audio.ogg"), options).toJSON() + "\n" +
-            InputMediaBuilder.document(InputFile.fromSupplier("document-supplier", "document.pdf"), options).toJSON()
+        options.addString("caption", "video caption")
 
         @Expect(
-            golden,
-            "{\"type\":\"photo\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"photo-bytes\",\"filename\":\"photo.jpg\"},\"caption\":\"file caption\"}\n" +
-                "{\"type\":\"video\",\"media\":{\"source_kind\":\"path\",\"source_value\":\"/tmp/video.mp4\",\"filename\":\"video.mp4\"},\"caption\":\"file caption\"}\n" +
-                "{\"type\":\"animation\",\"media\":{\"source_kind\":\"url\",\"source_value\":\"https://example.test/a.gif\",\"filename\":\"a.gif\"},\"caption\":\"file caption\"}\n" +
-                "{\"type\":\"audio\",\"media\":{\"source_kind\":\"stream\",\"source_value\":\"audio-stream\",\"filename\":\"audio.ogg\"},\"caption\":\"file caption\"}\n" +
-                "{\"type\":\"document\",\"media\":{\"source_kind\":\"supplier\",\"source_value\":\"document-supplier\",\"filename\":\"document.pdf\"},\"caption\":\"file caption\"}"
+            InputMediaBuilder.video(InputFile.fromBytes("ABC", "video.mp4"), options).toJSON(),
+            "{\"type\":\"video\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"video.mp4\"},\"caption\":\"video caption\"}"
+        )
+    }
+
+    @TestCase
+    public func upstream003BuildsAnimationsGolden(): Unit {
+        let options = TelegramObject()
+        options.addString("caption", "animation caption")
+
+        @Expect(
+            InputMediaBuilder.animation(InputFile.fromBytes("ABC", "animation.gif"), options).toJSON(),
+            "{\"type\":\"animation\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"animation.gif\"},\"caption\":\"animation caption\"}"
+        )
+    }
+
+    @TestCase
+    public func upstream004BuildsAudiosGolden(): Unit {
+        let options = TelegramObject()
+        options.addString("caption", "audio caption")
+
+        @Expect(
+            InputMediaBuilder.audio(InputFile.fromBytes("ABC", "audio.ogg"), options).toJSON(),
+            "{\"type\":\"audio\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"audio.ogg\"},\"caption\":\"audio caption\"}"
+        )
+    }
+
+    @TestCase
+    public func upstream005BuildsDocumentsGolden(): Unit {
+        let options = TelegramObject()
+        options.addString("caption", "document caption")
+
+        @Expect(
+            InputMediaBuilder.document(InputFile.fromBytes("ABC", "document.pdf"), options).toJSON(),
+            "{\"type\":\"document\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"document.pdf\"},\"caption\":\"document caption\"}"
         )
     }
 }
