@@ -402,6 +402,7 @@ port_test_key() {
     composer/composer) key="composer" ;;
     composer/composer_type) key="composer.type" ;;
     context/context) key="context" ;;
+    context/context_type) key="context.type" ;;
     filter/filter) key="filter" ;;
     platform/platform) key="platform" ;;
     types/types) key="types" ;;

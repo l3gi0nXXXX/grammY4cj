@@ -69,6 +69,20 @@ private func throwsException(action: () -> Unit): Bool {
 @Test
 public class ContextGetterTest {
     @TestCase
+    public func basicPropertiesExposeUpdateApiAndBotInfo(): Unit {
+        let update = Update(120, "basic")
+        let api = Api("token")
+        let me = testBotInfo()
+        let ctx = Context(update, api, me)
+
+        @Expect(ctx.update.updateId, 120)
+        @Expect(ctx.api.endpointFor("getMe"), api.endpointFor("getMe"))
+        @Expect(ctx.me.id, 42)
+        @Expect(ctx.updateId(), 120)
+        @Expect(ctx.botInfoUsername(), "grammy4cj_bot")
+    }
+
+    @TestCase
     public func topLevelUpdateGettersMapToUpdateFields(): Unit {
         let chat = Chat(100, "private")
         let user = User(200, false, "Ada", "ada")
@@ -125,6 +139,27 @@ public class ContextGetterTest {
         @Expect(ctx.chatBoost.chat.id, 100)
         @Expect(ctx.removedChatBoost.chat.id, 100)
         @Expect(ctx.purchasedPaidMedia.user.id, 200)
+    }
+
+    @TestCase
+    public func messageAggregateMatrixMirrorsUpstreamIndividualSources(): Unit {
+        let chat = Chat(130, "private")
+        let user = User(230, false, "Ada", "ada")
+        let message = Message(501, chat, "message", user)
+        let edited = Message(502, chat, "edited", user)
+        let channel = Message(503, chat, "channel", user)
+        let editedChannel = Message(504, chat, "edited-channel", user)
+        let business = Message(505, chat, "business", user)
+        let editedBusiness = Message(506, chat, "edited-business", user)
+        let callbackMessage = Message(507, chat, "callback", user)
+
+        @Expect(testContext(Update.withMessage(121, message)).msg.messageId, 501)
+        @Expect(testContext(Update.withEditedMessage(122, edited)).msg.messageId, 502)
+        @Expect(testContext(Update.withCallbackQuery(123, CallbackQuery(user, "data", callbackMessage))).msg.messageId, 507)
+        @Expect(testContext(Update.withChannelPost(124, channel)).msg.messageId, 503)
+        @Expect(testContext(Update.withEditedChannelPost(125, editedChannel)).msg.messageId, 504)
+        @Expect(testContext(Update.withBusinessMessage(126, business)).msg.messageId, 505)
+        @Expect(testContext(Update.withEditedBusinessMessage(127, editedBusiness)).msg.messageId, 506)
     }
 
     @TestCase
