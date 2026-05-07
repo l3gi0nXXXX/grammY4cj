@@ -68,7 +68,7 @@ if [ -f "$PHASE_STATUS" ]; then
   phase_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$PHASE_STATUS")"
   phase_bad_status="$(awk -F '\t' '
     NR > 1 && $1 != "" {
-      ok = $3 == "passed" || $3 == "passed_with_formal_substitute" || $3 == "mostly_passed_release_gap" || $3 == "monitoring"
+      ok = $3 == "passed" || $3 == "passed_with_formal_substitute" || $3 == "monitoring"
       if (!ok) bad += 1
     }
     END {print bad + 0}
@@ -98,6 +98,10 @@ if [ -f "$PHASE_STATUS" ]; then
     printf 'FAIL phase status invalid statuses=%s\n' "$phase_bad_status"
     record_failure
   fi
+  if awk -F '\t' 'NR > 1 && $3 == "mostly_passed_release_gap" {found = 1} END {exit found ? 0 : 1}' "$PHASE_STATUS"; then
+    printf 'FAIL phase status contains closed release gap status mostly_passed_release_gap\n'
+    record_failure
+  fi
   if [ "$phase_drift_terms" != "0" ]; then
     printf 'FAIL phase status contains drift terms partial/pending=%s\n' "$phase_drift_terms"
     record_failure
@@ -117,6 +121,7 @@ if [ -f "$GATE_STATUS" ]; then
     }
     END {print bad + 0}
   ' "$GATE_STATUS")"
+  g8_mostly_passed="$(awk -F '\t' 'NR > 1 && $1 == "G8" && $2 == "mostly_passed" {count += 1} END {print count + 0}' "$GATE_STATUS")"
 
   printf 'gate status rows=%s\n' "$gate_rows"
   if [ "$gate_rows" != "11" ]; then
@@ -125,6 +130,18 @@ if [ -f "$GATE_STATUS" ]; then
   fi
   if [ "$gate_bad_status" != "0" ]; then
     printf 'FAIL gate status invalid statuses=%s\n' "$gate_bad_status"
+    record_failure
+  fi
+  if [ "$g8_mostly_passed" != "0" ]; then
+    printf 'FAIL G8 must not remain mostly_passed after release engineering closeout\n'
+    record_failure
+  fi
+fi
+
+if [ -f "$SCRIPT_DIR/check_release_metadata.sh" ]; then
+  if sh "$SCRIPT_DIR/check_release_metadata.sh"; then
+    printf 'release metadata fixture passed\n'
+  else
     record_failure
   fi
 fi
