@@ -8,6 +8,7 @@ public import grammy4cj.bot.PollingOptions
 public import grammy4cj.composer.BotError
 public import grammy4cj.composer.Composer
 public import grammy4cj.composer.ErrorHandler
+public import grammy4cj.composer.MiddlewareArrayFactory
 public import grammy4cj.composer.MiddlewareFactory
 public import grammy4cj.composer.MiddlewareFn
 public import grammy4cj.composer.NextFunction
@@ -171,6 +172,7 @@ public import grammy4cj.filter.clearFilterPredicateCache
 public import grammy4cj.filter.expandedFilterQueries
 public import grammy4cj.filter.filterPredicateCacheSize
 public import grammy4cj.filter.matchFilter
+public import grammy4cj.filter.parse
 public import grammy4cj.filter.parseFilterQuery
 public import grammy4cj.platform.BaseFetchConfig
 public import grammy4cj.platform.ByteIterator

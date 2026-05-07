@@ -39,6 +39,24 @@ check_eq() {
   fi
 }
 
+check_ge() {
+  name="$1"
+  actual="$2"
+  minimum="$3"
+  if [ "$actual" -ge "$minimum" ]; then
+    printf 'ok %s=%s minimum=%s\n' "$name" "$actual" "$minimum"
+  else
+    printf 'FAIL %s minimum=%s actual=%s\n' "$name" "$minimum" "$actual"
+    record_failure
+  fi
+}
+
+test_count_for() {
+  key="$1"
+  file="$2"
+  awk -v k="$key" '$1 == k {print $2; found = 1} END {if (!found) print 0}' "$file"
+}
+
 show_set_diff() {
   title="$1"
   upstream_file="$2"
@@ -104,6 +122,7 @@ port_test_key() {
   case "$key" in
     bot/bot) key="bot" ;;
     composer/composer) key="composer" ;;
+    composer/composer_type) key="composer.type" ;;
     context/context) key="context" ;;
     filter/filter) key="filter" ;;
     platform/platform) key="platform" ;;
@@ -231,6 +250,9 @@ join -a 1 -a 2 -e 0 -o '0 1.2 2.2' "$TMP_DIR/upstream_test_counts" "$TMP_DIR/por
     status = ($2 == $3) ? "same" : "diff"
     printf "  %-34s upstream=%3s port=%3s %s\n", $1, $2, $3, status
   }'
+check_ge "port composer runtime @TestCase declarations" "$(test_count_for composer "$TMP_DIR/port_test_counts")" "43"
+check_ge "port composer.type compile-surface @TestCase declarations" "$(test_count_for composer.type "$TMP_DIR/port_test_counts")" "14"
+check_ge "port filter @TestCase declarations" "$(test_count_for filter "$TMP_DIR/port_test_counts")" "11"
 
 section "G8.5 Docs heading diff"
 extract_markdown_headings "$GRAMMY_DIR/README.md" "$TMP_DIR/upstream_readme_headings"
