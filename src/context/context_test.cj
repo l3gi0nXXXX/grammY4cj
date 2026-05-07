@@ -244,6 +244,68 @@ public class ContextHasTest {
     }
 
     @TestCase
+    public func staticAndInstanceTriggerArraysCoverQueryKinds(): Unit {
+        let chat = Chat(124, "group")
+        let user = User(457, false, "Grace", "grace")
+        let message = Message(44, chat, "payload", user)
+
+        let gameCtx = testContext(Update.withCallbackQuery(10, CallbackQuery(user, "", "game-a", message, "")))
+        @Expect(Context.has.gameQuery(["missing", "game-a"]).matches(gameCtx), true)
+        @Expect(gameCtx.hasGameQuery(["missing", "game-a"]), true)
+        @Expect(gameCtx.`match`, "game-a")
+
+        let inlineCtx = testContext(Update.withInlineQuery(11, InlineQuery(user, "inline-a")))
+        @Expect(Context.has.inlineQuery(["missing", "inline-a"]).matches(inlineCtx), true)
+        @Expect(inlineCtx.hasInlineQuery(["missing", "inline-a"]), true)
+        @Expect(inlineCtx.`match`, "inline-a")
+
+        let chosenCtx = testContext(Update.withChosenInlineResult(12, ChosenInlineResult(user, "chosen-a", "inline-message")))
+        @Expect(Context.has.chosenInlineResult(["missing", "chosen-a"]).matches(chosenCtx), true)
+        @Expect(chosenCtx.hasChosenInlineResult(["missing", "chosen-a"]), true)
+        @Expect(chosenCtx.`match`, "chosen-a")
+
+        let preCheckoutCtx = testContext(Update.withPreCheckoutQuery(13, PreCheckoutQuery(user, "pre-a")))
+        @Expect(Context.has.preCheckoutQuery(["missing", "pre-a"]).matches(preCheckoutCtx), true)
+        @Expect(preCheckoutCtx.hasPreCheckoutQuery(["missing", "pre-a"]), true)
+        @Expect(preCheckoutCtx.`match`, "pre-a")
+
+        let shippingCtx = testContext(Update.withShippingQuery(14, ShippingQuery(user, "ship-a")))
+        @Expect(Context.has.shippingQuery(["missing", "ship-a"]).matches(shippingCtx), true)
+        @Expect(shippingCtx.hasShippingQuery(["missing", "ship-a"]), true)
+        @Expect(shippingCtx.`match`, "ship-a")
+    }
+
+    @TestCase
+    public func matchIsWrittenOnlyBySuccessfulTriggerProbes(): Unit {
+        let chat = Chat(125, "private")
+        let user = User(458, false, "Lin", "lin")
+        let message = Message(45, chat, "alpha", user)
+        let ctx = testContext(Update.withMessage(15, message))
+
+        @Expect(ctx.hasText("alpha"), true)
+        @Expect(ctx.`match`, "alpha")
+        @Expect(ctx.hasText("beta"), false)
+        @Expect(ctx.`match`, "alpha")
+    }
+
+    @TestCase
+    public func commandProbeMatchesOnlyTargetedBotMentions(): Unit {
+        let chat = Chat(126, "private")
+        let user = User(459, false, "Edsger", "edsger")
+
+        let targeted = Message(46, chat, "/start@grammy4cj_bot payload", user)
+        targeted.addEntity(MessageEntity("bot_command", 0, 20))
+        let targetedCtx = testContext(Update.withMessage(16, targeted))
+        @Expect(targetedCtx.hasCommand("start"), true)
+        @Expect(targetedCtx.`match`, "payload")
+
+        let otherBot = Message(47, chat, "/start@other_bot payload", user)
+        otherBot.addEntity(MessageEntity("bot_command", 0, 16))
+        let otherBotCtx = testContext(Update.withMessage(17, otherBot))
+        @Expect(otherBotCtx.hasCommand("start"), false)
+    }
+
+    @TestCase
     public func commandProbeRejectsSlashPrefix(): Unit {
         var threw = false
 

@@ -122,6 +122,14 @@ public class ContextHas {
         ContextPredicate("callbackQuery", toArray(triggers), [])
     }
 
+    public func gameQuery(trigger: String): ContextPredicate {
+        ContextPredicate("gameQuery", toArray(trigger), [])
+    }
+
+    public func gameQuery(triggers: Array<String>): ContextPredicate {
+        ContextPredicate("gameQuery", toArray(triggers), [])
+    }
+
     public func inlineQuery(trigger: String): ContextPredicate {
         ContextPredicate("inlineQuery", toArray(trigger), [])
     }
@@ -188,7 +196,10 @@ public class ContextPredicate {
             return ctx.chat.isPresent && containsString(this.values, ctx.chat.kind)
         }
         if (this.kind == "callbackQuery") {
-            return ctx.callbackQuery.isPresent && matchAndStore(ctx, ctx.callbackQuery.data, TextTrigger(this.values))
+            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.data.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.data, TextTrigger(this.values))
+        }
+        if (this.kind == "gameQuery") {
+            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.gameShortName.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.gameShortName, TextTrigger(this.values))
         }
         if (this.kind == "inlineQuery") {
             return ctx.inlineQuery.isPresent && matchAndStore(ctx, ctx.inlineQuery.query, TextTrigger(this.values))
@@ -472,32 +483,72 @@ public class Context {
         Context.has.reaction(reaction).matches(this)
     }
 
+    public func hasReaction(reactions: Array<String>): Bool {
+        Context.has.reaction(reactions).matches(this)
+    }
+
     public func hasReaction(reaction: ReactionType): Bool {
         Context.has.reaction(reaction).matches(this)
+    }
+
+    public func hasReaction(reactions: Array<ReactionType>): Bool {
+        Context.has.reaction(reactions).matches(this)
     }
 
     public func hasChatType(chatType: String): Bool {
         Context.has.chatType(chatType).matches(this)
     }
 
+    public func hasChatType(chatTypes: Array<String>): Bool {
+        Context.has.chatType(chatTypes).matches(this)
+    }
+
     public func hasCallbackQuery(trigger: String): Bool {
         Context.has.callbackQuery(trigger).matches(this)
+    }
+
+    public func hasCallbackQuery(triggers: Array<String>): Bool {
+        Context.has.callbackQuery(triggers).matches(this)
+    }
+
+    public func hasGameQuery(trigger: String): Bool {
+        Context.has.gameQuery(trigger).matches(this)
+    }
+
+    public func hasGameQuery(triggers: Array<String>): Bool {
+        Context.has.gameQuery(triggers).matches(this)
     }
 
     public func hasInlineQuery(trigger: String): Bool {
         Context.has.inlineQuery(trigger).matches(this)
     }
 
+    public func hasInlineQuery(triggers: Array<String>): Bool {
+        Context.has.inlineQuery(triggers).matches(this)
+    }
+
     public func hasChosenInlineResult(trigger: String): Bool {
         Context.has.chosenInlineResult(trigger).matches(this)
+    }
+
+    public func hasChosenInlineResult(triggers: Array<String>): Bool {
+        Context.has.chosenInlineResult(triggers).matches(this)
     }
 
     public func hasPreCheckoutQuery(trigger: String): Bool {
         Context.has.preCheckoutQuery(trigger).matches(this)
     }
 
+    public func hasPreCheckoutQuery(triggers: Array<String>): Bool {
+        Context.has.preCheckoutQuery(triggers).matches(this)
+    }
+
     public func hasShippingQuery(trigger: String): Bool {
         Context.has.shippingQuery(trigger).matches(this)
+    }
+
+    public func hasShippingQuery(triggers: Array<String>): Bool {
+        Context.has.shippingQuery(triggers).matches(this)
     }
 
     public func reply(text: String): Payload {
@@ -675,13 +726,15 @@ private func validateCommandNames(commands: Array<String>): Unit {
 
 private func matchesFilterQuery(ctx: Context, query: String): Bool {
     if (query == ":text") {
-        return ctx.msg.isPresent && !messageContent(ctx.msg).isEmpty()
+        let message = triggerMessage(ctx)
+        return message.isPresent && !message.text.isEmpty()
     }
     if (query == ":caption") {
-        return ctx.msg.isPresent && !ctx.msg.caption.isEmpty()
+        let message = triggerMessage(ctx)
+        return message.isPresent && !message.caption.isEmpty()
     }
     if (query == ":entities:bot_command") {
-        return hasBotCommandEntity(ctx.msg)
+        return hasBotCommandEntity(triggerMessage(ctx))
     }
     if (query == "callback_query:data") {
         return ctx.callbackQuery.isPresent && !ctx.callbackQuery.data.isEmpty()
@@ -716,10 +769,11 @@ private func matchesFilterQuery(ctx: Context, query: String): Bool {
 }
 
 private func matchesText(ctx: Context, trigger: TextTrigger): Bool {
-    if (!ctx.msg.isPresent) {
+    let message = triggerMessage(ctx)
+    if (!message.isPresent) {
         return false
     }
-    matchAndStore(ctx, messageContent(ctx.msg), trigger)
+    matchAndStore(ctx, messageContent(message), trigger)
 }
 
 private func matchAndStore(ctx: Context, content: String, trigger: TextTrigger): Bool {
@@ -732,7 +786,7 @@ private func matchAndStore(ctx: Context, content: String, trigger: TextTrigger):
 }
 
 private func matchesCommand(ctx: Context, commands: Array<String>): Bool {
-    let message = ctx.msg
+    let message = triggerMessage(ctx)
     if (!message.isPresent || !hasBotCommandEntity(message)) {
         return false
     }
@@ -742,8 +796,7 @@ private func matchesCommand(ctx: Context, commands: Array<String>): Bool {
             continue
         }
         let raw = text[1..entity.length]
-        let command = commandNameWithoutBot(raw)
-        if (containsString(commands, raw) || containsString(commands, command)) {
+        if (commandMatches(ctx, commands, raw)) {
             ctx.`match` = text[entity.length..].trimAsciiStart()
             return true
         }
@@ -751,11 +804,35 @@ private func matchesCommand(ctx: Context, commands: Array<String>): Bool {
     false
 }
 
+private func commandMatches(ctx: Context, commands: Array<String>, raw: String): Bool {
+    if (containsString(commands, raw)) {
+        return true
+    }
+    let command = commandNameWithoutBot(raw)
+    if (command == raw) {
+        return containsString(commands, raw)
+    }
+    commandTarget(raw) == ctx.me.username && containsString(commands, command)
+}
+
 private func commandNameWithoutBot(raw: String): String {
     match (raw.indexOf("@")) {
         case Some(index) => raw[0..index]
         case None => raw
     }
+}
+
+private func commandTarget(raw: String): String {
+    match (raw.indexOf("@")) {
+        case Some(index) => raw[index + 1..]
+        case None => ""
+    }
+}
+
+private func triggerMessage(ctx: Context): Message {
+    if (ctx.message.isPresent) { return ctx.message }
+    if (ctx.channelPost.isPresent) { return ctx.channelPost }
+    Message()
 }
 
 private func matchesReaction(ctx: Context, wanted: Array<ReactionType>): Bool {

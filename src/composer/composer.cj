@@ -2,6 +2,7 @@ package grammy4cj.composer
 
 import grammy4cj.context.Context
 import grammy4cj.filter.matchFilter
+import grammy4cj.types.ReactionType
 import std.collection.HashMap
 
 public type NextFunction = () -> Unit
@@ -71,12 +72,16 @@ private func notPredicate(predicate: Predicate): Predicate {
     { ctx: Context => !predicate(ctx) }
 }
 
+private func hasPredicate(predicate: (Context) -> Bool): Predicate {
+    { ctx: Context => predicate(ctx) }
+}
+
 private func queryPredicate(query: String): Predicate {
-    { ctx: Context => matchFilter(query, ctx.update.kind) }
+    { ctx: Context => matchFilter(query, ctx.update.kind) || Context.has.filterQuery(query).matches(ctx) }
 }
 
 private func queryArrayPredicate(queries: Array<String>): Predicate {
-    { ctx: Context => matchFilter(queries, ctx.update.kind) }
+    { ctx: Context => matchFilter(queries, ctx.update.kind) || Context.has.filterQuery(queries).matches(ctx) }
 }
 
 private func routeMiddleware(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): MiddlewareFactory {
@@ -137,6 +142,182 @@ public class Composer {
         this.filter(queryArrayPredicate(queries), middleware)
     }
 
+    public func hears(trigger: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(trigger).matches(ctx) }))
+    }
+
+    public func hears(trigger: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(trigger).matches(ctx) }), middleware)
+    }
+
+    public func hears(triggers: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(triggers).matches(ctx) }))
+    }
+
+    public func hears(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(triggers).matches(ctx) }), middleware)
+    }
+
+    public func command(command: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.command(command).matches(ctx) }))
+    }
+
+    public func command(command: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.command(command).matches(ctx) }), middleware)
+    }
+
+    public func command(commands: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.command(commands).matches(ctx) }))
+    }
+
+    public func command(commands: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.command(commands).matches(ctx) }), middleware)
+    }
+
+    public func reaction(reaction: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reaction).matches(ctx) }))
+    }
+
+    public func reaction(reaction: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reaction).matches(ctx) }), middleware)
+    }
+
+    public func reaction(reactions: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reactions).matches(ctx) }))
+    }
+
+    public func reaction(reactions: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reactions).matches(ctx) }), middleware)
+    }
+
+    public func reaction(reaction: ReactionType): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reaction).matches(ctx) }))
+    }
+
+    public func reaction(reaction: ReactionType, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reaction).matches(ctx) }), middleware)
+    }
+
+    public func reaction(reactions: Array<ReactionType>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reactions).matches(ctx) }))
+    }
+
+    public func reaction(reactions: Array<ReactionType>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.reaction(reactions).matches(ctx) }), middleware)
+    }
+
+    public func chatType(chatType: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chatType(chatType).matches(ctx) }))
+    }
+
+    public func chatType(chatType: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chatType(chatType).matches(ctx) }), middleware)
+    }
+
+    public func chatType(chatTypes: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chatType(chatTypes).matches(ctx) }))
+    }
+
+    public func chatType(chatTypes: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chatType(chatTypes).matches(ctx) }), middleware)
+    }
+
+    public func callbackQuery(trigger: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(trigger).matches(ctx) }))
+    }
+
+    public func callbackQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func callbackQuery(triggers: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(triggers).matches(ctx) }))
+    }
+
+    public func callbackQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func gameQuery(trigger: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(trigger).matches(ctx) }))
+    }
+
+    public func gameQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func gameQuery(triggers: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(triggers).matches(ctx) }))
+    }
+
+    public func gameQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func inlineQuery(trigger: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(trigger).matches(ctx) }))
+    }
+
+    public func inlineQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func inlineQuery(triggers: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(triggers).matches(ctx) }))
+    }
+
+    public func inlineQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func chosenInlineResult(trigger: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(trigger).matches(ctx) }))
+    }
+
+    public func chosenInlineResult(trigger: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(trigger).matches(ctx) }), middleware)
+    }
+
+    public func chosenInlineResult(triggers: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(triggers).matches(ctx) }))
+    }
+
+    public func chosenInlineResult(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(triggers).matches(ctx) }), middleware)
+    }
+
+    public func preCheckoutQuery(trigger: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(trigger).matches(ctx) }))
+    }
+
+    public func preCheckoutQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func preCheckoutQuery(triggers: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(triggers).matches(ctx) }))
+    }
+
+    public func preCheckoutQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func shippingQuery(trigger: String): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(trigger).matches(ctx) }))
+    }
+
+    public func shippingQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func shippingQuery(triggers: Array<String>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(triggers).matches(ctx) }))
+    }
+
+    public func shippingQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(triggers).matches(ctx) }), middleware)
+    }
+
     public func filter(predicate: Predicate): Composer {
         let composer = Composer()
         this.branch(predicate, composer.middleware(), pass)
@@ -155,6 +336,24 @@ public class Composer {
 
     public func drop(predicate: Predicate, middleware: MiddlewareFn): Composer {
         this.filter(notPredicate(predicate), middleware)
+    }
+
+    public func fork(): Composer {
+        this.fork([])
+    }
+
+    public func fork(middleware: MiddlewareFn): Composer {
+        this.fork([middleware])
+    }
+
+    public func fork(middleware: Array<MiddlewareFn>): Composer {
+        let composer = Composer(middleware)
+        let forked = composer.middleware()
+        this.use({ ctx: Context, next: NextFunction =>
+            next()
+            run(forked, ctx)
+        })
+        composer
     }
 
     public func lazy(factory: MiddlewareFactory): Composer {
@@ -214,4 +413,33 @@ public class Composer {
     public func middlewareName(): String {
         "grammy4cj.composer.Composer"
     }
+}
+
+public func composerControlMethodNames(): Array<String> {
+    [
+        "middleware",
+        "use",
+        "on",
+        "hears",
+        "command",
+        "reaction",
+        "chatType",
+        "callbackQuery",
+        "gameQuery",
+        "inlineQuery",
+        "chosenInlineResult",
+        "preCheckoutQuery",
+        "shippingQuery",
+        "filter",
+        "drop",
+        "fork",
+        "lazy",
+        "route",
+        "branch",
+        "errorBoundary"
+    ]
+}
+
+public func composerControlMethodCount(): Int64 {
+    composerControlMethodNames().size
 }
