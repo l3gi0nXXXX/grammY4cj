@@ -3,12 +3,19 @@ package grammy4cj.bot
 import std.collection.ArrayList
 
 import grammy4cj.composer.BotError
+import grammy4cj.context.Context
+import grammy4cj.core.Api
 import grammy4cj.core.ApiClientOptions
 import grammy4cj.core.WebhookReplyEnvelope
 import grammy4cj.types.Update
 import grammy4cj.types.UserFromGetMe
 
 public type BotStartHook = (UserFromGetMe) -> Unit
+public type BotContextFactory = (Update, Api, UserFromGetMe) -> Context
+
+public func defaultContextFactory(update: Update, api: Api, me: UserFromGetMe): Context {
+    Context(update, api, me)
+}
 
 public func defaultUpdateTypes(): Array<String> {
     [
