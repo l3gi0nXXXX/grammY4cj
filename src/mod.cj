@@ -120,6 +120,7 @@ public import grammy4cj.convenience.upstreamFrameworkAdapterNames
 public import grammy4cj.convenience.webhookCallback
 public import grammy4cj.core.ApiCallFn
 public import grammy4cj.core.Api
+public import grammy4cj.core.ApiBuildUrl
 public import grammy4cj.core.ApiClient
 public import grammy4cj.core.ApiClientOptions
 public import grammy4cj.core.CancelController
@@ -141,6 +142,7 @@ public import grammy4cj.core.TransformableApi
 public import grammy4cj.core.Transformer
 public import grammy4cj.core.TransportErrorInfo
 public import grammy4cj.core.WebhookReplyEnvelope
+public import grammy4cj.core.WebhookReplyPredicate
 public import grammy4cj.core.createFormDataPayload
 public import grammy4cj.core.createJsonPayload
 public import grammy4cj.core.createJsonPayloadWithMethod
@@ -151,10 +153,12 @@ public import grammy4cj.core.apiWrapperMethodNames
 public import grammy4cj.core.defaultFileExtension
 public import grammy4cj.core.escapeJson
 public import grammy4cj.core.filePart
+public import grammy4cj.core.isZeroArgRawMethod
 public import grammy4cj.core.requiresFormDataUpload
 public import grammy4cj.core.toGrammyError
 public import grammy4cj.core.toHttpError
 public import grammy4cj.core.valuePart
+public import grammy4cj.core.zeroArgRawMethodNames
 public import grammy4cj.filter.FilterQuery
 public import grammy4cj.filter.FilterPredicate
 public import grammy4cj.filter.clearFilterPredicateCache

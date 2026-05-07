@@ -446,7 +446,9 @@ public func createFormDataPayload(payload: Payload, boundary: String, attachIdPr
             stream.addText("\r\n--" + boundary + "\r\n")
         }
         stream.addText(filePartHeader(part.id, part.origin, part.file.filename))
-        if (part.file.sourceKind == "stream_error") {
+        if (part.file.sourceKind == "stream_error_after") {
+            stream.fail(part.file.value, 100)
+        } else if (part.file.sourceKind == "stream_error") {
             stream.fail(part.file.value, 0)
         } else {
             stream.addFile(part.file.sourceKind, part.file.value)
@@ -555,7 +557,10 @@ private func filePartHeader(attachId: String, origin: String, filename: String):
         filename
     }
     if (actualFilename.contains("\r") || actualFilename.contains("\n")) {
-        throw Exception("File paths cannot contain carriage-return or newline characters.")
+        throw Exception(
+            "File paths cannot contain carriage-return (\\r) or newline (\\n) characters! Filename for property '" +
+            origin + "' was:\n\"\"\"\n" + actualFilename + "\n\"\"\""
+        )
     }
     "content-disposition:form-data;name=\"" + attachId + "\";filename=" + actualFilename +
         "\r\ncontent-type:application/octet-stream\r\n\r\n"
