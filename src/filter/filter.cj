@@ -83,6 +83,18 @@ public func parseFilterQuery(query: FilterQuery): Array<String> {
     parts.toArray()
 }
 
+public func parse(query: FilterQuery): Array<Array<String>> {
+    [parseFilterQuery(query)]
+}
+
+public func parse(queries: Array<FilterQuery>): Array<Array<String>> {
+    let out = ArrayList<Array<String>>()
+    for (query in queries) {
+        out.add(parseFilterQuery(query))
+    }
+    out.toArray()
+}
+
 public func expandedFilterQueries(query: FilterQuery): Array<String> {
     expandedFilterQueries([query])
 }
@@ -437,7 +449,7 @@ private func l2Present(update: Update, l1: String, l2: String): Bool {
         return l2 == "old_reaction" || l2 == "new_reaction"
     }
     if (l1 == "message_reaction_count") {
-        return false
+        return update.messageReactionCount.isPresent && l2 == "reactions"
     }
     false
 }
@@ -454,6 +466,9 @@ private func l3Present(ctx: Context, l1: String, l2: String, l3: String): Bool {
         if (l2 == "caption_entities") {
             return entitiesHaveKind(message.captionEntities.toArray(), l3)
         }
+        if (l2 == "new_chat_members" || l2 == "left_chat_member") {
+            return userL3Present(ctx, message.user, l3)
+        }
         return false
     }
     if (l1 == "my_chat_member" && l2 == "from") {
@@ -469,6 +484,9 @@ private func l3Present(ctx: Context, l1: String, l2: String, l3: String): Bool {
         if (l2 == "new_reaction") {
             return reactionsHaveKind(ctx.update.messageReaction.newReaction, l3)
         }
+    }
+    if (l1 == "message_reaction_count" && l2 == "reactions") {
+        return kindMatches(l1 + ":" + l2 + ":" + l3, ctx.update.kind)
     }
     false
 }
@@ -491,6 +509,7 @@ private func messageL2Present(message: Message, l2: String): Bool {
     if (l2 == "caption") { return !message.caption.isEmpty() }
     if (l2 == "entities") { return message.entities.size > 0 }
     if (l2 == "caption_entities") { return message.captionEntities.size > 0 }
+    if (l2 == "new_chat_members" || l2 == "left_chat_member") { return message.user.isPresent }
     if (l2 == "business_connection_id") { return !message.businessConnectionId.isEmpty() }
     if (l2 == "is_topic_message") { return message.isTopicMessage }
     if (l2 == "direct_messages_topic") { return message.directMessagesTopicId != 0 }
@@ -524,17 +543,20 @@ private func userL3Present(ctx: Context, user: User, l3: String): Bool {
 }
 
 private func entitiesHaveKind(entities: Array<MessageEntity>, kind: String): Bool {
-    for (entity in entities) {
-        if (entity.kind == kind) {
-            return true
-        }
-    }
-    false
+    testMaybeArray<MessageEntity>(entities, { entity: MessageEntity => entity.kind == kind })
 }
 
 private func reactionsHaveKind(reactions: Array<ReactionType>, kind: String): Bool {
-    for (reaction in reactions) {
-        if (reaction.kind == kind) {
+    testMaybeArray<ReactionType>(reactions, { reaction: ReactionType => reaction.kind == kind })
+}
+
+private func testMaybeArray<T>(value: T, pred: (T) -> Bool): Bool {
+    pred(value)
+}
+
+private func testMaybeArray<T>(values: Array<T>, pred: (T) -> Bool): Bool {
+    for (value in values) {
+        if (pred(value)) {
             return true
         }
     }

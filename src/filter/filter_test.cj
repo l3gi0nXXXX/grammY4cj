@@ -2,7 +2,7 @@ package grammy4cj.filter
 
 import grammy4cj.context.Context
 import grammy4cj.core.Api
-import grammy4cj.types.{Chat, ChatMemberUpdated, Message, MessageEntity, MessageReactionUpdated, ReactionType, Update, User, UserFromGetMe}
+import grammy4cj.types.{Chat, ChatMemberUpdated, Message, MessageEntity, MessageReactionCountUpdated, MessageReactionUpdated, ReactionType, Update, User, UserFromGetMe}
 import std.unittest.*
 
 private func contains(values: Array<String>, needle: String): Bool {
@@ -80,6 +80,20 @@ public class FilterQueryTest {
         @Expect(parsed[0], "")
         @Expect(parsed[1], "")
         @Expect(parsed[2], "url")
+    }
+
+    @TestCase
+    public func parseReturnsUpstreamTwoDimensionalShape(): Unit {
+        let parsed = parse(["message:text", "::url"])
+
+        @Expect(parsed.size, 2)
+        @Expect(parsed[0].size, 2)
+        @Expect(parsed[0][0], "message")
+        @Expect(parsed[0][1], "text")
+        @Expect(parsed[1].size, 3)
+        @Expect(parsed[1][0], "")
+        @Expect(parsed[1][1], "")
+        @Expect(parsed[1][2], "url")
     }
 
     @TestCase
@@ -193,6 +207,16 @@ public class FilterQueryTest {
     }
 
     @TestCase
+    public func objectMatcherPerformsMessageUserMeShortcutFiltering(): Unit {
+        let message = Message(100, testChat(), "", User(42, true, "Bot", "bot"))
+        let update = Update(4, "message")
+        update.message = message
+
+        @Expect(matchFilter(":left_chat_member:me", testContext(update)), true)
+        @Expect(matchFilter(":left_chat_member:is_bot", testContext(update)), true)
+    }
+
+    @TestCase
     public func objectMatcherMatchesEntityArraysAcrossMultipleFilters(): Unit {
         let entity = MessageEntity("", 0, 0)
         let message = Message(100, testChat(), "").addEntity(MessageEntity("italic", 0, 1)).addEntity(entity)
@@ -224,6 +248,18 @@ public class FilterQueryTest {
         @Expect(matchFilter("message_reaction:new_reaction:custom_emoji", ctx), true)
         @Expect(matchFilter("message_reaction:new_reaction:paid", ctx), true)
         @Expect(matchFilter("message_reaction:new_reaction:emoji", ctx), false)
+    }
+
+    @TestCase
+    public func objectMatcherMatchesReactionCountL2AndKindBackedL3(): Unit {
+        let update = Update(5, "message_reaction_count:reactions:paid")
+        update.messageReactionCount = MessageReactionCountUpdated(testChat(), 100)
+        let ctx = testContext(update)
+
+        @Expect(matchFilter("message_reaction_count", ctx), true)
+        @Expect(matchFilter("message_reaction_count:reactions", ctx), true)
+        @Expect(matchFilter("message_reaction_count:reactions:paid", ctx), true)
+        @Expect(matchFilter("message_reaction_count:reactions:emoji", ctx), false)
     }
 
     @TestCase
