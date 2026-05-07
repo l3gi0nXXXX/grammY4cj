@@ -96,6 +96,74 @@ public class ByteStream {
     }
 }
 
+public class PlatformRawSource {
+    public let sourceKind: String
+    public let sourceValue: String
+    public let filename: String
+    public let chunkCount: Int64
+    public let reusable: Bool
+    public var consumed: Bool = false
+
+    public init(sourceKind: String, sourceValue: String, filename: String, chunkCount: Int64, reusable: Bool) {
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.chunkCount = chunkCount
+        this.reusable = reusable
+    }
+
+    public static func bytes(label: String, filename: String): PlatformRawSource {
+        PlatformRawSource("bytes", label, filename, 1, true)
+    }
+
+    public static func path(path: String, filename: String): PlatformRawSource {
+        PlatformRawSource("path", path, filename, 1, true)
+    }
+
+    public static func url(url: String, filename: String): PlatformRawSource {
+        PlatformRawSource("url", url, filename, 1, true)
+    }
+
+    public static func stream(label: String, filename: String, chunkCount: Int64): PlatformRawSource {
+        PlatformRawSource("stream", label, filename, chunkCount, false)
+    }
+
+    public static func supplier(label: String, filename: String): PlatformRawSource {
+        PlatformRawSource("supplier", label, filename, 1, true)
+    }
+
+    public func consumeIfSingleUse(): Unit {
+        if (!this.reusable) {
+            if (this.consumed) {
+                throw Exception("Platform raw source has already been consumed.")
+            }
+            this.consumed = true
+        }
+    }
+}
+
+public class PlatformRawData {
+    public let runtime: String
+    public let sourceKind: String
+    public let sourceValue: String
+    public let filename: String
+    public let contract: String
+    public let stream: ByteStream
+
+    public init(runtime: String, sourceKind: String, sourceValue: String, filename: String, contract: String, stream: ByteStream) {
+        this.runtime = runtime
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.contract = contract
+        this.stream = stream
+    }
+
+    public func summary(): String {
+        this.runtime + ":" + this.sourceKind + ":" + this.contract + ":" + this.filename
+    }
+}
+
 public class Logger {
     public let namespace: String
 
@@ -145,6 +213,10 @@ public class PlatformAdapter {
         makeByteStreamFromIterator(iterator)
     }
 
+    public func inputFileRaw(source: PlatformRawSource): PlatformRawData {
+        makeInputFileRaw(this.runtime, source)
+    }
+
     public func logger(namespace: String): Logger {
         Logger(namespace)
     }
@@ -166,6 +238,10 @@ public func itrToStream(iterator: ByteIterator): ByteStream {
     makeByteStreamFromIterator(iterator)
 }
 
+public func inputFileRaw(source: PlatformRawSource): PlatformRawData {
+    makeInputFileRaw("cjnative", source)
+}
+
 private func makeBaseFetchConfig(apiRoot: String): BaseFetchConfig {
     if (apiRoot.startsWith("https:")) {
         return BaseFetchConfig(apiRoot, "https", true, true, false)
@@ -179,6 +255,89 @@ private func makeBaseFetchConfig(apiRoot: String): BaseFetchConfig {
 private func makeByteStreamFromIterator(iterator: ByteIterator): ByteStream {
     iterator.consume()
     ByteStream("iterator", iterator.label, iterator.chunkCount, "async-iterable-to-byte-stream")
+}
+
+private func makeInputFileRaw(runtime: String, source: PlatformRawSource): PlatformRawData {
+    let normalizedRuntime = normalizeRuntime(runtime)
+    if (!platformSupportsInputFileSource(source.sourceKind, normalizedRuntime)) {
+        throw Exception("Platform runtime '" + normalizedRuntime + "' does not support InputFile source kind '" + source.sourceKind + "'")
+    }
+    source.consumeIfSingleUse()
+    let contract = platformInputFileRawContract(source.sourceKind, normalizedRuntime)
+    PlatformRawData(
+        runtime,
+        source.sourceKind,
+        source.sourceValue,
+        source.filename,
+        contract,
+        ByteStream(source.sourceKind, source.sourceValue, source.chunkCount, contract)
+    )
+}
+
+public func platformSupportsInputFileSource(sourceKind: String, runtime: String): Bool {
+    let normalizedRuntime = normalizeRuntime(runtime)
+    if (sourceKind == "path") {
+        return normalizedRuntime == "deno" || normalizedRuntime == "node"
+    }
+    if (sourceKind == "blob") {
+        return normalizedRuntime == "deno" || normalizedRuntime == "web"
+    }
+    if (sourceKind == "response") {
+        return normalizedRuntime == "deno"
+    }
+    if (sourceKind == "supplier") {
+        return normalizedRuntime == "deno" || normalizedRuntime == "node"
+    }
+    sourceKind == "url" || sourceKind == "url_like" || sourceKind == "bytes" || sourceKind == "stream" ||
+        sourceKind == "iterable" || sourceKind == "async_iterable"
+}
+
+public func platformInputFileRawContract(sourceKind: String, runtime: String): String {
+    let normalizedRuntime = normalizeRuntime(runtime)
+    if (sourceKind == "path") {
+        if (normalizedRuntime == "deno") {
+            return "deno-open-file-async-iterator"
+        }
+        return "node-create-read-stream"
+    }
+    if (sourceKind == "url" || sourceKind == "url_like") {
+        return "fetch-body-async-iterable"
+    }
+    if (sourceKind == "bytes") {
+        return "uint8-array-as-is"
+    }
+    if (sourceKind == "blob") {
+        return "blob-stream"
+    }
+    if (sourceKind == "response") {
+        return "response-body"
+    }
+    if (sourceKind == "stream") {
+        if (normalizedRuntime == "node") {
+            return "node-read-stream-as-is"
+        }
+        return "readable-stream-as-is"
+    }
+    if (sourceKind == "iterable") {
+        return "iterator-as-is"
+    }
+    if (sourceKind == "async_iterable") {
+        return "async-iterator-as-is"
+    }
+    if (sourceKind == "supplier") {
+        return "supplier-deferred"
+    }
+    sourceKind + "-raw"
+}
+
+private func normalizeRuntime(runtime: String): String {
+    if (runtime == "deno" || runtime == "node" || runtime == "web") {
+        return runtime
+    }
+    if (runtime.isEmpty() || runtime == "cjnative") {
+        return "node"
+    }
+    runtime
 }
 
 private func boolString(value: Bool): String {
