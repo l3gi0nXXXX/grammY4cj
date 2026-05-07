@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+env:
+  GRAMMY_UPSTREAM_REF: c865dd3a4d26911b01c83695e3845c7245870a5d
+
+jobs:
+  architecture:
+    name: Architecture and sync gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check architecture artifacts
+        run: sh scripts/check_architecture_artifacts.sh
+
+      - name: Check formal substitute ledger
+        run: sh scripts/check_formal_substitute_ledger.sh
+
+      - name: Check optional integration plan
+        run: sh scripts/check_optional_integration_plan.sh
+
+      - name: Check dependency boundaries
+        run: sh scripts/check_dependency_boundaries.sh
+
+      - name: Check upstream sync process
+        run: sh scripts/check_upstream_sync_process.sh
+
+  public-docs:
+    name: Public documentation safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check public docs
+        run: sh scripts/check_public_docs.sh
+
+      - name: Check release metadata
+        run: sh scripts/check_release_metadata.sh
+
+  upstream-contract:
+    name: Upstream contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout upstream grammY baseline
+        uses: actions/checkout@v4
+        with:
+          repository: grammyjs/grammY
+          ref: ${{ env.GRAMMY_UPSTREAM_REF }}
+          path: upstream-grammY
+
+      - name: Check upstream contract
+        run: GRAMMY_DIR="$GITHUB_WORKSPACE/upstream-grammY" sh scripts/check_upstream_contract.sh
+
+      - name: Check upstream contract hard fail
+        run: GRAMMY4CJ_HARD_FAIL=1 GRAMMY_DIR="$GITHUB_WORKSPACE/upstream-grammY" sh scripts/check_upstream_contract.sh
+
+      - name: Check source trace matrix
+        run: GRAMMY_DIR="$GITHUB_WORKSPACE/upstream-grammY" sh scripts/check_source_trace_matrix.sh
+
+  build-test:
+    name: Cangjie build and tests (self-hosted toolchain required)
+    runs-on:
+      - self-hosted
+      - cangjie
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Cangjie toolchain
+        run: command -v cjpm
+
+      - name: Build and test
+        run: cjpm clean && cjpm build -i && cjpm test
