@@ -7,7 +7,7 @@ public class APIConstants {
     public let maxInlineKeyboardColumns: Int64
     public let DEFAULT_UPDATE_TYPES: Array<String>
     public let ALL_UPDATE_TYPES: Array<String>
-    public let ALL_CHAT_PERMISSIONS: Array<String>
+    public let ALL_CHAT_PERMISSIONS: TelegramObject
 
     public init(defaultUpdateTypeCount: Int64, maxInlineKeyboardColumns: Int64) {
         this.defaultUpdateTypeCount = defaultUpdateTypeCount
@@ -21,7 +21,7 @@ public class APIConstants {
         let object = TelegramObject()
         object.addArray("DEFAULT_UPDATE_TYPES", stringArrayValue(this.DEFAULT_UPDATE_TYPES))
         object.addArray("ALL_UPDATE_TYPES", stringArrayValue(this.ALL_UPDATE_TYPES))
-        object.addArray("ALL_CHAT_PERMISSIONS", stringArrayValue(this.ALL_CHAT_PERMISSIONS))
+        object.addObject("ALL_CHAT_PERMISSIONS", this.ALL_CHAT_PERMISSIONS)
         object.toJSON()
     }
 }
@@ -83,7 +83,7 @@ public func allUpdateTypes(): Array<String> {
     ]
 }
 
-public func allChatPermissions(): Array<String> {
+public func allChatPermissionKeys(): Array<String> {
     [
         "can_send_messages",
         "can_send_audios",
@@ -101,6 +101,14 @@ public func allChatPermissions(): Array<String> {
         "can_pin_messages",
         "can_manage_topics"
     ]
+}
+
+public func allChatPermissions(): TelegramObject {
+    let object = TelegramObject()
+    for (permission in allChatPermissionKeys()) {
+        object.addBool(permission, true)
+    }
+    object
 }
 
 public class TelegramField {
@@ -175,42 +183,42 @@ public class TelegramObject {
     public init() {}
 
     public func addString(key: String, value: String): TelegramObject {
-        this.fields.add(TelegramField(key, stringValue(value)))
+        this.putValue(key, stringValue(value))
         this
     }
 
     public func addRaw(key: String, value: String): TelegramObject {
-        this.fields.add(TelegramField(key, rawValue(value)))
+        this.putValue(key, rawValue(value))
         this
     }
 
     public func addBool(key: String, value: Bool): TelegramObject {
-        this.fields.add(TelegramField(key, rawValue(if (value) { "true" } else { "false" })))
+        this.putValue(key, rawValue(if (value) { "true" } else { "false" }))
         this
     }
 
     public func addInt(key: String, value: Int64): TelegramObject {
-        this.fields.add(TelegramField(key, rawValue(value.toString())))
+        this.putValue(key, rawValue(value.toString()))
         this
     }
 
     public func addFloat(key: String, value: Float64): TelegramObject {
-        this.fields.add(TelegramField(key, rawValue(value.toString())))
+        this.putValue(key, rawValue(value.toString()))
         this
     }
 
     public func addObject(key: String, value: TelegramObject): TelegramObject {
-        this.fields.add(TelegramField(key, value.toValue()))
+        this.putValue(key, value.toValue())
         this
     }
 
     public func addArray(key: String, value: TelegramValue): TelegramObject {
-        this.fields.add(TelegramField(key, value))
+        this.putValue(key, value)
         this
     }
 
     public func addValue(key: String, value: TelegramValue): TelegramObject {
-        this.fields.add(TelegramField(key, value))
+        this.putValue(key, value)
         this
     }
 
@@ -223,7 +231,7 @@ public class TelegramObject {
 
     public func addAll(other: TelegramObject): TelegramObject {
         for (field in other.fields) {
-            this.fields.add(TelegramField(field.key, field.value.copy()))
+            this.putValue(field.key, field.value.copy())
         }
         this
     }
@@ -244,6 +252,25 @@ public class TelegramObject {
         let object = TelegramObject()
         object.addAll(this)
         object
+    }
+
+    private func putValue(key: String, value: TelegramValue): Unit {
+        let next = ArrayList<TelegramField>()
+        var replaced = false
+        for (field in this.fields) {
+            if (field.key == key) {
+                if (!replaced) {
+                    next.add(TelegramField(key, value.copy()))
+                    replaced = true
+                }
+            } else {
+                next.add(TelegramField(field.key, field.value.copy()))
+            }
+        }
+        if (!replaced) {
+            next.add(TelegramField(key, value.copy()))
+        }
+        this.fields = next
     }
 }
 

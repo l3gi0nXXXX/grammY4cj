@@ -105,6 +105,42 @@ public class KeyboardBuilderTest {
                 "{\"text\":\"web\",\"web_app\":{\"url\":\"https://example.test/app\"}}"
         )
     }
+
+    @TestCase
+    public func keyboardSupportsUpstreamButtonSourcesOptionsAndStringRows(): Unit {
+        let common = TelegramObject()
+        common.addString("style", "primary")
+        common.addString("icon_custom_emoji_id", "emoji-id")
+
+        let userOptions = TelegramObject()
+        userOptions.addBool("user_is_bot", true)
+
+        let chatOptions = TelegramObject()
+        chatOptions.addBool("chat_is_channel", true)
+
+        let rows = ArrayList<ArrayList<String>>()
+        let row = ArrayList<String>()
+        row.add("a")
+        row.add("b")
+        rows.add(row)
+
+        let keyboard = Keyboard.from(rows)
+            .row(
+                Keyboard.requestContactButton(Keyboard.textButton("contact", common)),
+                Keyboard.requestUsersButton(Keyboard.textButton("users", common), 12, userOptions),
+                Keyboard.requestChatButton(Keyboard.textButton("chat", common), 42, chatOptions)
+            )
+            .row(
+                Keyboard.requestPollButton(Keyboard.textButton("poll", common), "regular"),
+                Keyboard.requestManagedBotButton(Keyboard.textButton("bot", common), 96),
+                Keyboard.webAppButton(Keyboard.textButton("web", common), "https://grammy.dev")
+            )
+
+        @Expect(
+            keyboard.toJSON(),
+            "{\"keyboard\":[[{\"text\":\"a\"},{\"text\":\"b\"}],[{\"text\":\"contact\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_contact\":true},{\"text\":\"users\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_users\":{\"request_id\":12,\"user_is_bot\":true}},{\"text\":\"chat\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_chat\":{\"request_id\":42,\"chat_is_channel\":true}}],[{\"text\":\"poll\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_poll\":{\"type\":\"regular\"}},{\"text\":\"bot\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_managed_bot\":{\"request_id\":96}},{\"text\":\"web\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"web_app\":{\"url\":\"https://grammy.dev\"}}]]}"
+        )
+    }
 }
 
 @Test
@@ -216,6 +252,44 @@ public class InlineKeyboardBuilderTest {
                 "{\"text\":\"copy\",\"copy_text\":{\"text\":\"value\"}}\n" +
                 "{\"text\":\"game\",\"callback_game\":{}}\n" +
                 "{\"text\":\"pay\",\"pay\":true}"
+        )
+    }
+
+    @TestCase
+    public func inlineKeyboardSupportsUpstreamButtonSourcesAndObjectOptions(): Unit {
+        let common = TelegramObject()
+        common.addString("style", "danger")
+        common.addString("icon_custom_emoji_id", "emoji-id")
+
+        let login = TelegramObject()
+        login.addString("url", "https://grammy.dev/login")
+        login.addString("forward_text", "forward")
+        login.addBool("request_write_access", true)
+
+        let webApp = TelegramObject()
+        webApp.addString("url", "https://grammy.dev/app")
+
+        let chosen = TelegramObject()
+        chosen.addBool("allow_bot_chats", true)
+
+        let copy = TelegramObject()
+        copy.addString("text", "copy-value")
+
+        let keyboard = InlineKeyboard()
+            .url(InlineKeyboardButton("url", common), "https://grammy.dev")
+            .text(InlineKeyboardButton("callback", common))
+            .webApp(InlineKeyboardButton("web", common), webApp)
+            .login(InlineKeyboardButton("login", common), login)
+            .switchInline(InlineKeyboardButton("switch", common))
+            .switchInlineCurrent(InlineKeyboardButton("current", common), "query")
+            .switchInlineChosen(InlineKeyboardButton("chosen", common), chosen)
+            .copyText(InlineKeyboardButton("copy", common), copy)
+            .game(InlineKeyboardButton("game", common))
+            .pay(InlineKeyboardButton("pay", common))
+
+        @Expect(
+            keyboard.toJSON(),
+            "{\"inline_keyboard\":[[{\"text\":\"url\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"url\":\"https://grammy.dev\"},{\"text\":\"callback\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"callback_data\":\"callback\"},{\"text\":\"web\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"web_app\":{\"url\":\"https://grammy.dev/app\"}},{\"text\":\"login\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"login_url\":{\"url\":\"https://grammy.dev/login\",\"forward_text\":\"forward\",\"request_write_access\":true}},{\"text\":\"switch\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"switch_inline_query\":\"\"},{\"text\":\"current\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"switch_inline_query_current_chat\":\"query\"},{\"text\":\"chosen\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"switch_inline_query_chosen_chat\":{\"allow_bot_chats\":true}},{\"text\":\"copy\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"copy_text\":{\"text\":\"copy-value\"}},{\"text\":\"game\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"callback_game\":{}},{\"text\":\"pay\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"pay\":true}]]}"
         )
     }
 }

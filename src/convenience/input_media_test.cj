@@ -40,4 +40,25 @@ public class InputMediaBuilderTest {
                 "{\"type\":\"document\",\"media\":\"document-file-id\",\"disable_content_type_detection\":true}"
         )
     }
+
+    @TestCase
+    public func inputMediaBuildersAcceptInputFilesForEveryKindGolden(): Unit {
+        let options = TelegramObject()
+        options.addString("caption", "file caption")
+
+        let golden = InputMediaBuilder.photo(InputFile.fromBytes("photo-bytes", "photo.jpg"), options).toJSON() + "\n" +
+            InputMediaBuilder.video(InputFile.fromPath("/tmp/video.mp4"), options).toJSON() + "\n" +
+            InputMediaBuilder.animation(InputFile.fromUrl("https://example.test/a.gif"), options).toJSON() + "\n" +
+            InputMediaBuilder.audio(InputFile.fromStream("audio-stream", "audio.ogg"), options).toJSON() + "\n" +
+            InputMediaBuilder.document(InputFile.fromSupplier("document-supplier", "document.pdf"), options).toJSON()
+
+        @Expect(
+            golden,
+            "{\"type\":\"photo\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"photo-bytes\",\"filename\":\"photo.jpg\"},\"caption\":\"file caption\"}\n" +
+                "{\"type\":\"video\",\"media\":{\"source_kind\":\"path\",\"source_value\":\"/tmp/video.mp4\",\"filename\":\"video.mp4\"},\"caption\":\"file caption\"}\n" +
+                "{\"type\":\"animation\",\"media\":{\"source_kind\":\"url\",\"source_value\":\"https://example.test/a.gif\",\"filename\":\"a.gif\"},\"caption\":\"file caption\"}\n" +
+                "{\"type\":\"audio\",\"media\":{\"source_kind\":\"stream\",\"source_value\":\"audio-stream\",\"filename\":\"audio.ogg\"},\"caption\":\"file caption\"}\n" +
+                "{\"type\":\"document\",\"media\":{\"source_kind\":\"supplier\",\"source_value\":\"document-supplier\",\"filename\":\"document.pdf\"},\"caption\":\"file caption\"}"
+        )
+    }
 }

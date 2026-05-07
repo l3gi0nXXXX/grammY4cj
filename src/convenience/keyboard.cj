@@ -25,6 +25,14 @@ public class KeyboardButton {
         this.actionValue = rawValue("null")
     }
 
+    public init(text: String, options: TelegramObject) {
+        this.text = text
+        this.style = telegramStringField(options, "style")
+        this.iconCustomEmojiId = telegramStringField(options, "icon_custom_emoji_id")
+        this.actionName = ""
+        this.actionValue = rawValue("null")
+    }
+
     public func withAction(actionName: String, actionValue: TelegramValue): KeyboardButton {
         let button = this.copyBase()
         button.actionName = actionName
@@ -88,6 +96,14 @@ public class InlineKeyboardButton {
         this.text = text
         this.style = style
         this.iconCustomEmojiId = ""
+        this.actionName = ""
+        this.actionValue = rawValue("null")
+    }
+
+    public init(text: String, options: TelegramObject) {
+        this.text = text
+        this.style = telegramStringField(options, "style")
+        this.iconCustomEmojiId = telegramStringField(options, "icon_custom_emoji_id")
         this.actionName = ""
         this.actionValue = rawValue("null")
     }
@@ -196,12 +212,23 @@ public class Keyboard {
         this.add(second)
     }
 
+    public func row(first: KeyboardButton, second: KeyboardButton, third: KeyboardButton): Keyboard {
+        this.row()
+        this.add(first)
+        this.add(second)
+        this.add(third)
+    }
+
     public func text(text: String): Keyboard {
         this.add(Keyboard.textButton(text))
     }
 
     public func text(text: String, style: String): Keyboard {
         this.add(Keyboard.textButton(text, style))
+    }
+
+    public func text(text: String, options: TelegramObject): Keyboard {
+        this.add(Keyboard.textButton(text, options))
     }
 
     public static func textButton(text: String): KeyboardButton {
@@ -212,8 +239,16 @@ public class Keyboard {
         KeyboardButton(text, style)
     }
 
+    public static func textButton(text: String, options: TelegramObject): KeyboardButton {
+        KeyboardButton(text, options)
+    }
+
     public func requestContact(text: String): Keyboard {
         this.add(Keyboard.requestContactButton(text))
+    }
+
+    public func requestContact(button: KeyboardButton): Keyboard {
+        this.add(Keyboard.requestContactButton(button))
     }
 
     public static func requestContactButton(text: String): KeyboardButton {
@@ -226,6 +261,10 @@ public class Keyboard {
 
     public func requestLocation(text: String): Keyboard {
         this.add(Keyboard.requestLocationButton(text))
+    }
+
+    public func requestLocation(button: KeyboardButton): Keyboard {
+        this.add(Keyboard.requestLocationButton(button))
     }
 
     public static func requestLocationButton(text: String): KeyboardButton {
@@ -244,6 +283,14 @@ public class Keyboard {
         this.add(Keyboard.requestPollButton(text, pollType))
     }
 
+    public func requestPoll(button: KeyboardButton): Keyboard {
+        this.add(Keyboard.requestPollButton(button))
+    }
+
+    public func requestPoll(button: KeyboardButton, pollType: String): Keyboard {
+        this.add(Keyboard.requestPollButton(button, pollType))
+    }
+
     public static func requestPollButton(text: String): KeyboardButton {
         Keyboard.textButton(text).withAction("request_poll", objectValue(TelegramObject()))
     }
@@ -254,12 +301,30 @@ public class Keyboard {
         Keyboard.textButton(text).withAction("request_poll", objectValue(poll))
     }
 
+    public static func requestPollButton(button: KeyboardButton): KeyboardButton {
+        button.withAction("request_poll", objectValue(TelegramObject()))
+    }
+
+    public static func requestPollButton(button: KeyboardButton, pollType: String): KeyboardButton {
+        let poll = TelegramObject()
+        poll.addString("type", pollType)
+        button.withAction("request_poll", objectValue(poll))
+    }
+
     public func requestUsers(text: String, requestId: Int64): Keyboard {
         this.add(Keyboard.requestUsersButton(text, requestId))
     }
 
     public func requestUsers(text: String, requestId: Int64, options: TelegramObject): Keyboard {
         this.add(Keyboard.requestUsersButton(text, requestId, options))
+    }
+
+    public func requestUsers(button: KeyboardButton, requestId: Int64): Keyboard {
+        this.add(Keyboard.requestUsersButton(button, requestId))
+    }
+
+    public func requestUsers(button: KeyboardButton, requestId: Int64, options: TelegramObject): Keyboard {
+        this.add(Keyboard.requestUsersButton(button, requestId, options))
     }
 
     public static func requestUsersButton(text: String, requestId: Int64): KeyboardButton {
@@ -273,12 +338,31 @@ public class Keyboard {
         Keyboard.textButton(text).withAction("request_users", objectValue(requestUsers))
     }
 
+    public static func requestUsersButton(button: KeyboardButton, requestId: Int64): KeyboardButton {
+        Keyboard.requestUsersButton(button, requestId, TelegramObject())
+    }
+
+    public static func requestUsersButton(button: KeyboardButton, requestId: Int64, options: TelegramObject): KeyboardButton {
+        let requestUsers = TelegramObject()
+        requestUsers.addInt("request_id", requestId)
+        requestUsers.addAll(options)
+        button.withAction("request_users", objectValue(requestUsers))
+    }
+
     public func requestChat(text: String, requestId: Int64): Keyboard {
         this.add(Keyboard.requestChatButton(text, requestId))
     }
 
     public func requestChat(text: String, requestId: Int64, options: TelegramObject): Keyboard {
         this.add(Keyboard.requestChatButton(text, requestId, options))
+    }
+
+    public func requestChat(button: KeyboardButton, requestId: Int64): Keyboard {
+        this.add(Keyboard.requestChatButton(button, requestId))
+    }
+
+    public func requestChat(button: KeyboardButton, requestId: Int64, options: TelegramObject): Keyboard {
+        this.add(Keyboard.requestChatButton(button, requestId, options))
     }
 
     public static func requestChatButton(text: String, requestId: Int64): KeyboardButton {
@@ -294,12 +378,33 @@ public class Keyboard {
         Keyboard.textButton(text).withAction("request_chat", objectValue(requestChat))
     }
 
+    public static func requestChatButton(button: KeyboardButton, requestId: Int64): KeyboardButton {
+        let options = TelegramObject()
+        options.addBool("chat_is_channel", false)
+        Keyboard.requestChatButton(button, requestId, options)
+    }
+
+    public static func requestChatButton(button: KeyboardButton, requestId: Int64, options: TelegramObject): KeyboardButton {
+        let requestChat = TelegramObject()
+        requestChat.addInt("request_id", requestId)
+        requestChat.addAll(options)
+        button.withAction("request_chat", objectValue(requestChat))
+    }
+
     public func requestManagedBot(text: String, requestId: Int64): Keyboard {
         this.add(Keyboard.requestManagedBotButton(text, requestId))
     }
 
     public func requestManagedBot(text: String, requestId: Int64, options: TelegramObject): Keyboard {
         this.add(Keyboard.requestManagedBotButton(text, requestId, options))
+    }
+
+    public func requestManagedBot(button: KeyboardButton, requestId: Int64): Keyboard {
+        this.add(Keyboard.requestManagedBotButton(button, requestId))
+    }
+
+    public func requestManagedBot(button: KeyboardButton, requestId: Int64, options: TelegramObject): Keyboard {
+        this.add(Keyboard.requestManagedBotButton(button, requestId, options))
     }
 
     public static func requestManagedBotButton(text: String, requestId: Int64): KeyboardButton {
@@ -313,14 +418,35 @@ public class Keyboard {
         Keyboard.textButton(text).withAction("request_managed_bot", objectValue(requestManagedBot))
     }
 
+    public static func requestManagedBotButton(button: KeyboardButton, requestId: Int64): KeyboardButton {
+        Keyboard.requestManagedBotButton(button, requestId, TelegramObject())
+    }
+
+    public static func requestManagedBotButton(button: KeyboardButton, requestId: Int64, options: TelegramObject): KeyboardButton {
+        let requestManagedBot = TelegramObject()
+        requestManagedBot.addInt("request_id", requestId)
+        requestManagedBot.addAll(options)
+        button.withAction("request_managed_bot", objectValue(requestManagedBot))
+    }
+
     public func webApp(text: String, url: String): Keyboard {
         this.add(Keyboard.webAppButton(text, url))
+    }
+
+    public func webApp(button: KeyboardButton, url: String): Keyboard {
+        this.add(Keyboard.webAppButton(button, url))
     }
 
     public static func webAppButton(text: String, url: String): KeyboardButton {
         let webApp = TelegramObject()
         webApp.addString("url", url)
         Keyboard.textButton(text).withAction("web_app", objectValue(webApp))
+    }
+
+    public static func webAppButton(button: KeyboardButton, url: String): KeyboardButton {
+        let webApp = TelegramObject()
+        webApp.addString("url", url)
+        button.withAction("web_app", objectValue(webApp))
     }
 
     public func style(style: String): Keyboard {
@@ -434,12 +560,33 @@ public class Keyboard {
         this
     }
 
+    public func append(first: Keyboard, second: Keyboard): Keyboard {
+        this.append(first)
+        this.append(second)
+    }
+
+    public func append(source: ArrayList<ArrayList<KeyboardButton>>): Keyboard {
+        this.append(Keyboard.from(source))
+    }
+
     public static func from(source: Keyboard): Keyboard {
         source.clone()
     }
 
     public static func from(source: ArrayList<ArrayList<KeyboardButton>>): Keyboard {
         Keyboard(source)
+    }
+
+    public static func from(source: ArrayList<ArrayList<String>>): Keyboard {
+        let keyboard = ArrayList<ArrayList<KeyboardButton>>()
+        for (row in source) {
+            let next = ArrayList<KeyboardButton>()
+            for (text in row) {
+                next.add(Keyboard.textButton(text))
+            }
+            keyboard.add(next)
+        }
+        Keyboard(keyboard)
     }
 
     public func build(): ArrayList<ArrayList<KeyboardButton>> {
@@ -539,8 +686,19 @@ public class InlineKeyboard {
         this.add(second)
     }
 
+    public func row(first: InlineKeyboardButton, second: InlineKeyboardButton, third: InlineKeyboardButton): InlineKeyboard {
+        this.row()
+        this.add(first)
+        this.add(second)
+        this.add(third)
+    }
+
     public func url(text: String, url: String): InlineKeyboard {
         this.add(InlineKeyboard.urlButton(text, url))
+    }
+
+    public func url(button: InlineKeyboardButton, url: String): InlineKeyboard {
+        this.add(InlineKeyboard.urlButton(button, url))
     }
 
     public static func urlButton(text: String, url: String): InlineKeyboardButton {
@@ -559,12 +717,32 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.textButton(text, data))
     }
 
+    public func text(text: String, options: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.textButton(text, options))
+    }
+
+    public func text(button: InlineKeyboardButton): InlineKeyboard {
+        this.add(InlineKeyboard.textButton(button))
+    }
+
+    public func text(button: InlineKeyboardButton, data: String): InlineKeyboard {
+        this.add(InlineKeyboard.textButton(button, data))
+    }
+
     public static func textButton(text: String): InlineKeyboardButton {
         InlineKeyboard.textButton(text, text)
     }
 
     public static func textButton(text: String, data: String): InlineKeyboardButton {
         InlineKeyboardButton(text).withAction("callback_data", stringValue(data))
+    }
+
+    public static func textButton(text: String, options: TelegramObject): InlineKeyboardButton {
+        InlineKeyboard.textButton(InlineKeyboardButton(text, options))
+    }
+
+    public static func textButton(button: InlineKeyboardButton): InlineKeyboardButton {
+        InlineKeyboard.textButton(button, button.text)
     }
 
     public static func textButton(button: InlineKeyboardButton, data: String): InlineKeyboardButton {
@@ -575,20 +753,72 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.webAppButton(text, url))
     }
 
+    public func webApp(text: String, webApp: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.webAppButton(text, webApp))
+    }
+
+    public func webApp(button: InlineKeyboardButton, url: String): InlineKeyboard {
+        this.add(InlineKeyboard.webAppButton(button, url))
+    }
+
+    public func webApp(button: InlineKeyboardButton, webApp: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.webAppButton(button, webApp))
+    }
+
     public static func webAppButton(text: String, url: String): InlineKeyboardButton {
         let webApp = TelegramObject()
         webApp.addString("url", url)
         InlineKeyboardButton(text).withAction("web_app", objectValue(webApp))
     }
 
+    public static func webAppButton(text: String, webApp: TelegramObject): InlineKeyboardButton {
+        InlineKeyboardButton(text).withAction("web_app", objectValue(webApp))
+    }
+
+    public static func webAppButton(button: InlineKeyboardButton, url: String): InlineKeyboardButton {
+        let webApp = TelegramObject()
+        webApp.addString("url", url)
+        button.withAction("web_app", objectValue(webApp))
+    }
+
+    public static func webAppButton(button: InlineKeyboardButton, webApp: TelegramObject): InlineKeyboardButton {
+        button.withAction("web_app", objectValue(webApp))
+    }
+
     public func login(text: String, url: String): InlineKeyboard {
         this.add(InlineKeyboard.loginButton(text, url))
+    }
+
+    public func login(text: String, loginUrl: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.loginButton(text, loginUrl))
+    }
+
+    public func login(button: InlineKeyboardButton, url: String): InlineKeyboard {
+        this.add(InlineKeyboard.loginButton(button, url))
+    }
+
+    public func login(button: InlineKeyboardButton, loginUrl: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.loginButton(button, loginUrl))
     }
 
     public static func loginButton(text: String, url: String): InlineKeyboardButton {
         let loginUrl = TelegramObject()
         loginUrl.addString("url", url)
         InlineKeyboardButton(text).withAction("login_url", objectValue(loginUrl))
+    }
+
+    public static func loginButton(text: String, loginUrl: TelegramObject): InlineKeyboardButton {
+        InlineKeyboardButton(text).withAction("login_url", objectValue(loginUrl))
+    }
+
+    public static func loginButton(button: InlineKeyboardButton, url: String): InlineKeyboardButton {
+        let loginUrl = TelegramObject()
+        loginUrl.addString("url", url)
+        button.withAction("login_url", objectValue(loginUrl))
+    }
+
+    public static func loginButton(button: InlineKeyboardButton, loginUrl: TelegramObject): InlineKeyboardButton {
+        button.withAction("login_url", objectValue(loginUrl))
     }
 
     public func switchInline(text: String): InlineKeyboard {
@@ -599,12 +829,28 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.switchInlineButton(text, query))
     }
 
+    public func switchInline(button: InlineKeyboardButton): InlineKeyboard {
+        this.add(InlineKeyboard.switchInlineButton(button))
+    }
+
+    public func switchInline(button: InlineKeyboardButton, query: String): InlineKeyboard {
+        this.add(InlineKeyboard.switchInlineButton(button, query))
+    }
+
     public static func switchInlineButton(text: String): InlineKeyboardButton {
         InlineKeyboard.switchInlineButton(text, "")
     }
 
     public static func switchInlineButton(text: String, query: String): InlineKeyboardButton {
         InlineKeyboardButton(text).withAction("switch_inline_query", stringValue(query))
+    }
+
+    public static func switchInlineButton(button: InlineKeyboardButton): InlineKeyboardButton {
+        InlineKeyboard.switchInlineButton(button, "")
+    }
+
+    public static func switchInlineButton(button: InlineKeyboardButton, query: String): InlineKeyboardButton {
+        button.withAction("switch_inline_query", stringValue(query))
     }
 
     public func switchInlineCurrent(text: String): InlineKeyboard {
@@ -615,12 +861,28 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.switchInlineCurrentButton(text, query))
     }
 
+    public func switchInlineCurrent(button: InlineKeyboardButton): InlineKeyboard {
+        this.add(InlineKeyboard.switchInlineCurrentButton(button))
+    }
+
+    public func switchInlineCurrent(button: InlineKeyboardButton, query: String): InlineKeyboard {
+        this.add(InlineKeyboard.switchInlineCurrentButton(button, query))
+    }
+
     public static func switchInlineCurrentButton(text: String): InlineKeyboardButton {
         InlineKeyboard.switchInlineCurrentButton(text, "")
     }
 
     public static func switchInlineCurrentButton(text: String, query: String): InlineKeyboardButton {
         InlineKeyboardButton(text).withAction("switch_inline_query_current_chat", stringValue(query))
+    }
+
+    public static func switchInlineCurrentButton(button: InlineKeyboardButton): InlineKeyboardButton {
+        InlineKeyboard.switchInlineCurrentButton(button, "")
+    }
+
+    public static func switchInlineCurrentButton(button: InlineKeyboardButton, query: String): InlineKeyboardButton {
+        button.withAction("switch_inline_query_current_chat", stringValue(query))
     }
 
     public func switchInlineChosen(text: String): InlineKeyboard {
@@ -631,6 +893,14 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.switchInlineChosenButton(text, query))
     }
 
+    public func switchInlineChosen(button: InlineKeyboardButton): InlineKeyboard {
+        this.add(InlineKeyboard.switchInlineChosenButton(button))
+    }
+
+    public func switchInlineChosen(button: InlineKeyboardButton, query: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.switchInlineChosenButton(button, query))
+    }
+
     public static func switchInlineChosenButton(text: String): InlineKeyboardButton {
         InlineKeyboard.switchInlineChosenButton(text, TelegramObject())
     }
@@ -639,8 +909,28 @@ public class InlineKeyboard {
         InlineKeyboardButton(text).withAction("switch_inline_query_chosen_chat", objectValue(query))
     }
 
+    public static func switchInlineChosenButton(button: InlineKeyboardButton): InlineKeyboardButton {
+        InlineKeyboard.switchInlineChosenButton(button, TelegramObject())
+    }
+
+    public static func switchInlineChosenButton(button: InlineKeyboardButton, query: TelegramObject): InlineKeyboardButton {
+        button.withAction("switch_inline_query_chosen_chat", objectValue(query))
+    }
+
     public func copyText(text: String, copyText: String): InlineKeyboard {
         this.add(InlineKeyboard.copyTextButton(text, copyText))
+    }
+
+    public func copyText(text: String, copyText: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.copyTextButton(text, copyText))
+    }
+
+    public func copyText(button: InlineKeyboardButton, copyText: String): InlineKeyboard {
+        this.add(InlineKeyboard.copyTextButton(button, copyText))
+    }
+
+    public func copyText(button: InlineKeyboardButton, copyText: TelegramObject): InlineKeyboard {
+        this.add(InlineKeyboard.copyTextButton(button, copyText))
     }
 
     public static func copyTextButton(text: String, copyText: String): InlineKeyboardButton {
@@ -649,20 +939,50 @@ public class InlineKeyboard {
         InlineKeyboardButton(text).withAction("copy_text", objectValue(copy))
     }
 
+    public static func copyTextButton(text: String, copyText: TelegramObject): InlineKeyboardButton {
+        InlineKeyboardButton(text).withAction("copy_text", objectValue(copyText))
+    }
+
+    public static func copyTextButton(button: InlineKeyboardButton, copyText: String): InlineKeyboardButton {
+        let copy = TelegramObject()
+        copy.addString("text", copyText)
+        button.withAction("copy_text", objectValue(copy))
+    }
+
+    public static func copyTextButton(button: InlineKeyboardButton, copyText: TelegramObject): InlineKeyboardButton {
+        button.withAction("copy_text", objectValue(copyText))
+    }
+
     public func game(text: String): InlineKeyboard {
         this.add(InlineKeyboard.gameButton(text))
+    }
+
+    public func game(button: InlineKeyboardButton): InlineKeyboard {
+        this.add(InlineKeyboard.gameButton(button))
     }
 
     public static func gameButton(text: String): InlineKeyboardButton {
         InlineKeyboardButton(text).withAction("callback_game", objectValue(TelegramObject()))
     }
 
+    public static func gameButton(button: InlineKeyboardButton): InlineKeyboardButton {
+        button.withAction("callback_game", objectValue(TelegramObject()))
+    }
+
     public func pay(text: String): InlineKeyboard {
         this.add(InlineKeyboard.payButton(text))
     }
 
+    public func pay(button: InlineKeyboardButton): InlineKeyboard {
+        this.add(InlineKeyboard.payButton(button))
+    }
+
     public static func payButton(text: String): InlineKeyboardButton {
         InlineKeyboardButton(text).withAction("pay", rawValue("true"))
+    }
+
+    public static func payButton(button: InlineKeyboardButton): InlineKeyboardButton {
+        button.withAction("pay", rawValue("true"))
     }
 
     public func style(style: String): InlineKeyboard {
@@ -717,6 +1037,15 @@ public class InlineKeyboard {
         this
     }
 
+    public func append(first: InlineKeyboard, second: InlineKeyboard): InlineKeyboard {
+        this.append(first)
+        this.append(second)
+    }
+
+    public func append(source: ArrayList<ArrayList<InlineKeyboardButton>>): InlineKeyboard {
+        this.append(InlineKeyboard.from(source))
+    }
+
     public static func from(source: InlineKeyboard): InlineKeyboard {
         source.clone()
     }
@@ -756,6 +1085,15 @@ public class InlineKeyboard {
         }
         row[row.size - 1]
     }
+}
+
+private func telegramStringField(options: TelegramObject, key: String): String {
+    for (field in options.fields) {
+        if (field.key == key && field.value.kind == "string") {
+            return field.value.literal
+        }
+    }
+    ""
 }
 
 private func copyKeyboardGrid(source: ArrayList<ArrayList<KeyboardButton>>): ArrayList<ArrayList<KeyboardButton>> {
