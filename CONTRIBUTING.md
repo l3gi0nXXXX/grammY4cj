@@ -117,7 +117,7 @@ The release gate covers:
   environment is loaded.
 - **Public docs scan.**
   `scripts/check_public_docs.sh` must pass for `README.md`,
-  `CONTRIBUTING.md`, and `src/README.md`.
+  `CONTRIBUTING.md`, `src/README.md`, and `LICENSE`.
 
 #### Package Metadata
 
