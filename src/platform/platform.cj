@@ -1,5 +1,9 @@
 package grammy4cj.platform
 
+import std.collection.ArrayList
+import std.fs.File
+import std.process.executeWithOutput
+
 import grammy4cj.core.BaseFetchConfig as CoreBaseFetchConfig
 import grammy4cj.platform_contract.platformInputFileRawContractFor as contractInputFileRawContractFor
 import grammy4cj.platform_contract.platformNormalizeInputFileRuntime as contractNormalizeInputFileRuntime
@@ -64,6 +68,60 @@ public class DebugContract {
     }
 }
 
+public interface DebugEnvSource {
+    func get(name: String): String
+    func permissionGranted(name: String): Bool
+    func noColor(): Bool
+}
+
+public class EmptyDebugEnvSource <: DebugEnvSource {
+    public init() {}
+
+    public func get(name: String): String {
+        ""
+    }
+
+    public func permissionGranted(name: String): Bool {
+        false
+    }
+
+    public func noColor(): Bool {
+        false
+    }
+}
+
+public class DebugState {
+    public let runtime: String
+    public let namespace: String
+    public let envVariable: String
+    public let envValue: String
+    public let canReadEnv: Bool
+    public let enabled: Bool
+    public let useColors: Bool
+
+    public init(
+        runtime: String,
+        namespace: String,
+        envVariable: String,
+        envValue: String,
+        canReadEnv: Bool,
+        enabled: Bool,
+        useColors: Bool
+    ) {
+        this.runtime = runtime
+        this.namespace = namespace
+        this.envVariable = envVariable
+        this.envValue = envValue
+        this.canReadEnv = canReadEnv
+        this.enabled = enabled
+        this.useColors = useColors
+    }
+
+    public func summary(): String {
+        this.runtime + ":" + boolString(this.enabled) + ":" + boolString(this.useColors) + ":" + this.envValue
+    }
+}
+
 public class PlatformHttpRequest {
     public let method: String
     public let url: String
@@ -85,6 +143,101 @@ public class PlatformHttpResponse {
     public init(status: Int64, body: String) {
         this.status = status
         this.body = body
+    }
+}
+
+public interface PlatformHttpClient {
+    func send(req: PlatformHttpRequest): PlatformHttpResponse
+}
+
+public class CurlPlatformHttpClient <: PlatformHttpClient {
+    public init() {}
+
+    public func send(req: PlatformHttpRequest): PlatformHttpResponse {
+        let (code, out, err) = executeWithOutput("curl", ["-sS", "-X", req.method, "--data-binary", req.body, req.url])
+        if (code != 0) {
+            return PlatformHttpResponse(599, String.fromUtf8(err))
+        }
+        PlatformHttpResponse(200, String.fromUtf8(out))
+    }
+}
+
+public class PlatformFetchResult {
+    public let url: String
+    public let hasBody: Bool
+    public let body: Array<Byte>
+
+    public init(url: String, body: Array<Byte>) {
+        this.url = url
+        this.hasBody = true
+        this.body = body
+    }
+
+    public init(url: String, hasBody: Bool, body: Array<Byte>) {
+        this.url = url
+        this.hasBody = hasBody
+        this.body = body
+    }
+
+    public static func noBody(url: String): PlatformFetchResult {
+        PlatformFetchResult(url, false, [])
+    }
+}
+
+public interface PlatformFileSourceAdapter {
+    func read(path: String): Array<Byte>
+}
+
+public interface PlatformFetchSourceAdapter {
+    func fetch(url: String): PlatformFetchResult
+}
+
+public class NativePlatformFileSourceAdapter <: PlatformFileSourceAdapter {
+    public init() {}
+
+    public func read(path: String): Array<Byte> {
+        File.readFrom(path)
+    }
+}
+
+public class CurlPlatformFetchSourceAdapter <: PlatformFetchSourceAdapter {
+    public init() {}
+
+    public func fetch(url: String): PlatformFetchResult {
+        let (code, out, err) = executeWithOutput("curl", ["-fsSL", url])
+        if (code != 0) {
+            throw Exception("Download failed from '" + url + "': " + String.fromUtf8(err))
+        }
+        PlatformFetchResult(url, out)
+    }
+}
+
+public class PlatformInputFileDataAdapter {
+    private let fileAdapter: PlatformFileSourceAdapter
+    private let fetchAdapter: PlatformFetchSourceAdapter
+
+    public init() {
+        this.fileAdapter = NativePlatformFileSourceAdapter()
+        this.fetchAdapter = CurlPlatformFetchSourceAdapter()
+    }
+
+    public init(fileAdapter: PlatformFileSourceAdapter, fetchAdapter: PlatformFetchSourceAdapter) {
+        this.fileAdapter = fileAdapter
+        this.fetchAdapter = fetchAdapter
+    }
+
+    public func bytesFor(sourceKind: String, sourceValue: String): Array<Byte> {
+        if (sourceKind == "path") {
+            return this.fileAdapter.read(sourceValue)
+        }
+        if (sourceKind == "url" || sourceKind == "url_like") {
+            let result = this.fetchAdapter.fetch(sourceValue)
+            if (!result.hasBody) {
+                throw Exception("Download failed, no response body from '" + sourceValue + "'")
+            }
+            return result.body
+        }
+        sourceValue.toArray()
     }
 }
 
@@ -111,6 +264,8 @@ public class ByteStream {
     public let sourceValue: String
     public let chunkCount: Int64
     public let contract: String
+    public let chunks: Array<Array<Byte>>
+    public let errorMessage: String
     public var consumed: Bool = false
 
     public init(sourceKind: String) {
@@ -118,6 +273,8 @@ public class ByteStream {
         this.sourceValue = ""
         this.chunkCount = 0
         this.contract = "stream"
+        this.chunks = []
+        this.errorMessage = ""
     }
 
     public init(sourceKind: String, sourceValue: String, chunkCount: Int64, contract: String) {
@@ -125,6 +282,26 @@ public class ByteStream {
         this.sourceValue = sourceValue
         this.chunkCount = chunkCount
         this.contract = contract
+        this.chunks = [sourceValue.toArray()]
+        this.errorMessage = ""
+    }
+
+    public init(sourceKind: String, sourceValue: String, chunkCount: Int64, contract: String, chunks: Array<Array<Byte>>) {
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.chunkCount = chunkCount
+        this.contract = contract
+        this.chunks = chunks
+        this.errorMessage = ""
+    }
+
+    public init(sourceKind: String, sourceValue: String, chunkCount: Int64, contract: String, chunks: Array<Array<Byte>>, errorMessage: String) {
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.chunkCount = chunkCount
+        this.contract = contract
+        this.chunks = chunks
+        this.errorMessage = errorMessage
     }
 
     public func consume(): Unit {
@@ -132,6 +309,14 @@ public class ByteStream {
             throw Exception("ByteStream has already been consumed.")
         }
         this.consumed = true
+    }
+
+    public func collectBytes(): Array<Byte> {
+        this.consume()
+        if (!this.errorMessage.isEmpty()) {
+            throw Exception(this.errorMessage)
+        }
+        flattenPlatformByteChunks(this.chunks)
     }
 }
 
@@ -222,6 +407,7 @@ public class PlatformRawData {
     public let reusableSource: Bool
     public let requiresFileAdapter: Bool
     public let requiresFetchAdapter: Bool
+    private let dataAdapter: PlatformInputFileDataAdapter
 
     public init(runtime: String, sourceKind: String, sourceValue: String, filename: String, contract: String, stream: ByteStream) {
         this.runtime = runtime
@@ -233,6 +419,7 @@ public class PlatformRawData {
         this.reusableSource = true
         this.requiresFileAdapter = sourceKind == "path"
         this.requiresFetchAdapter = sourceKind == "url" || sourceKind == "url_like"
+        this.dataAdapter = PlatformInputFileDataAdapter()
     }
 
     public init(
@@ -255,6 +442,31 @@ public class PlatformRawData {
         this.reusableSource = reusableSource
         this.requiresFileAdapter = requiresFileAdapter
         this.requiresFetchAdapter = requiresFetchAdapter
+        this.dataAdapter = PlatformInputFileDataAdapter()
+    }
+
+    public init(
+        runtime: String,
+        sourceKind: String,
+        sourceValue: String,
+        filename: String,
+        contract: String,
+        stream: ByteStream,
+        reusableSource: Bool,
+        requiresFileAdapter: Bool,
+        requiresFetchAdapter: Bool,
+        dataAdapter: PlatformInputFileDataAdapter
+    ) {
+        this.runtime = runtime
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.contract = contract
+        this.stream = stream
+        this.reusableSource = reusableSource
+        this.requiresFileAdapter = requiresFileAdapter
+        this.requiresFetchAdapter = requiresFetchAdapter
+        this.dataAdapter = dataAdapter
     }
 
     public func summary(): String {
@@ -264,6 +476,14 @@ public class PlatformRawData {
     public func consume(): String {
         this.stream.consume()
         this.summary()
+    }
+
+    public func collectBytes(): Array<Byte> {
+        if (this.sourceKind == "path" || this.sourceKind == "url" || this.sourceKind == "url_like") {
+            this.stream.consume()
+            return this.dataAdapter.bytesFor(this.sourceKind, this.sourceValue)
+        }
+        this.stream.collectBytes()
     }
 }
 
@@ -289,15 +509,28 @@ public func redactToken(message: String, token: String): String {
 public class PlatformAdapter {
     public let runtime: String
     public let adapter: String
+    private let httpClient: PlatformHttpClient
+    private let inputFileDataAdapter: PlatformInputFileDataAdapter
 
     public init(runtime: String) {
         this.runtime = runtime
         this.adapter = defaultAdapterForRuntime(runtime)
+        this.httpClient = CurlPlatformHttpClient()
+        this.inputFileDataAdapter = PlatformInputFileDataAdapter()
     }
 
     public init(runtime: String, adapter: String) {
         this.runtime = runtime
         this.adapter = adapter
+        this.httpClient = CurlPlatformHttpClient()
+        this.inputFileDataAdapter = PlatformInputFileDataAdapter()
+    }
+
+    public init(runtime: String, adapter: String, httpClient: PlatformHttpClient, inputFileDataAdapter: PlatformInputFileDataAdapter) {
+        this.runtime = runtime
+        this.adapter = adapter
+        this.httpClient = httpClient
+        this.inputFileDataAdapter = inputFileDataAdapter
     }
 
     public func supportsLongPolling(): Bool {
@@ -305,7 +538,7 @@ public class PlatformAdapter {
     }
 
     public func request(req: PlatformHttpRequest): PlatformHttpResponse {
-        PlatformHttpResponse(599, "No HTTP client configured for " + req.method + " " + req.url)
+        this.httpClient.send(req)
     }
 
     public func baseFetchConfig(apiRoot: String): BaseFetchConfig {
@@ -317,7 +550,7 @@ public class PlatformAdapter {
     }
 
     public func inputFileRaw(source: PlatformRawSource): PlatformRawData {
-        makeInputFileRaw(this.runtime, source)
+        makeInputFileRaw(this.runtime, source, this.inputFileDataAdapter)
     }
 
     public func logger(namespace: String): Logger {
@@ -326,6 +559,10 @@ public class PlatformAdapter {
 
     public func debug(namespace: String): DebugContract {
         debugContract(this.runtime, namespace)
+    }
+
+    public func debugState(namespace: String): DebugState {
+        debugState(this.runtime, namespace, EmptyDebugEnvSource())
     }
 }
 
@@ -343,6 +580,9 @@ public func defaultAdapterForRuntime(runtime: String): String {
     if (runtime == "web") {
         return "cloudflare"
     }
+    if (runtime == "cjnative" || runtime.isEmpty()) {
+        return "cangjie-native"
+    }
     DEFAULT_WEBHOOK_ADAPTER
 }
 
@@ -351,7 +591,7 @@ public func platformRuntimeContracts(): Array<PlatformRuntimeContract> {
         PlatformRuntimeContract("deno", "oak", "empty-fetch-config", "ReadableStream.from(asyncIterable)", "debug-skypack-deno-env"),
         PlatformRuntimeContract("node", "express", "keep-alive-agent", "Readable.from(asyncIterable)", "debug-node"),
         PlatformRuntimeContract("web", "cloudflare", "empty-fetch-config", "manual-readable-stream", "debug-skypack-web"),
-        PlatformRuntimeContract("cjnative", DEFAULT_WEBHOOK_ADAPTER, "node-compatible-fetch-config", "fake-byte-stream", "logger-sanitizer")
+        PlatformRuntimeContract("cjnative", "cangjie-native", "node-compatible-fetch-config", "byte-source-stream", "logger-sanitizer")
     ]
 }
 
@@ -381,8 +621,29 @@ public func debugContract(runtime: String, namespace: String): DebugContract {
     DebugContract(runtime, namespace, "logger-sanitizer", "DEBUG", false, false)
 }
 
+public func debugState(runtime: String, namespace: String, envSource: DebugEnvSource): DebugState {
+    debugState(debugContract(runtime, namespace), envSource)
+}
+
+public func debugState(contract: DebugContract, envSource: DebugEnvSource): DebugState {
+    if (contract.runtime == "web" || contract.implementation == "logger-sanitizer") {
+        return DebugState(contract.runtime, contract.namespace, contract.envVariable, "", false, false, contract.colorAware && !envSource.noColor())
+    }
+    let canReadEnv = !contract.permissionAware || envSource.permissionGranted(contract.envVariable)
+    let value = if (canReadEnv) { envSource.get(contract.envVariable) } else { "" }
+    DebugState(
+        contract.runtime,
+        contract.namespace,
+        contract.envVariable,
+        value,
+        canReadEnv,
+        !value.isEmpty(),
+        contract.colorAware && !envSource.noColor()
+    )
+}
+
 public func defaultPlatform(): PlatformAdapter {
-    PlatformAdapter("cjnative", defaultAdapter())
+    PlatformAdapter("cjnative", defaultAdapterForRuntime("cjnative"))
 }
 
 public func baseFetchConfig(apiRoot: String): BaseFetchConfig {
@@ -393,8 +654,12 @@ public func itrToStream(iterator: ByteIterator): ByteStream {
     makeByteStreamFromIterator(iterator)
 }
 
+public func failingByteStream(sourceKind: String, sourceValue: String, chunkCount: Int64, contract: String, errorMessage: String): ByteStream {
+    ByteStream(sourceKind, sourceValue, chunkCount, contract, [sourceValue.toArray()], errorMessage)
+}
+
 public func inputFileRaw(source: PlatformRawSource): PlatformRawData {
-    makeInputFileRaw("cjnative", source)
+    makeInputFileRaw("cjnative", source, PlatformInputFileDataAdapter())
 }
 
 private func makeBaseFetchConfig(apiRoot: String): BaseFetchConfig {
@@ -409,10 +674,10 @@ private func makeBaseFetchConfig(apiRoot: String): BaseFetchConfig {
 
 private func makeByteStreamFromIterator(iterator: ByteIterator): ByteStream {
     iterator.consume()
-    ByteStream("iterator", iterator.label, iterator.chunkCount, "async-iterable-to-byte-stream")
+    ByteStream("iterator", iterator.label, iterator.chunkCount, "async-iterable-to-byte-stream", [iterator.label.toArray()])
 }
 
-private func makeInputFileRaw(runtime: String, source: PlatformRawSource): PlatformRawData {
+private func makeInputFileRaw(runtime: String, source: PlatformRawSource, dataAdapter: PlatformInputFileDataAdapter): PlatformRawData {
     let normalizedRuntime = normalizeRuntime(runtime)
     if (!platformSupportsInputFileSource(source.sourceKind, normalizedRuntime)) {
         throw Exception("Platform runtime '" + normalizedRuntime + "' does not support InputFile source kind '" + source.sourceKind + "'")
@@ -431,7 +696,8 @@ private func makeInputFileRaw(runtime: String, source: PlatformRawSource): Platf
         ByteStream(source.sourceKind, source.sourceValue, source.chunkCount, contract),
         source.reusable,
         source.sourceKind == "path",
-        source.sourceKind == "url" || source.sourceKind == "url_like"
+        source.sourceKind == "url" || source.sourceKind == "url_like",
+        dataAdapter
     )
 }
 
@@ -449,4 +715,14 @@ private func normalizeRuntime(runtime: String): String {
 
 private func boolString(value: Bool): String {
     if (value) { "true" } else { "false" }
+}
+
+private func flattenPlatformByteChunks(chunks: Array<Array<Byte>>): Array<Byte> {
+    let out = ArrayList<Byte>()
+    for (chunk in chunks) {
+        for (byte in chunk) {
+            out.add(byte)
+        }
+    }
+    out.toArray()
 }

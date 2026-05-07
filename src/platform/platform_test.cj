@@ -29,6 +29,72 @@ private class FakePlatformRawAdapter {
     }
 }
 
+private class FakePlatformHttpClient <: PlatformHttpClient {
+    public var requestCount: Int64 = 0
+    public var lastUrl: String = ""
+
+    public init() {}
+
+    public func send(req: PlatformHttpRequest): PlatformHttpResponse {
+        this.requestCount += 1
+        this.lastUrl = req.url
+        PlatformHttpResponse(200, "fake:" + req.method + ":" + req.body)
+    }
+}
+
+private class FakePlatformFileSourceAdapter <: PlatformFileSourceAdapter {
+    public var readCount: Int64 = 0
+    public var lastPath: String = ""
+
+    public init() {}
+
+    public func read(path: String): Array<Byte> {
+        this.readCount += 1
+        this.lastPath = path
+        ("file:" + path).toArray()
+    }
+}
+
+private class FakePlatformFetchSourceAdapter <: PlatformFetchSourceAdapter {
+    public var fetchCount: Int64 = 0
+    public var lastUrl: String = ""
+    public var hasBody: Bool = true
+
+    public init() {}
+
+    public func fetch(url: String): PlatformFetchResult {
+        this.fetchCount += 1
+        this.lastUrl = url
+        if (!this.hasBody) {
+            return PlatformFetchResult.noBody(url)
+        }
+        PlatformFetchResult(url, ("url:" + url).toArray())
+    }
+}
+
+private class FakeDebugEnvSource <: DebugEnvSource {
+    public var value: String = ""
+    public var granted: Bool = false
+    public var colorDisabled: Bool = false
+    public var lastName: String = ""
+
+    public init() {}
+
+    public func get(name: String): String {
+        this.lastName = name
+        this.value
+    }
+
+    public func permissionGranted(name: String): Bool {
+        this.lastName = name
+        this.granted
+    }
+
+    public func noColor(): Bool {
+        this.colorDisabled
+    }
+}
+
 private func platformRawErrorMessage(platform: PlatformAdapter, source: PlatformRawSource): String {
     var message = ""
     try {
@@ -39,11 +105,32 @@ private func platformRawErrorMessage(platform: PlatformAdapter, source: Platform
     message
 }
 
+private func platformRawCollectErrorMessage(raw: PlatformRawData): String {
+    var message = ""
+    try {
+        raw.collectBytes()
+    } catch (e: Exception) {
+        message = e.message
+    }
+    message
+}
+
+private func byteStreamCollectErrorMessage(stream: ByteStream): String {
+    var message = ""
+    try {
+        stream.collectBytes()
+    } catch (e: Exception) {
+        message = e.message
+    }
+    message
+}
+
 @Test
 public class PlatformTest {
     @TestCase
     public func defaultPlatformExposesCjnativeRuntimeAndFallbackHttp(): Unit {
-        let platform = defaultPlatform()
+        let http = FakePlatformHttpClient()
+        let platform = PlatformAdapter("cjnative", defaultAdapterForRuntime("cjnative"), http, PlatformInputFileDataAdapter())
         let req = PlatformHttpRequest("POST", "https://api.telegram.org/botT/getMe", "", "{}")
         let res = platform.request(req)
         let deno = PlatformAdapter("deno")
@@ -51,8 +138,9 @@ public class PlatformTest {
         let web = PlatformAdapter("web")
 
         @Expect(platform.runtime, "cjnative")
-        @Expect(platform.adapter, "callback")
+        @Expect(platform.adapter, "cangjie-native")
         @Expect(defaultAdapter(), "callback")
+        @Expect(defaultAdapterForRuntime("cjnative"), "cangjie-native")
         @Expect(defaultAdapterForRuntime("deno"), "oak")
         @Expect(defaultAdapterForRuntime("node"), "express")
         @Expect(defaultAdapterForRuntime("web"), "cloudflare")
@@ -60,8 +148,10 @@ public class PlatformTest {
         @Expect(node.adapter, "express")
         @Expect(web.adapter, "cloudflare")
         @Expect(platform.supportsLongPolling(), true)
-        @Expect(res.status, 599)
-        @Expect(res.body.contains("POST https://api.telegram.org/botT/getMe"), true)
+        @Expect(res.status, 200)
+        @Expect(res.body, "fake:POST:{}")
+        @Expect(http.requestCount, 1)
+        @Expect(http.lastUrl, "https://api.telegram.org/botT/getMe")
     }
 
     @TestCase
@@ -98,6 +188,32 @@ public class PlatformTest {
     }
 
     @TestCase
+    public func debugStateMirrorsDenoPermissionAndNodeEnvSemantics(): Unit {
+        let env = FakeDebugEnvSource()
+        let denied = debugState("deno", "grammy:warn", env)
+        env.value = "grammy:*"
+        let node = debugState("node", "grammy:warn", env)
+        env.granted = true
+        let deno = debugState("deno", "grammy:warn", env)
+        env.colorDisabled = true
+        let noColor = debugState("deno", "grammy:warn", env)
+        let web = debugState("web", "grammy:warn", env)
+        let native = PlatformAdapter("cjnative").debugState("grammy:warn")
+
+        @Expect(denied.canReadEnv, false)
+        @Expect(denied.enabled, false)
+        @Expect(node.canReadEnv, true)
+        @Expect(node.enabled, true)
+        @Expect(node.envValue, "grammy:*")
+        @Expect(deno.canReadEnv, true)
+        @Expect(deno.summary(), "deno:true:true:grammy:*")
+        @Expect(noColor.useColors, false)
+        @Expect(web.canReadEnv, false)
+        @Expect(web.enabled, false)
+        @Expect(native.enabled, false)
+    }
+
+    @TestCase
     public func byteStreamIsSingleUseBoundary(): Unit {
         let stream = ByteStream("supplier")
 
@@ -108,15 +224,20 @@ public class PlatformTest {
     }
 
     @TestCase
-    public func iteratorToStreamBuildsFakeSingleUseStream(): Unit {
+    public func iteratorToStreamBuildsRealByteSourceStream(): Unit {
         let iterator = ByteIterator("chunks:2", 2)
         let stream = itrToStream(iterator)
+        let chunked = ByteStream("iterator", "manual", 2, "manual-readable-stream", ["AB".toArray(), "CD".toArray()])
+        let failing = failingByteStream("iterator", "boom", 1, "manual-readable-stream", "stream exploded")
 
         @Expect(iterator.consumed, true)
         @Expect(stream.sourceKind, "iterator")
         @Expect(stream.sourceValue, "chunks:2")
         @Expect(stream.chunkCount, 2)
         @Expect(stream.contract, "async-iterable-to-byte-stream")
+        @Expect(String.fromUtf8(stream.collectBytes()), "chunks:2")
+        @Expect(String.fromUtf8(chunked.collectBytes()), "ABCD")
+        @Expect(byteStreamCollectErrorMessage(failing), "stream exploded")
         @Expect(defaultPlatform().itrToStream(ByteIterator("chunks:1", 1)).chunkCount, 1)
     }
 
@@ -143,6 +264,38 @@ public class PlatformTest {
         @Expect(fake.fileReadCount, 1)
         @Expect(fake.urlFetchCount, 1)
         @Expect(fake.bytesConsumeCount, 1)
+    }
+
+    @TestCase
+    public func inputFileRawAdapterCollectsBytesThroughInjectedRuntimeAdapters(): Unit {
+        let fileAdapter = FakePlatformFileSourceAdapter()
+        let fetchAdapter = FakePlatformFetchSourceAdapter()
+        let dataAdapter = PlatformInputFileDataAdapter(fileAdapter, fetchAdapter)
+        let platform = PlatformAdapter("node", "express", FakePlatformHttpClient(), dataAdapter)
+        let pathRaw = platform.inputFileRaw(PlatformRawSource.path("/tmp/photo.png", "photo.png"))
+        let urlRaw = platform.inputFileRaw(PlatformRawSource.urlLike("https://example.test/a.png", "a.png"))
+
+        @Expect(String.fromUtf8(pathRaw.collectBytes()), "file:/tmp/photo.png")
+        @Expect(fileAdapter.readCount, 1)
+        @Expect(fileAdapter.lastPath, "/tmp/photo.png")
+        @Expect(String.fromUtf8(urlRaw.collectBytes()), "url:https://example.test/a.png")
+        @Expect(fetchAdapter.fetchCount, 1)
+        @Expect(fetchAdapter.lastUrl, "https://example.test/a.png")
+    }
+
+    @TestCase
+    public func inputFileRawAdapterSeparatesFetchAndResponseMissingBodyErrors(): Unit {
+        let fetchAdapter = FakePlatformFetchSourceAdapter()
+        fetchAdapter.hasBody = false
+        let dataAdapter = PlatformInputFileDataAdapter(FakePlatformFileSourceAdapter(), fetchAdapter)
+        let platform = PlatformAdapter("web", "cloudflare", FakePlatformHttpClient(), dataAdapter)
+        let urlRaw = platform.inputFileRaw(PlatformRawSource.url("https://example.test/no-body.bin", "no-body.bin"))
+
+        @Expect(platformRawCollectErrorMessage(urlRaw), "Download failed, no response body from 'https://example.test/no-body.bin'")
+        @Expect(
+            platformRawErrorMessage(PlatformAdapter("deno"), PlatformRawSource.response("empty", "empty.bin", false)),
+            "No response body!"
+        )
     }
 
     @TestCase
@@ -176,10 +329,6 @@ public class PlatformTest {
             platformRawErrorMessage(node, PlatformRawSource("blob", "blob:1", "a.txt", 1, true)),
             "Platform runtime 'node' does not support InputFile source kind 'blob'"
         )
-        @Expect(
-            platformRawErrorMessage(PlatformAdapter("deno"), PlatformRawSource.response("empty", "empty.bin", false)),
-            "No response body!"
-        )
     }
 
     @TestCase
@@ -196,6 +345,7 @@ public class PlatformTest {
         @Expect(node.baseFetchConfigContract, "keep-alive-agent")
         @Expect(web.defaultAdapter, "cloudflare")
         @Expect(web.byteStreamContract, "manual-readable-stream")
-        @Expect(cjnative.defaultAdapter, "callback")
+        @Expect(cjnative.defaultAdapter, "cangjie-native")
+        @Expect(cjnative.byteStreamContract, "byte-source-stream")
     }
 }

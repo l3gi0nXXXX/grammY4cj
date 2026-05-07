@@ -1,10 +1,91 @@
 package grammy4cj.types
 
+import std.collection.ArrayList
+import std.fs.File
+import std.process.executeWithOutput
+
 import grammy4cj.platform_contract.platformInputFileRawContractFor as contractInputFileRawContractFor
 import grammy4cj.platform_contract.platformInputFileRuntimeNames as contractInputFileRuntimeNames
 import grammy4cj.platform_contract.platformInputFileSourceKindNames as contractInputFileSourceKindNames
 import grammy4cj.platform_contract.platformNormalizeInputFileRuntime as contractNormalizeInputFileRuntime
 import grammy4cj.platform_contract.platformSupportsInputFileSourceKind as contractSupportsInputFileSourceKind
+
+public class InputFileFetchResult {
+    public let url: String
+    public let hasBody: Bool
+    public let body: Array<Byte>
+
+    public init(url: String, body: Array<Byte>) {
+        this.url = url
+        this.hasBody = true
+        this.body = body
+    }
+
+    public init(url: String, hasBody: Bool, body: Array<Byte>) {
+        this.url = url
+        this.hasBody = hasBody
+        this.body = body
+    }
+
+    public static func noBody(url: String): InputFileFetchResult {
+        InputFileFetchResult(url, false, [])
+    }
+}
+
+public interface InputFileFileAdapter {
+    func read(path: String): Array<Byte>
+}
+
+public interface InputFileFetchAdapter {
+    func fetch(url: String): InputFileFetchResult
+}
+
+public class NativeInputFileFileAdapter <: InputFileFileAdapter {
+    public init() {}
+
+    public func read(path: String): Array<Byte> {
+        File.readFrom(path)
+    }
+}
+
+public class CurlInputFileFetchAdapter <: InputFileFetchAdapter {
+    public init() {}
+
+    public func fetch(url: String): InputFileFetchResult {
+        let (code, out, err) = executeWithOutput("curl", ["-fsSL", url])
+        if (code != 0) {
+            throw Exception("Download failed from '" + url + "': " + String.fromUtf8(err))
+        }
+        InputFileFetchResult(url, out)
+    }
+}
+
+public class InputFileRawAdapter {
+    private let fileAdapter: InputFileFileAdapter
+    private let fetchAdapter: InputFileFetchAdapter
+
+    public init() {
+        this.fileAdapter = NativeInputFileFileAdapter()
+        this.fetchAdapter = CurlInputFileFetchAdapter()
+    }
+
+    public init(fileAdapter: InputFileFileAdapter, fetchAdapter: InputFileFetchAdapter) {
+        this.fileAdapter = fileAdapter
+        this.fetchAdapter = fetchAdapter
+    }
+
+    public func readPath(path: String): Array<Byte> {
+        this.fileAdapter.read(path)
+    }
+
+    public func fetchUrl(url: String): InputFileFetchResult {
+        this.fetchAdapter.fetch(url)
+    }
+}
+
+public func defaultInputFileRawAdapter(): InputFileRawAdapter {
+    InputFileRawAdapter()
+}
 
 public class InputFileSource {
     public let kind: String
@@ -26,6 +107,7 @@ public class InputFileSource {
     public let supplierSourceRequiresFileAdapter: Bool
     public let supplierSourceRequiresFetchAdapter: Bool
     public let supplierSourceHasBody: Bool
+    public let supplierErrorMessage: String
 
     public init(
         kind: String,
@@ -56,6 +138,7 @@ public class InputFileSource {
         this.supplierSourceRequiresFileAdapter = false
         this.supplierSourceRequiresFetchAdapter = false
         this.supplierSourceHasBody = true
+        this.supplierErrorMessage = ""
     }
 
     public init(
@@ -90,6 +173,7 @@ public class InputFileSource {
         this.supplierSourceRequiresFileAdapter = false
         this.supplierSourceRequiresFetchAdapter = false
         this.supplierSourceHasBody = true
+        this.supplierErrorMessage = ""
     }
 
     public init(
@@ -132,6 +216,51 @@ public class InputFileSource {
         this.supplierSourceRequiresFileAdapter = supplierSourceRequiresFileAdapter
         this.supplierSourceRequiresFetchAdapter = supplierSourceRequiresFetchAdapter
         this.supplierSourceHasBody = supplierSourceHasBody
+        this.supplierErrorMessage = ""
+    }
+
+    public init(
+        kind: String,
+        value: String,
+        filenameHint: String,
+        rawContract: String,
+        reusable: Bool,
+        requiresFileAdapter: Bool,
+        requiresFetchAdapter: Bool,
+        hasBody: Bool,
+        supportedOnDeno: Bool,
+        supportedOnNode: Bool,
+        supportedOnWeb: Bool,
+        supplierSourceKind: String,
+        supplierSourceValue: String,
+        supplierSourceFilename: String,
+        supplierSourceContract: String,
+        supplierSourceReusable: Bool,
+        supplierSourceRequiresFileAdapter: Bool,
+        supplierSourceRequiresFetchAdapter: Bool,
+        supplierSourceHasBody: Bool,
+        supplierErrorMessage: String
+    ) {
+        this.kind = kind
+        this.value = value
+        this.filenameHint = filenameHint
+        this.rawContract = rawContract
+        this.reusable = reusable
+        this.requiresFileAdapter = requiresFileAdapter
+        this.requiresFetchAdapter = requiresFetchAdapter
+        this.hasBody = hasBody
+        this.supportedOnDeno = supportedOnDeno
+        this.supportedOnNode = supportedOnNode
+        this.supportedOnWeb = supportedOnWeb
+        this.supplierSourceKind = supplierSourceKind
+        this.supplierSourceValue = supplierSourceValue
+        this.supplierSourceFilename = supplierSourceFilename
+        this.supplierSourceContract = supplierSourceContract
+        this.supplierSourceReusable = supplierSourceReusable
+        this.supplierSourceRequiresFileAdapter = supplierSourceRequiresFileAdapter
+        this.supplierSourceRequiresFetchAdapter = supplierSourceRequiresFetchAdapter
+        this.supplierSourceHasBody = supplierSourceHasBody
+        this.supplierErrorMessage = supplierErrorMessage
     }
 
     public static func path(path: String): InputFileSource {
@@ -172,6 +301,31 @@ public class InputFileSource {
 
     public static func supplier(label: String, filename: String): InputFileSource {
         InputFileSource("supplier", label, filename, "supplier-deferred", true, false, false, true, true, true, false)
+    }
+
+    public static func supplierFailure(label: String, filename: String, errorMessage: String): InputFileSource {
+        InputFileSource(
+            "supplier",
+            label,
+            filename,
+            "supplier-deferred",
+            true,
+            false,
+            false,
+            true,
+            true,
+            true,
+            false,
+            "",
+            "",
+            "",
+            "",
+            true,
+            false,
+            false,
+            true,
+            errorMessage
+        )
     }
 
     public static func supplierSource(label: String, source: InputFileSource): InputFileSource {
@@ -215,6 +369,8 @@ public class InputFileRawData {
     public let supplierLabel: String
     public let singleUseBoundary: Bool
     public let body: InputFileRawBody
+    public let isFakeContract: Bool
+    public let rawKind: String
 
     public init(
         sourceKind: String,
@@ -238,7 +394,9 @@ public class InputFileRawData {
         this.originalSourceKind = sourceKind
         this.supplierLabel = ""
         this.singleUseBoundary = !reusable
-        this.body = InputFileRawBody(sourceKind, sourceValue, filename, contract, rawChunkCount(sourceKind), reusable)
+        this.body = InputFileRawBody(sourceKind, sourceValue, filename, contract, rawChunkCount(sourceKind), reusable, defaultInputFileRawAdapter())
+        this.isFakeContract = false
+        this.rawKind = sourceKind
     }
 
     public init(
@@ -268,7 +426,42 @@ public class InputFileRawData {
         this.originalSourceKind = originalSourceKind
         this.supplierLabel = supplierLabel
         this.singleUseBoundary = !reusable
-        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind), reusable)
+        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind), reusable, defaultInputFileRawAdapter())
+        this.isFakeContract = false
+        this.rawKind = rawSourceKind
+    }
+
+    public init(
+        sourceKind: String,
+        sourceValue: String,
+        filename: String,
+        contract: String,
+        reusable: Bool,
+        requiresFileAdapter: Bool,
+        requiresFetchAdapter: Bool,
+        runtime: String,
+        rawSourceKind: String,
+        platformContract: String,
+        originalSourceKind: String,
+        supplierLabel: String,
+        adapter: InputFileRawAdapter
+    ) {
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.contract = contract
+        this.reusable = reusable
+        this.requiresFileAdapter = requiresFileAdapter
+        this.requiresFetchAdapter = requiresFetchAdapter
+        this.runtime = runtime
+        this.rawSourceKind = rawSourceKind
+        this.platformContract = platformContract
+        this.originalSourceKind = originalSourceKind
+        this.supplierLabel = supplierLabel
+        this.singleUseBoundary = !reusable
+        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind), reusable, adapter)
+        this.isFakeContract = false
+        this.rawKind = rawSourceKind
     }
 
     public func summary(): String {
@@ -287,6 +480,14 @@ public class InputFileRawData {
     public func rawConsumed(): Bool {
         this.body.consumed
     }
+
+    public func collectBytes(): Array<Byte> {
+        this.body.collectBytes()
+    }
+
+    public func collectString(): String {
+        String.fromUtf8(this.collectBytes())
+    }
 }
 
 public class InputFileRawBody {
@@ -296,6 +497,8 @@ public class InputFileRawBody {
     public let contract: String
     public let chunkCount: Int64
     public let reusableSource: Bool
+    public let chunks: Array<Array<Byte>>
+    private let adapter: InputFileRawAdapter
     public var consumed: Bool = false
 
     public init(sourceKind: String, sourceValue: String, filename: String, contract: String, chunkCount: Int64, reusableSource: Bool) {
@@ -305,17 +508,47 @@ public class InputFileRawBody {
         this.contract = contract
         this.chunkCount = chunkCount
         this.reusableSource = reusableSource
+        this.chunks = defaultRawChunks(sourceKind, sourceValue)
+        this.adapter = defaultInputFileRawAdapter()
+    }
+
+    public init(sourceKind: String, sourceValue: String, filename: String, contract: String, chunkCount: Int64, reusableSource: Bool, adapter: InputFileRawAdapter) {
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.contract = contract
+        this.chunkCount = chunkCount
+        this.reusableSource = reusableSource
+        this.chunks = defaultRawChunks(sourceKind, sourceValue)
+        this.adapter = adapter
     }
 
     public func consume(): Unit {
-        if (this.consumed) {
-            throw Exception("InputFile raw data has already been consumed.")
+        if (this.consumed && !this.reusableSource) {
+            throw Exception("Cannot reuse InputFile data source!")
         }
-        this.consumed = true
+        if (!this.reusableSource) {
+            this.consumed = true
+        }
     }
 
     public func summary(): String {
         this.sourceKind + ":" + this.contract + ":" + this.filename + ":chunks=" + this.chunkCount.toString()
+    }
+
+    public func collectBytes(): Array<Byte> {
+        this.consume()
+        if (this.sourceKind == "path") {
+            return this.adapter.readPath(this.sourceValue)
+        }
+        if (this.sourceKind == "url" || this.sourceKind == "url_like") {
+            let result = this.adapter.fetchUrl(this.sourceValue)
+            if (!result.hasBody) {
+                throw Exception("Download failed, no response body from '" + this.sourceValue + "'")
+            }
+            return result.body
+        }
+        flattenByteChunks(this.chunks)
     }
 }
 
@@ -412,6 +645,10 @@ public class InputFile {
         InputFile(InputFileSource.supplierSource(supplierLabel, source))
     }
 
+    public static func fromSupplierFailure(supplierLabel: String, filename: String, errorMessage: String): InputFile {
+        InputFile(InputFileSource.supplierFailure(supplierLabel, filename, errorMessage))
+    }
+
     public func consume(): Unit {
         if (this.consumed) {
             throw Exception("Cannot reuse InputFile data source!")
@@ -423,7 +660,15 @@ public class InputFile {
         this.toRaw("deno")
     }
 
+    public func toRaw(adapter: InputFileRawAdapter): InputFileRawData {
+        this.toRaw("deno", adapter)
+    }
+
     public func toRaw(runtime: String): InputFileRawData {
+        this.toRaw(runtime, defaultInputFileRawAdapter())
+    }
+
+    public func toRaw(runtime: String, adapter: InputFileRawAdapter): InputFileRawData {
         if (this.consumed) {
             throw Exception("Cannot reuse InputFile data source!")
         }
@@ -431,27 +676,33 @@ public class InputFile {
         if (!inputFileSourceSupportedOnRuntime(this.source.kind, normalizedRuntime)) {
             throw Exception("InputFile source kind '" + this.source.kind + "' is not supported on " + normalizedRuntime)
         }
-        if (this.source.kind == "supplier" && !this.source.supplierSourceKind.isEmpty()) {
-            if (!inputFileSourceSupportedOnRuntime(this.source.supplierSourceKind, normalizedRuntime)) {
-                throw Exception("InputFile supplier source kind '" + this.source.supplierSourceKind + "' is not supported on " + normalizedRuntime)
+        if (this.source.kind == "supplier") {
+            if (!this.source.supplierErrorMessage.isEmpty()) {
+                throw Exception(this.source.supplierErrorMessage)
             }
-            if (!this.source.supplierSourceHasBody) {
-                throw Exception("No response body!")
+            if (!this.source.supplierSourceKind.isEmpty()) {
+                if (!inputFileSourceSupportedOnRuntime(this.source.supplierSourceKind, normalizedRuntime)) {
+                    throw Exception("InputFile supplier source kind '" + this.source.supplierSourceKind + "' is not supported on " + normalizedRuntime)
+                }
+                if (!this.source.supplierSourceHasBody) {
+                    throw Exception("No response body!")
+                }
+                return InputFileRawData(
+                    this.source.kind,
+                    this.source.supplierSourceValue,
+                    this.filename,
+                    this.source.rawContract,
+                    this.source.supplierSourceReusable,
+                    this.source.supplierSourceRequiresFileAdapter,
+                    this.source.supplierSourceRequiresFetchAdapter,
+                    runtime,
+                    this.source.supplierSourceKind,
+                    inputFilePlatformContract(this.source.supplierSourceKind, normalizedRuntime, this.source.supplierSourceContract),
+                    this.source.kind,
+                    this.source.value,
+                    adapter
+                )
             }
-            return InputFileRawData(
-                this.source.kind,
-                this.source.value,
-                this.filename,
-                this.source.rawContract,
-                this.source.supplierSourceReusable,
-                this.source.supplierSourceRequiresFileAdapter,
-                this.source.supplierSourceRequiresFetchAdapter,
-                runtime,
-                this.source.supplierSourceKind,
-                inputFilePlatformContract(this.source.supplierSourceKind, normalizedRuntime, this.source.supplierSourceContract),
-                this.source.kind,
-                this.source.value
-            )
         }
         if (!this.source.hasBody) {
             throw Exception("No response body!")
@@ -468,7 +719,8 @@ public class InputFile {
             this.sourceKind,
             inputFilePlatformContract(this.sourceKind, normalizedRuntime, this.source.rawContract),
             this.sourceKind,
-            ""
+            "",
+            adapter
         )
         if (!this.source.reusable) {
             this.consumed = true
@@ -510,6 +762,13 @@ public func inferUrlFilename(url: String): String {
 
 public func looksLikeRemoteUrl(source: String): Bool {
     source.startsWith("http:") || source.startsWith("https:")
+}
+
+public func inputFilePathLooksLikeRemoteUrlWarning(source: String): String {
+    if (looksLikeRemoteUrl(source)) {
+        return "InputFile received the local file path '" + source + "' that looks like a URL. Is this a mistake?"
+    }
+    ""
 }
 
 public func inputFileRuntimeNames(): Array<String> {
@@ -659,4 +918,21 @@ private func basename(path: String): String {
 private func stripQueryAndHash(value: String): String {
     let withoutHash = value.split("#")[0]
     withoutHash.split("?")[0]
+}
+
+private func defaultRawChunks(sourceKind: String, sourceValue: String): Array<Array<Byte>> {
+    if (sourceKind == "stream" || sourceKind == "iterable" || sourceKind == "async_iterable") {
+        return [sourceValue.toArray(), sourceValue.toArray()]
+    }
+    [sourceValue.toArray()]
+}
+
+private func flattenByteChunks(chunks: Array<Array<Byte>>): Array<Byte> {
+    let out = ArrayList<Byte>()
+    for (chunk in chunks) {
+        for (byte in chunk) {
+            out.add(byte)
+        }
+    }
+    out.toArray()
 }

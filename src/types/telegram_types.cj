@@ -103,12 +103,14 @@ public class TelegramObjectSubsetTrace {
     public let upstreamObject: String
     public let cangjieType: String
     public let requiredForGate: String
+    public let historicalOnly: Bool
 
     public init(objectName: String, upstreamObject: String, cangjieType: String, requiredForGate: String) {
         this.objectName = objectName
         this.upstreamObject = upstreamObject
         this.cangjieType = cangjieType
         this.requiredForGate = requiredForGate
+        this.historicalOnly = true
     }
 }
 
@@ -199,15 +201,15 @@ public func telegramInputFileAliasTraceCount(): Int64 {
 
 public func telegramObjectSubsetTrace(): Array<TelegramObjectSubsetTrace> {
     [
-        TelegramObjectSubsetTrace("ResponseParameters", "ResponseParameters", "ResponseParameters", "API error retry/migrate fields"),
-        TelegramObjectSubsetTrace("ApiError", "ApiResponse error object", "ApiError", "error envelope"),
-        TelegramObjectSubsetTrace("ApiResponse", "ApiResponse", "ApiResponse", "raw API result envelope"),
-        TelegramObjectSubsetTrace("User", "User", "User", "message/user fixtures"),
-        TelegramObjectSubsetTrace("UserFromGetMe", "UserFromGetMe", "UserFromGetMe", "bot info"),
-        TelegramObjectSubsetTrace("Chat", "Chat", "Chat", "message/chat fixtures"),
-        TelegramObjectSubsetTrace("MessageEntity", "MessageEntity", "MessageEntity", "entity text extraction"),
-        TelegramObjectSubsetTrace("Message", "Message", "Message", "update/message subset"),
-        TelegramObjectSubsetTrace("Update", "Update", "Update", "bot update dispatch")
+        TelegramObjectSubsetTrace("ResponseParameters", "ResponseParameters", "ResponseParameters", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("ApiError", "ApiResponse error object", "ApiError", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("ApiResponse", "ApiResponse", "ApiResponse", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("User", "User", "User", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("UserFromGetMe", "UserFromGetMe", "UserFromGetMe", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("Chat", "Chat", "Chat", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("MessageEntity", "MessageEntity", "MessageEntity", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("Message", "Message", "Message", "historical fixture; complete type manifest is the gate"),
+        TelegramObjectSubsetTrace("Update", "Update", "Update", "historical fixture; complete type manifest is the gate")
     ]
 }
 

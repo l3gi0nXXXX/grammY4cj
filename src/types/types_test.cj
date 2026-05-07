@@ -25,6 +25,37 @@ private class FakeInputFileRawAdapter {
     }
 }
 
+private class FakeFileAdapter <: InputFileFileAdapter {
+    public var readCount: Int64 = 0
+    public var lastPath: String = ""
+
+    public init() {}
+
+    public func read(path: String): Array<Byte> {
+        this.readCount += 1
+        this.lastPath = path
+        ("file:" + path).toArray()
+    }
+}
+
+private class FakeFetchAdapter <: InputFileFetchAdapter {
+    public var fetchCount: Int64 = 0
+    public var lastUrl: String = ""
+    public var responseBody: Array<Byte> = "fetch-body".toArray()
+    public var hasBody: Bool = true
+
+    public init() {}
+
+    public func fetch(url: String): InputFileFetchResult {
+        this.fetchCount += 1
+        this.lastUrl = url
+        if (!this.hasBody) {
+            return InputFileFetchResult.noBody(url)
+        }
+        InputFileFetchResult(url, this.responseBody)
+    }
+}
+
 private func toJsonErrorMessage(file: InputFile): String {
     var message = ""
     try {
@@ -59,6 +90,16 @@ private func rawConsumeErrorMessage(raw: InputFileRawData): String {
     var message = ""
     try {
         raw.consume()
+    } catch (e: Exception) {
+        message = e.message
+    }
+    message
+}
+
+private func rawCollectErrorMessage(raw: InputFileRawData): String {
+    var message = ""
+    try {
+        raw.collectBytes()
     } catch (e: Exception) {
         message = e.message
     }
@@ -110,6 +151,50 @@ public class TelegramTypesTest {
     }
 
     @TestCase
+    public func telegramTypeManifestPinsUpstreamTypeSourcesAndExports(): Unit {
+        let baseline = telegramTypePackageBaseline()
+        let sendPhoto = telegramApiMethodManifestFor("sendPhoto")
+        let getMe = telegramApiMethodManifestFor("getMe")
+        let inputMedia = telegramInputFileBoundAliasFor("InputMedia")
+
+        @Expect(baseline.version, "3.26.0")
+        @Expect(baseline.denoSpecifier, "https://deno.land/x/grammy_types@v3.26.0/mod.ts")
+        @Expect(baseline.nodeSpecifier, "@grammyjs/types")
+        @Expect(telegramTypeFacadeDriftCheck(
+            "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
+            "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
+            "@grammyjs/types",
+            "@grammyjs/types",
+            "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
+            "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
+            "./types.deno.ts"
+        ), true)
+        @Expect(telegramTypeFacadeDriftCheck(
+            "https://deno.land/x/grammy_types@v3.27.0/mod.ts",
+            "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
+            "@grammyjs/types",
+            "@grammyjs/types",
+            "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
+            "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
+            "./types.deno.ts"
+        ), false)
+        @Expect(telegramTypeExportModuleCount(), 13)
+        @Expect(telegramTypeExportManifestCount(), 306)
+        @Expect(telegramTypeExportExists("Message"), true)
+        @Expect(telegramTypeExportModuleFor("InputStoryContentVideo"), "methods")
+        @Expect(telegramApiMethodManifestCount(), 169)
+        @Expect(telegramApiMethodExists("sendPhoto"), true)
+        @Expect(telegramApiMethodExists("missingMethod"), false)
+        @Expect(sendPhoto.hasPayload, true)
+        @Expect(sendPhoto.usesInputFile, true)
+        @Expect(getMe.hasPayload, false)
+        @Expect(inputMedia.constructible, true)
+        @Expect(inputMedia.inputFileReplacementPoint, "media and thumbnail")
+        @Expect(telegramInputFileBoundAliasManifestCount(), 18)
+        @Expect(telegramTypeGateRequiresCompleteManifest(), true)
+    }
+
+    @TestCase
     public func typeSourceMatrixCoversUpstreamFacadesAndGenericAliases(): Unit {
         let matrix = typeSourceMatrix()
         let deno = typeSourceMatrixFor("src/types.deno.ts")
@@ -134,10 +219,12 @@ public class TelegramTypesTest {
         let subset = telegramObjectSubsetTrace()
 
         @Expect(telegramObjectSubsetTraceCount(), 9)
+        @Expect(telegramObjectSubsetTraceAcceptedAsGate(), false)
         @Expect(subset[0].objectName, "ResponseParameters")
         @Expect(subset[3].objectName, "User")
         @Expect(subset[8].objectName, "Update")
         @Expect(subset[8].cangjieType, "Update")
+        @Expect(subset[8].historicalOnly, true)
     }
 }
 
@@ -206,7 +293,7 @@ public class InputFileTest {
     }
 
     @TestCase
-    public func inputFileToRawReturnsFakeContractsWithoutIo(): Unit {
+    public func inputFileToRawReturnsRealRawSourcesWithoutEagerIo(): Unit {
         let pathFile = InputFile.fromPath("/tmp/photo.png")
         let urlFile = InputFile.fromUrl("https://example.test/files/report.pdf")
         let bytesFile = InputFile.fromBytes("bytes:3", "data.bin")
@@ -217,13 +304,63 @@ public class InputFileTest {
 
         @Expect(pathRaw.contract, "deferred-file-read")
         @Expect(pathRaw.requiresFileAdapter, true)
+        @Expect(pathRaw.isFakeContract, false)
+        @Expect(pathRaw.rawKind, "path")
         @Expect(pathFile.consumed, false)
         @Expect(urlRaw.contract, "deferred-fetch")
         @Expect(urlRaw.requiresFetchAdapter, true)
+        @Expect(urlRaw.isFakeContract, false)
         @Expect(urlFile.consumed, false)
         @Expect(bytesRaw.contract, "bytes-as-is")
         @Expect(bytesRaw.reusable, true)
         @Expect(bytesRaw.summary(), "bytes:bytes-as-is:data.bin")
+        @Expect(bytesRaw.collectString(), "bytes:3")
+        @Expect(bytesRaw.collectString(), "bytes:3")
+    }
+
+    @TestCase
+    public func inputFileRawCollectsBytesThroughInjectedAdapters(): Unit {
+        let fileAdapter = FakeFileAdapter()
+        let fetchAdapter = FakeFetchAdapter()
+        let adapter = InputFileRawAdapter(fileAdapter, fetchAdapter)
+        let pathRaw = InputFile.fromPath("/tmp/photo.png").toRaw("deno", adapter)
+        let urlRaw = InputFile.fromUrlLike("https://example.test/files/report.pdf").toRaw("web", adapter)
+
+        @Expect(pathRaw.collectString(), "file:/tmp/photo.png")
+        @Expect(fileAdapter.readCount, 1)
+        @Expect(fileAdapter.lastPath, "/tmp/photo.png")
+        @Expect(urlRaw.collectString(), "fetch-body")
+        @Expect(fetchAdapter.fetchCount, 1)
+        @Expect(fetchAdapter.lastUrl, "https://example.test/files/report.pdf")
+    }
+
+    @TestCase
+    public func inputFileRawDistinguishesResponseAndFetchMissingBodies(): Unit {
+        let fetchAdapter = FakeFetchAdapter()
+        fetchAdapter.hasBody = false
+        let adapter = InputFileRawAdapter(FakeFileAdapter(), fetchAdapter)
+        let urlRaw = InputFile.fromUrl("https://example.test/no-body").toRaw("deno", adapter)
+
+        @Expect(toRawErrorMessage(InputFile.fromResponse("empty-response", "empty.bin", false)), "No response body!")
+        @Expect(rawCollectErrorMessage(urlRaw), "Download failed, no response body from 'https://example.test/no-body'")
+    }
+
+    @TestCase
+    public func inputFileRawCollectsBlobResponseIterableAndAsyncIterableSources(): Unit {
+        let blobRaw = InputFile.fromBlob("ABCD", "blob.txt").toRaw("deno")
+        let responseRaw = InputFile.fromResponse("EFGH", "download.bin").toRaw("deno")
+        let iterableRaw = InputFile.fromIterable("IJ", "chunks.bin").toRaw("deno")
+        let asyncIterableRaw = InputFile.fromAsyncIterable("KL", "async.bin").toRaw("web")
+
+        @Expect(blobRaw.rawSourceKind, "blob")
+        @Expect(blobRaw.collectString(), "ABCD")
+        @Expect(responseRaw.rawSourceKind, "response")
+        @Expect(responseRaw.collectString(), "EFGH")
+        @Expect(iterableRaw.rawSourceKind, "iterable")
+        @Expect(iterableRaw.collectString(), "IJIJ")
+        @Expect(rawCollectErrorMessage(iterableRaw), "Cannot reuse InputFile data source!")
+        @Expect(asyncIterableRaw.rawSourceKind, "async_iterable")
+        @Expect(asyncIterableRaw.collectString(), "KLKL")
     }
 
     @TestCase
@@ -239,8 +376,8 @@ public class InputFileTest {
         @Expect(fake.fileReadCount, 1)
         @Expect(fake.urlFetchCount, 1)
         @Expect(fake.streamConsumeCount, 1)
-        @Expect(pathRaw.rawConsumed(), true)
-        @Expect(rawConsumeErrorMessage(pathRaw), "InputFile raw data has already been consumed.")
+        @Expect(pathRaw.rawConsumed(), false)
+        @Expect(rawConsumeErrorMessage(streamRaw), "Cannot reuse InputFile data source!")
     }
 
     @TestCase
@@ -289,7 +426,28 @@ public class InputFileTest {
         @Expect(streamRaw.singleUseBoundary, true)
         @Expect(supplierStream.consumed, false)
         @Expect(fake.consume(streamRaw), "node:stream:node-read-stream-as-is:clip.mp4")
+        @Expect(rawCollectErrorMessage(streamRaw), "Cannot reuse InputFile data source!")
         @Expect(fake.streamConsumeCount, 1)
+    }
+
+    @TestCase
+    public func inputFileSupplierUnwrapsPathUrlAndPropagatesSupplierErrors(): Unit {
+        let fileAdapter = FakeFileAdapter()
+        let fetchAdapter = FakeFetchAdapter()
+        fetchAdapter.responseBody = "remote:bytes".toArray()
+        let adapter = InputFileRawAdapter(fileAdapter, fetchAdapter)
+        let pathRaw = InputFile.fromSupplier("lazy-path", InputFileSource.path("/tmp/lazy.txt")).toRaw("node", adapter)
+        let urlRaw = InputFile.fromSupplier("lazy-url", InputFileSource.url("https://example.test/lazy.bin")).toRaw("node", adapter)
+        let failure = InputFile.fromSupplierFailure("lazy-fail", "fail.bin", "supplier exploded")
+
+        @Expect(pathRaw.rawSourceKind, "path")
+        @Expect(pathRaw.supplierLabel, "lazy-path")
+        @Expect(pathRaw.collectString(), "file:/tmp/lazy.txt")
+        @Expect(fileAdapter.lastPath, "/tmp/lazy.txt")
+        @Expect(urlRaw.rawSourceKind, "url")
+        @Expect(urlRaw.collectString(), "remote:bytes")
+        @Expect(fetchAdapter.lastUrl, "https://example.test/lazy.bin")
+        @Expect(toRawErrorMessage(failure, "deno"), "supplier exploded")
     }
 
     @TestCase
@@ -312,6 +470,8 @@ public class InputFileTest {
         let raw = streamFile.toRaw()
         @Expect(raw.contract, "stream-as-is")
         @Expect(streamFile.consumed, true)
+        @Expect(raw.collectString(), "stream:1stream:1")
+        @Expect(rawCollectErrorMessage(raw), "Cannot reuse InputFile data source!")
         @Expect(toRawErrorMessage(streamFile), "Cannot reuse InputFile data source!")
     }
 
@@ -352,5 +512,7 @@ public class InputFileTest {
         @Expect(inferFilename("https://grammy.dev/file.txt?download=1"), "file.txt")
         @Expect(inferFilename("https://grammy.dev"), "grammy.dev")
         @Expect(inferFilename("https://grammy.dev/"), "grammy.dev")
+        @Expect(inputFilePathLooksLikeRemoteUrlWarning("https://grammy.dev").contains("local file path"), true)
+        @Expect(inputFilePathLooksLikeRemoteUrlWarning("/tmp/file.txt"), "")
     }
 }
