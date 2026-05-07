@@ -208,6 +208,66 @@ private func hasTraceFlag(flags: String, flag: String): Bool {
     ("," + flags + ",").contains("," + flag + ",")
 }
 
+private func traceFieldCount(fields: String): Int64 {
+    if (fields == "") {
+        return 0
+    }
+    fields.split(",").size
+}
+
+private func containsTraceField(fields: String, field: String): Bool {
+    ("," + fields + ",").contains("," + field + ",")
+}
+
+private func joinTraceFields(fields: ArrayList<String>): String {
+    var out = ""
+    var first = true
+    for (field in fields) {
+        if (!first) {
+            out += ","
+        }
+        out += field
+        first = false
+    }
+    out
+}
+
+private func concatTraceFields(left: String, right: String): String {
+    if (left == "") {
+        return right
+    }
+    if (right == "") {
+        return left
+    }
+    left + "," + right
+}
+
+private func optionalArgumentTraceFor(publicMethodName: String): String {
+    if (publicMethodName == "setChatDescription") {
+        return "description"
+    }
+    if (publicMethodName == "unpinChatMessage") {
+        return "message_id"
+    }
+    if (publicMethodName == "setStickerMaskPosition") {
+        return "mask_position"
+    }
+    ""
+}
+
+private func removeOptionalArguments(pulledPayloadFieldTrace: String, optionalArgumentTrace: String): String {
+    if (pulledPayloadFieldTrace == "" || optionalArgumentTrace == "") {
+        return pulledPayloadFieldTrace
+    }
+    let fields = ArrayList<String>()
+    for (field in pulledPayloadFieldTrace.split(",")) {
+        if (field != "" && !containsTraceField(optionalArgumentTrace, field)) {
+            fields.add(field)
+        }
+    }
+    joinTraceFields(fields)
+}
+
 public class ApiWrapperSchemaTrace {
     public let publicMethodName: String
     public let rawMethodName: String
@@ -241,6 +301,63 @@ public class ApiWrapperSchemaTrace {
     public func hasPayloadField(field: String): Bool {
         ("," + this.requiredPayloadFieldTrace + ",").contains("," + field + ",") ||
             ("," + this.optionalPayloadFieldTrace + ",").contains("," + field + ",")
+    }
+
+    public func payloadFieldTrace(): String {
+        concatTraceFields(this.requiredPayloadFieldTrace, this.optionalPayloadFieldTrace)
+    }
+
+    public func requiredPayloadFieldCount(): Int64 {
+        traceFieldCount(this.requiredPayloadFieldTrace)
+    }
+
+    public func optionalPayloadFieldCount(): Int64 {
+        traceFieldCount(this.optionalPayloadFieldTrace)
+    }
+}
+
+public class ApiWrapperSignatureTrace {
+    public let publicMethodName: String
+    public let rawMethodName: String
+    public let requiredParameterTrace: String
+    public let optionalParameterTrace: String
+    public let otherPayloadFieldTrace: String
+    public let signalTrace: String
+    public let cancelTrace: String
+    public let requiredPayloadFieldTrace: String
+    public let optionalPayloadFieldTrace: String
+    public let payloadFieldTrace: String
+    public let returnTypeTrace: String
+    public let flags: String
+
+    public init(schema: ApiWrapperSchemaTrace) {
+        this.publicMethodName = schema.publicMethodName
+        this.rawMethodName = schema.rawMethodName
+        this.optionalParameterTrace = optionalArgumentTraceFor(schema.publicMethodName)
+        this.requiredParameterTrace = removeOptionalArguments(
+            schema.pulledPayloadFieldTrace,
+            this.optionalParameterTrace
+        )
+        this.otherPayloadFieldTrace = schema.optionalPayloadFieldTrace
+        this.signalTrace = "AbortSignal"
+        this.cancelTrace = "CancelSignal"
+        this.requiredPayloadFieldTrace = schema.requiredPayloadFieldTrace
+        this.optionalPayloadFieldTrace = schema.optionalPayloadFieldTrace
+        this.payloadFieldTrace = schema.payloadFieldTrace()
+        this.returnTypeTrace = schema.returnTypeTrace
+        this.flags = schema.flags
+    }
+
+    public func requiredParameterCount(): Int64 {
+        traceFieldCount(this.requiredParameterTrace)
+    }
+
+    public func optionalParameterCount(): Int64 {
+        traceFieldCount(this.optionalParameterTrace)
+    }
+
+    public func hasRequiredParameter(field: String): Bool {
+        containsTraceField(this.requiredParameterTrace, field)
     }
 }
 
@@ -448,4 +565,84 @@ public func apiWrapperSchemaTraceFor(publicMethodName: String): ApiWrapperSchema
         }
     }
     throw Exception("No API wrapper schema trace for " + publicMethodName)
+}
+
+public func apiWrapperSignatureTraces(): ArrayList<ApiWrapperSignatureTrace> {
+    let traces = ArrayList<ApiWrapperSignatureTrace>()
+    for (schema in apiWrapperSchemaTraces()) {
+        traces.add(ApiWrapperSignatureTrace(schema))
+    }
+    traces
+}
+
+public func apiWrapperSignatureTraceCount(): Int64 {
+    apiWrapperSignatureTraces().size
+}
+
+public func apiWrapperSignatureTraceFor(publicMethodName: String): ApiWrapperSignatureTrace {
+    for (trace in apiWrapperSignatureTraces()) {
+        if (trace.publicMethodName == publicMethodName) {
+            return trace
+        }
+    }
+    throw Exception("No API wrapper signature trace for " + publicMethodName)
+}
+
+public func apiWrapperRequiredParameterTotal(): Int64 {
+    var total = 0
+    for (trace in apiWrapperSignatureTraces()) {
+        total += trace.requiredParameterCount()
+    }
+    total
+}
+
+public func apiWrapperOptionalParameterTotal(): Int64 {
+    var total = 0
+    for (trace in apiWrapperSignatureTraces()) {
+        total += trace.optionalParameterCount()
+    }
+    total
+}
+
+public func apiWrapperRequiredPayloadFieldTotal(): Int64 {
+    var total = 0
+    for (trace in apiWrapperSchemaTraces()) {
+        total += trace.requiredPayloadFieldCount()
+    }
+    total
+}
+
+public func apiWrapperOptionalPayloadFieldTotal(): Int64 {
+    var total = 0
+    for (trace in apiWrapperSchemaTraces()) {
+        total += trace.optionalPayloadFieldCount()
+    }
+    total
+}
+
+public func apiWrapperReturnTypeKindCount(): Int64 {
+    let returnTypes = ArrayList<String>()
+    for (trace in apiWrapperSchemaTraces()) {
+        if (!containsTraceField(joinTraceFields(returnTypes), trace.returnTypeTrace)) {
+            returnTypes.add(trace.returnTypeTrace)
+        }
+    }
+    returnTypes.size
+}
+
+public func apiWrapperPublicOutputGoldenRows(): ArrayList<String> {
+    let rows = ArrayList<String>()
+    for (trace in apiWrapperSignatureTraces()) {
+        rows.add(
+            trace.publicMethodName + "~" +
+            trace.rawMethodName + "~" +
+            trace.requiredParameterTrace + "~" +
+            trace.optionalParameterTrace + "~" +
+            trace.otherPayloadFieldTrace + "~" +
+            trace.signalTrace + "~" +
+            trace.cancelTrace + "~" +
+            trace.returnTypeTrace
+        )
+    }
+    rows
 }

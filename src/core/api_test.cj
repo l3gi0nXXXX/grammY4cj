@@ -1,6 +1,9 @@
 package grammy4cj.core
 
+import std.collection.ArrayList
 import std.unittest.*
+
+import grammy4cj.types.InputFile
 
 private func methodName(payload: Payload): String {
     for (field in payload.fields) {
@@ -213,6 +216,15 @@ private func callWrapper(api: Api, name: String, payload: Payload): Payload {
     throw Exception("No API wrapper for " + name)
 }
 
+private func goldenRowFor(rows: ArrayList<String>, method: String): String {
+    for (row in rows) {
+        if (row.startsWith(method + "~")) {
+            return row
+        }
+    }
+    ""
+}
+
 private func tracePulledFieldsAreInPayloadSchema(trace: ApiWrapperSchemaTrace): Bool {
     if (trace.pulledPayloadFieldTrace == "") {
         return true
@@ -233,7 +245,10 @@ public class ApiWrapperTest {
         @Expect(apiWrapperCount(), 180)
         @Expect(apiWrapperGenerationSkeletonCount(), 180)
         @Expect(apiWrapperSchemaTraceCount(), 180)
+        @Expect(apiWrapperSignatureTraceCount(), 180)
         @Expect(apiWrapperSchemaTraceRows().size, 180)
+        @Expect(apiWrapperMinimalPayloadGoldenRows().size, 180)
+        @Expect(apiWrapperPublicOutputGoldenRows().size, 180)
         @Expect(apiRawZeroArgMethodNames().size, 8)
         @Expect(apiWrapperMethodNames()[0], "getUpdates")
         @Expect(apiWrapperMethodNames()[179], "getGameHighScoresInline")
@@ -262,6 +277,75 @@ public class ApiWrapperTest {
             @Expect(trace.returnTypeTrace != "", true)
             @Expect(tracePulledFieldsAreInPayloadSchema(trace), true)
         }
+    }
+
+    @TestCase
+    public func signatureMatrixTracksRequiredPayloadSignalAndReturnTotals(): Unit {
+        @Expect(apiWrapperRequiredParameterTotal(), 327)
+        @Expect(apiWrapperOptionalParameterTotal(), 3)
+        @Expect(apiWrapperRequiredPayloadFieldTotal(), 289)
+        @Expect(apiWrapperOptionalPayloadFieldTotal(), 622)
+        @Expect(apiWrapperReturnTypeKindCount(), 61)
+
+        for (trace in apiWrapperSignatureTraces()) {
+            @Expect(hasApiWrapperMethod(trace.publicMethodName), true)
+            @Expect(trace.rawMethodName != "", true)
+            @Expect(trace.signalTrace, "AbortSignal")
+            @Expect(trace.cancelTrace, "CancelSignal")
+            @Expect(trace.returnTypeTrace != "", true)
+        }
+
+        let sendMessage = apiWrapperSignatureTraceFor("sendMessage")
+        @Expect(sendMessage.requiredParameterTrace, "chat_id,text")
+        @Expect(sendMessage.optionalParameterTrace, "")
+        @Expect(sendMessage.otherPayloadFieldTrace.contains("reply_markup"), true)
+
+        let description = apiWrapperSignatureTraceFor("setChatDescription")
+        @Expect(description.requiredParameterTrace, "chat_id")
+        @Expect(description.optionalParameterTrace, "description")
+
+        let unpin = apiWrapperSignatureTraceFor("unpinChatMessage")
+        @Expect(unpin.requiredParameterTrace, "chat_id")
+        @Expect(unpin.optionalParameterTrace, "message_id")
+
+        let business = apiWrapperSignatureTraceFor("setBusinessAccountName")
+        @Expect(business.requiredParameterTrace, "business_connection_id,first_name")
+        @Expect(business.otherPayloadFieldTrace, "last_name")
+    }
+
+    @TestCase
+    public func minimalPayloadGoldensCoverAllWrappers(): Unit {
+        let rows = apiWrapperMinimalPayloadGoldenRows()
+        @Expect(rows.size, 180)
+        @Expect(goldenRowFor(rows, "getMe"), "getMe~{}")
+        @Expect(
+            goldenRowFor(rows, "sendMessage"),
+            "sendMessage~{\"chat_id\":\"chat_id_value\",\"text\":\"text_value\"}"
+        )
+        @Expect(
+            goldenRowFor(rows, "editMessageTextInline"),
+            "editMessageTextInline~{\"inline_message_id\":\"inline_message_id_value\",\"text\":\"text_value\"}"
+        )
+        @Expect(goldenRowFor(rows, "sendInvoice").contains("\"prices\":\"prices_value\""), true)
+
+        let api = Api("token")
+        for (method in apiWrapperMethodNames()) {
+            let output = callWrapper(api, method, apiWrapperMinimalPayloadFor(method))
+            @Expect(methodName(output), apiWrapperSchemaTraceFor(method).rawMethodName)
+            @Expect(payloadBody(output), goldenRowFor(rows, method).split("~")[1])
+        }
+    }
+
+    @TestCase
+    public func publicOutputGoldenCapturesRawRequiredOtherSignalAndReturn(): Unit {
+        let rows = apiWrapperPublicOutputGoldenRows()
+        @Expect(rows.size, 180)
+        @Expect(goldenRowFor(rows, "getUpdates").contains("getUpdates~getUpdates~~~offset,limit,timeout,allowed_updates~AbortSignal~CancelSignal~Update[]"), true)
+        @Expect(goldenRowFor(rows, "sendMessage").contains("sendMessage~sendMessage~chat_id,text~~"), true)
+        @Expect(goldenRowFor(rows, "sendMessage").contains("AbortSignal~CancelSignal~Message.TextMessage"), true)
+        @Expect(goldenRowFor(rows, "editMessageTextInline").contains("editMessageTextInline~editMessageText~inline_message_id,text~~"), true)
+        @Expect(goldenRowFor(rows, "kickChatMember").contains("kickChatMember~banChatMember~chat_id,user_id~~until_date,revoke_messages"), true)
+        @Expect(goldenRowFor(rows, "getGameHighScoresInline").contains("getGameHighScoresInline~getGameHighScores~inline_message_id,user_id~~"), true)
     }
 
     @TestCase
@@ -350,5 +434,70 @@ public class ApiWrapperTest {
         @Expect(channelGift.hasPayloadField("gift_id"), true)
         @Expect(channelGift.hasPayloadField("user_id"), true)
         @Expect(channelGift.returnTypeTrace, "true")
+    }
+
+    @TestCase
+    public func typedWrapperPayloadGoldensMergeRequiredAndOtherOptions(): Unit {
+        let api = Api("token")
+
+        let messageOptions = Payload("").addValue("parse_mode", "MarkdownV2").addBool("disable_notification", true)
+        let message = api.sendMessage(42, "hi", messageOptions)
+        @Expect(methodName(message), "sendMessage")
+        @Expect(payloadBody(message), "{\"chat_id\":42,\"text\":\"hi\",\"parse_mode\":\"MarkdownV2\",\"disable_notification\":true}")
+
+        let photo = api.sendPhoto(42, InputFile.fromBytes("abc", "photo.jpg"))
+        @Expect(methodName(photo), "sendPhoto")
+        @Expect(payloadBody(photo), "{\"chat_id\":42,\"photo\":\"abc\"}")
+
+        let pollOptions = Payload("").addBool("is_anonymous", false)
+        let poll = api.sendPoll(42, "question", ["yes", "no"], pollOptions)
+        @Expect(methodName(poll), "sendPoll")
+        @Expect(payloadBody(poll), "{\"chat_id\":42,\"question\":\"question\",\"options\":[{\"text\":\"yes\"},{\"text\":\"no\"}],\"is_anonymous\":false}")
+
+        let editInline = api.editMessageTextInline("inline-id", "new text")
+        @Expect(methodName(editInline), "editMessageText")
+        @Expect(payloadBody(editInline), "{\"inline_message_id\":\"inline-id\",\"text\":\"new text\"}")
+
+        let promoted = api.promoteChatMember(42, 7, Payload("").addBool("can_manage_chat", true))
+        @Expect(methodName(promoted), "promoteChatMember")
+        @Expect(payloadBody(promoted), "{\"chat_id\":42,\"user_id\":7,\"can_manage_chat\":true}")
+
+        let forum = api.createForumTopic(42, "topic")
+        @Expect(methodName(forum), "createForumTopic")
+        @Expect(payloadBody(forum), "{\"chat_id\":42,\"name\":\"topic\"}")
+
+        let business = api.setBusinessAccountName("bcid", "Ada", Payload("").addValue("last_name", "Lovelace"))
+        @Expect(methodName(business), "setBusinessAccountName")
+        @Expect(payloadBody(business), "{\"business_connection_id\":\"bcid\",\"first_name\":\"Ada\",\"last_name\":\"Lovelace\"}")
+    }
+
+    @TestCase
+    public func typedWrapperCancelSignalFailsBeforeDispatch(): Unit {
+        let api = Api("token")
+        let controller = CancelController()
+        controller.cancel("abort send")
+
+        try {
+            api.sendMessage(42, "hi", controller.signal)
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message.contains("Operation cancelled: abort send"), true)
+        }
+    }
+
+    @TestCase
+    public func payloadBuilderRejectsMissingRequiredParameters(): Unit {
+        try {
+            ApiWrapperPayloadBuilder("sendMessage").setInt("chat_id", 42).build()
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message.contains("Missing required API wrapper parameter 'text' for sendMessage"), true)
+        }
+
+        let payload = ApiWrapperPayloadBuilder("sendMessage")
+            .setInt("chat_id", 42)
+            .setString("text", "hi")
+            .build()
+        @Expect(createJsonPayload(payload).body, "{\"chat_id\":42,\"text\":\"hi\"}")
     }
 }
