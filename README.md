@@ -124,6 +124,11 @@ grammY4cj keeps the same architecture target, while the executable runtime is Ca
 
 ## [Contribution Guide »](./CONTRIBUTING.md)
 
+Before a release, contributors should run the upstream contract in hard-fail
+mode, the source trace matrix, dependency boundary checks, the Cangjie
+build/test gate, and the public documentation scan described in the
+contribution guide.
+
 ## Contributors ✨
 
 Thanks goes to grammY's maintainers and contributors for the original framework, and to all grammY4cj contributors who help port it to Cangjie.

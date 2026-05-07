@@ -1,23 +1,66 @@
-# Contributing
+# Contributing to grammY4cj
 
-grammY4cj is being ported gate by gate from upstream grammY. Keep every change
-small, source-traced, isolated in a git worktree, and validated against the
-pinned upstream checkout before handoff.
+First of all, thanks for your interest in helping out!
+grammY4cj is a Cangjie port of grammY, so every change should preserve the
+public behavior, source layout intent, and development model of upstream grammY
+as closely as Cangjie permits.
 
-## Worktree Safety
+This project is developed gate by gate against a pinned upstream grammY
+checkout. Keep changes small, source-traced, and validated before handoff.
 
-- Work only in the active isolated worktree unless a task explicitly names a
-  different path.
-- Do not rewrite, reset, revert, or cherry-pick over another agent's branch.
-- Preserve unrelated dirty files. If a required edit conflicts with another
-  change, stop and ask before proceeding.
-- Manual file edits must be made with `apply_patch`.
+## What Can I Do?
 
-## Upstream References
+In short: anything that helps bring grammY's public API and behavior to
+Cangjie.
 
-Before changing a gate, set `GRAMMY_DIR` to the upstream grammY checkout and
-read the matching upstream files under that directory. Gate 8 and Gate 9 work
-must read at least:
+If you are unsure whether your changes are welcome, open an issue or ask before
+starting a large change. Core runtime, tests, docs, package metadata, and
+release engineering are all useful, but each change must stay within its stated
+scope.
+
+## A Few Words on Cangjie and grammY
+
+**TL;DR** working on grammY4cj means working on a Cangjie project whose public
+contract is upstream grammY.
+
+grammY is written in TypeScript and runs on Deno, Node.js, and web runtimes.
+grammY4cj maps the same framework concepts to Cangjie Native: Bot, Context,
+Composer, API wrappers, payload handling, filters, convenience builders,
+sessions, webhook adapters, and platform boundaries.
+
+The upstream source remains the contract. Cangjie-specific substitutions are
+allowed only when they are documented, tested, and kept behind the same public
+behavior.
+
+## How to Contribute
+
+There are several areas of contributions, and they have different ways to get
+you started.
+
+- **Docs.**
+  Public docs should follow the upstream README and contributing-guide shape,
+  while explaining Cangjie-specific commands where needed. Keep public docs in
+  English and do not include local paths, private workspace names, or tool
+  aliases.
+- **Core.**
+  Core changes should start from the matching upstream files and tests. Preserve
+  the API surface unless the Cangjie language boundary requires a documented
+  substitute.
+- **Tests.**
+  Tests must be hermetic. Do not call Telegram, do not load a real token, and
+  do not mutate user files.
+- **Release engineering.**
+  Release work should only change docs, package metadata, and validation
+  scripts unless the task explicitly asks for runtime code changes.
+- **Issues, bugs, and everything else.**
+  Reports and small follow-up fixes are welcome when they include enough source
+  context to reproduce or verify the issue.
+
+### Working on the Core of grammY4cj Using Cangjie (Recommended)
+
+Before changing the port, point `GRAMMY_DIR` at the pinned upstream grammY
+checkout and read the matching upstream files. For release and documentation
+work, read at least:
 
 - `$GRAMMY_DIR/README.md`
 - `$GRAMMY_DIR/src/README.md`
@@ -26,87 +69,60 @@ must read at least:
 - `scripts/check_upstream_contract.sh`
 - `scripts/check_source_trace_matrix.sh`
 - `scripts/check_dependency_boundaries.sh`
-- `develop_steps/grammY4cj-framework-grammy-layer0-layer1-analysis-2026-05-06.md` when present in the worktree or main workspace
+- `scripts/check_public_docs.sh`
 
-## Gate Start Flow
+#### Coding
 
-1. Create or enter the gate-specific worktree and verify the branch with
-   `git status --short --branch`.
-2. Read the matching upstream source and tests before changing Cangjie code or
-   docs.
-3. Identify the public API, control-flow, payload, or docs contract that the
-   gate claims.
-4. Add or update Cangjie tests that observe the changed public interface.
-5. Keep tests hermetic: no Telegram network, no real token, no real user config,
-   and no mutation of user files.
-6. Run the full validation set.
-7. Commit one focused change on the gate branch and report changed files,
-   validation output, and residual gaps.
+If you want to read or modify grammY4cj's code, you can do the following.
 
-## Gate Workflow
+1. Install the Cangjie toolchain.
+2. Clone this repo.
+3. Create or enter an isolated worktree for the change.
+4. Verify the branch and preserve unrelated dirty files.
+5. Read the matching upstream source and tests before editing Cangjie files.
+6. Run the release checks below before opening a pull request.
 
-Run gates in this order unless a maintainer explicitly changes the plan:
+You are now ready to work on grammY4cj.
 
-1. G8.1 API method diff.
-2. G8.2 Context `this.api.*` callsite and target diff.
-3. G8.3 Composer 20-control diff.
-4. G8.4 Test count per file diff.
-5. G8.5 Docs heading diff.
-6. G9.1 Baseline pin check.
-7. G9.2 Source trace matrix check.
-8. G9.3 Test parity ledger update.
-9. G9.4 README and source docs update.
-10. G9.5 Root export and baseline constant check.
-11. G9.6 CI validation handoff.
+#### Release Checks
 
-## Validation and CI
-
-Run the full local acceptance set before handing off:
+Run the full local release gate before handoff:
 
 ```sh
-sh scripts/check_upstream_contract.sh
+GRAMMY4CJ_HARD_FAIL=1 sh scripts/check_upstream_contract.sh
 sh scripts/check_source_trace_matrix.sh
 sh scripts/check_dependency_boundaries.sh
+sh scripts/check_public_docs.sh
 source "$CANGJIE_SDK_HOME/envsetup.sh"
 cjpm clean && cjpm build -i && cjpm test
 ```
 
-If OpenSSL linkage fails on macOS, export the OpenSSL 3 library path before
-running the same Cangjie gate:
+The release gate covers:
 
-```sh
-export DYLD_LIBRARY_PATH="$OPENSSL3_LIB_DIR:$DYLD_LIBRARY_PATH"
-source "$CANGJIE_SDK_HOME/envsetup.sh"
-cjpm clean && cjpm build -i && cjpm test
-```
+- **Upstream contract.**
+  The pinned upstream HEAD, tag, file counts, Bot API badge, constants, API
+  wrappers, Context shortcut targets, Composer controls, docs headings, and test
+  parity ledger must match or have an explicit accepted classification.
+- **Hard fail.**
+  `GRAMMY4CJ_HARD_FAIL=1` turns known Gate 8 drift categories into release
+  blockers.
+- **Source trace.**
+  `scripts/check_source_trace_matrix.sh` must cover every pinned upstream
+  runtime file and test file.
+- **Dependency boundary.**
+  `scripts/check_dependency_boundaries.sh` must keep core, context, platform,
+  and convenience imports inside their documented layer boundaries.
+- **Build and test.**
+  `cjpm clean && cjpm build -i && cjpm test` must pass after the Cangjie
+  environment is loaded.
+- **Public docs scan.**
+  `scripts/check_public_docs.sh` must pass for `README.md`,
+  `CONTRIBUTING.md`, and `src/README.md`.
 
-The contract script has two modes:
+#### Package Metadata
 
-| Mode | Command | Behavior |
-|---|---|---|
-| Report mode | `sh scripts/check_upstream_contract.sh` | Fails on pinned baseline drift and API wrapper drift; reports known implementation gaps. |
-| Hard-fail mode | `GRAMMY4CJ_HARD_FAIL=1 sh scripts/check_upstream_contract.sh` | Also fails on Context missing targets, Composer missing controls, upstream test ledger mismatches, and unexplained docs heading drift. |
-
-Structured artifacts can be written without changing repository files:
-
-```sh
-GRAMMY4CJ_ARTIFACT_DIR="$TMPDIR/grammy4cj-sync" sh scripts/check_upstream_contract.sh
-```
-
-That command emits TSV files for source trace rows, source trace summary, and
-Gate 8/9 phase status. Use a temporary directory for artifacts; do not write
-them into source-controlled runtime paths unless a task explicitly asks for it.
-
-## Documentation Notes
-
-Root README and `src/README.md` must either mirror upstream headings or record a
-concrete grammY4cj-specific exemption. The check script looks for these markers:
-
-- `grammy4cj:docs-heading-exemptions root`
-- `grammy4cj:docs-heading-exemptions src`
-
-`develop_steps/` is ignored by git in this repository, but gate analysis files
-still need to be written there for local handoff. When integrating a docs-sync
-branch, manually append the ignored `develop_steps` section in the main
-worktree or intentionally force-add it if the maintainer wants that history in
-git.
+Keep `cjpm.toml`, `README.md`, `src/README.md`, and exported baseline constants
+consistent. The package name is `grammy4cj`, the package version must match the
+public `GRAMMY4CJ_VERSION` constant, the README Bot API badge must match
+`TELEGRAM_BOT_API_VERSION`, and the source map must describe the same pinned
+upstream baseline as the exported baseline constants.

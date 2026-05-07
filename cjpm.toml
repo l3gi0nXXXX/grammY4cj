@@ -3,7 +3,7 @@
 [package]
   cjc-version = "1.0.0"
   compile-option = "-Woff unused"
-  description = "A Cangjie port of grammY with source-compatible architecture targets."
+  description = "grammY for Cangjie, aligned with Bot API 9.6 and upstream grammY v1.42.0-5-gc865dd3."
   link-option = ""
   name = "grammy4cj"
   output-type = "static"

@@ -47,3 +47,9 @@ GRAMMY4CJ_TRACE_ARTIFACT_DIR="$TMPDIR/grammy4cj-trace" sh scripts/check_source_t
 
 The matrix covers all 25 upstream runtime files, including upstream
 `src/README.md`, and all 18 upstream test files.
+
+Release metadata must stay aligned with this source map: the root package is
+`grammy4cj`, the public package version is `0.1.0`, the Bot API badge and
+`TELEGRAM_BOT_API_VERSION` are `9.6`, and the exported baseline constants point
+to `c865dd3a4d26911b01c83695e3845c7245870a5d`
+(`v1.42.0-5-gc865dd3`).
