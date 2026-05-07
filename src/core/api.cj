@@ -1,5 +1,9 @@
 package grammy4cj.core
 
+import std.collection.ArrayList
+
+import grammy4cj.types.InputFile
+
 public type ApiBuildUrl = (String, String, String, String) -> String
 public type WebhookReplyPredicate = (String) -> Bool
 
@@ -118,6 +122,168 @@ private func allowWebhookReply(_method: String): Bool {
     true
 }
 
+private func clonePayloadField(field: PayloadField): PayloadField {
+    let copied = PayloadField(
+        field.key,
+        field.value,
+        field.isNull,
+        field.isInputFile,
+        field.filename,
+        field.sourceKind,
+        field.valueKind
+    )
+    for (child in field.children) {
+        copied.children.add(clonePayloadField(child))
+    }
+    copied
+}
+
+private func mergeOtherPayload(payload: Payload, other: Payload): Payload {
+    for (field in other.fields) {
+        payload.fields.add(clonePayloadField(field))
+    }
+    payload
+}
+
+private func payloadHasField(payload: Payload, key: String): Bool {
+    for (field in payload.fields) {
+        if (field.key == key && !field.isNull && field.valueKind != "null") {
+            return true
+        }
+    }
+    false
+}
+
+private func addChatId(payload: Payload, chatId: Int64): Payload {
+    payload.addInt("chat_id", chatId)
+}
+
+private func addChatId(payload: Payload, chatId: String): Payload {
+    payload.addValue("chat_id", chatId)
+}
+
+private func addPollOptions(payload: Payload, options: Array<String>): Payload {
+    let array = payload.addArray("options")
+    for (option in options) {
+        let item = array.addObjectItem()
+        item.addValue("text", option)
+    }
+    payload
+}
+
+private func requiredTextPayload(chatId: Int64, text: String): Payload {
+    let payload = Payload("")
+    addChatId(payload, chatId)
+    payload.addValue("text", text)
+    payload
+}
+
+private func requiredTextPayload(chatId: String, text: String): Payload {
+    let payload = Payload("")
+    addChatId(payload, chatId)
+    payload.addValue("text", text)
+    payload
+}
+
+private func mediaPayload(chatId: Int64, field: String, value: String): Payload {
+    let payload = Payload("")
+    addChatId(payload, chatId)
+    payload.addValue(field, value)
+    payload
+}
+
+private func mediaPayload(chatId: String, field: String, value: String): Payload {
+    let payload = Payload("")
+    addChatId(payload, chatId)
+    payload.addValue(field, value)
+    payload
+}
+
+private func mediaPayload(chatId: Int64, field: String, value: InputFile): Payload {
+    let payload = Payload("")
+    addChatId(payload, chatId)
+    payload.addFile(field, value)
+    payload
+}
+
+private func mediaPayload(chatId: String, field: String, value: InputFile): Payload {
+    let payload = Payload("")
+    addChatId(payload, chatId)
+    payload.addFile(field, value)
+    payload
+}
+
+public class ApiWrapperPayloadBuilder {
+    public let methodName: String
+    public let payload: Payload
+
+    public init(methodName: String) {
+        this.methodName = methodName
+        this.payload = Payload("")
+    }
+
+    public func setString(field: String, value: String): ApiWrapperPayloadBuilder {
+        this.payload.addValue(field, value)
+        this
+    }
+
+    public func setInt(field: String, value: Int64): ApiWrapperPayloadBuilder {
+        this.payload.addInt(field, value)
+        this
+    }
+
+    public func setBool(field: String, value: Bool): ApiWrapperPayloadBuilder {
+        this.payload.addBool(field, value)
+        this
+    }
+
+    public func setRawJson(field: String, value: String): ApiWrapperPayloadBuilder {
+        this.payload.addRawJson(field, value)
+        this
+    }
+
+    public func setFile(field: String, value: InputFile): ApiWrapperPayloadBuilder {
+        this.payload.addFile(field, value)
+        this
+    }
+
+    public func build(): Payload {
+        let signature = apiWrapperSignatureTraceFor(this.methodName)
+        if (signature.requiredParameterTrace != "") {
+            for (field in signature.requiredParameterTrace.split(",")) {
+                if (field != "" && !payloadHasField(this.payload, field)) {
+                    throw Exception(
+                        "Missing required API wrapper parameter '" + field +
+                        "' for " + this.methodName
+                    )
+                }
+            }
+        }
+        this.payload
+    }
+}
+
+public func apiWrapperMinimalPayloadFor(publicMethodName: String): Payload {
+    let builder = ApiWrapperPayloadBuilder(publicMethodName)
+    let signature = apiWrapperSignatureTraceFor(publicMethodName)
+    if (signature.requiredParameterTrace != "") {
+        for (field in signature.requiredParameterTrace.split(",")) {
+            if (field != "") {
+                builder.setString(field, field + "_value")
+            }
+        }
+    }
+    builder.build()
+}
+
+public func apiWrapperMinimalPayloadGoldenRows(): ArrayList<String> {
+    let rows = ArrayList<String>()
+    for (trace in apiWrapperSignatureTraces()) {
+        rows.add(trace.publicMethodName + "~" + createJsonPayload(apiWrapperMinimalPayloadFor(trace.publicMethodName)).body)
+    }
+    rows
+}
+
 public class Api {
     public let token: String
     public let config: ApiClientOptions
@@ -138,6 +304,191 @@ public class Api {
 
     public func call(method: String, payload: Payload): Payload {
         Payload("").addValue("__method", method).addValue("__payload", createJsonPayload(payload).body)
+    }
+
+    public func call(method: String, payload: Payload, signal: CancelSignal): Payload {
+        signal.throwIfCancelled()
+        this.call(method, payload)
+    }
+
+    public func sendMessage(chatId: Int64, text: String): Payload {
+        this.sendMessage(requiredTextPayload(chatId, text))
+    }
+
+    public func sendMessage(chatId: String, text: String): Payload {
+        this.sendMessage(requiredTextPayload(chatId, text))
+    }
+
+    public func sendMessage(chatId: Int64, text: String, other: Payload): Payload {
+        this.sendMessage(mergeOtherPayload(requiredTextPayload(chatId, text), other))
+    }
+
+    public func sendMessage(chatId: String, text: String, other: Payload): Payload {
+        this.sendMessage(mergeOtherPayload(requiredTextPayload(chatId, text), other))
+    }
+
+    public func sendMessage(chatId: Int64, text: String, signal: CancelSignal): Payload {
+        this.call("sendMessage", requiredTextPayload(chatId, text), signal)
+    }
+
+    public func sendMessage(chatId: String, text: String, signal: CancelSignal): Payload {
+        this.call("sendMessage", requiredTextPayload(chatId, text), signal)
+    }
+
+    public func sendPhoto(chatId: Int64, photo: String): Payload { this.sendPhoto(mediaPayload(chatId, "photo", photo)) }
+    public func sendPhoto(chatId: String, photo: String): Payload { this.sendPhoto(mediaPayload(chatId, "photo", photo)) }
+    public func sendPhoto(chatId: Int64, photo: InputFile): Payload { this.sendPhoto(mediaPayload(chatId, "photo", photo)) }
+    public func sendPhoto(chatId: String, photo: InputFile): Payload { this.sendPhoto(mediaPayload(chatId, "photo", photo)) }
+    public func sendPhoto(chatId: Int64, photo: String, other: Payload): Payload { this.sendPhoto(mergeOtherPayload(mediaPayload(chatId, "photo", photo), other)) }
+    public func sendPhoto(chatId: String, photo: String, other: Payload): Payload { this.sendPhoto(mergeOtherPayload(mediaPayload(chatId, "photo", photo), other)) }
+
+    public func sendAudio(chatId: Int64, audio: String): Payload { this.sendAudio(mediaPayload(chatId, "audio", audio)) }
+    public func sendAudio(chatId: String, audio: String): Payload { this.sendAudio(mediaPayload(chatId, "audio", audio)) }
+    public func sendAudio(chatId: Int64, audio: InputFile): Payload { this.sendAudio(mediaPayload(chatId, "audio", audio)) }
+    public func sendAudio(chatId: String, audio: InputFile): Payload { this.sendAudio(mediaPayload(chatId, "audio", audio)) }
+
+    public func sendDocument(chatId: Int64, document: String): Payload { this.sendDocument(mediaPayload(chatId, "document", document)) }
+    public func sendDocument(chatId: String, document: String): Payload { this.sendDocument(mediaPayload(chatId, "document", document)) }
+    public func sendDocument(chatId: Int64, document: InputFile): Payload { this.sendDocument(mediaPayload(chatId, "document", document)) }
+    public func sendDocument(chatId: String, document: InputFile): Payload { this.sendDocument(mediaPayload(chatId, "document", document)) }
+
+    public func sendVideo(chatId: Int64, video: String): Payload { this.sendVideo(mediaPayload(chatId, "video", video)) }
+    public func sendVideo(chatId: String, video: String): Payload { this.sendVideo(mediaPayload(chatId, "video", video)) }
+    public func sendVideo(chatId: Int64, video: InputFile): Payload { this.sendVideo(mediaPayload(chatId, "video", video)) }
+    public func sendVideo(chatId: String, video: InputFile): Payload { this.sendVideo(mediaPayload(chatId, "video", video)) }
+
+    public func sendAnimation(chatId: Int64, animation: String): Payload { this.sendAnimation(mediaPayload(chatId, "animation", animation)) }
+    public func sendAnimation(chatId: String, animation: String): Payload { this.sendAnimation(mediaPayload(chatId, "animation", animation)) }
+    public func sendAnimation(chatId: Int64, animation: InputFile): Payload { this.sendAnimation(mediaPayload(chatId, "animation", animation)) }
+    public func sendAnimation(chatId: String, animation: InputFile): Payload { this.sendAnimation(mediaPayload(chatId, "animation", animation)) }
+
+    public func sendVoice(chatId: Int64, voice: String): Payload { this.sendVoice(mediaPayload(chatId, "voice", voice)) }
+    public func sendVoice(chatId: String, voice: String): Payload { this.sendVoice(mediaPayload(chatId, "voice", voice)) }
+    public func sendVoice(chatId: Int64, voice: InputFile): Payload { this.sendVoice(mediaPayload(chatId, "voice", voice)) }
+    public func sendVoice(chatId: String, voice: InputFile): Payload { this.sendVoice(mediaPayload(chatId, "voice", voice)) }
+
+    public func sendVideoNote(chatId: Int64, videoNote: String): Payload { this.sendVideoNote(mediaPayload(chatId, "video_note", videoNote)) }
+    public func sendVideoNote(chatId: String, videoNote: String): Payload { this.sendVideoNote(mediaPayload(chatId, "video_note", videoNote)) }
+    public func sendVideoNote(chatId: Int64, videoNote: InputFile): Payload { this.sendVideoNote(mediaPayload(chatId, "video_note", videoNote)) }
+    public func sendVideoNote(chatId: String, videoNote: InputFile): Payload { this.sendVideoNote(mediaPayload(chatId, "video_note", videoNote)) }
+
+    public func sendSticker(chatId: Int64, sticker: String): Payload { this.sendSticker(mediaPayload(chatId, "sticker", sticker)) }
+    public func sendSticker(chatId: String, sticker: String): Payload { this.sendSticker(mediaPayload(chatId, "sticker", sticker)) }
+    public func sendSticker(chatId: Int64, sticker: InputFile): Payload { this.sendSticker(mediaPayload(chatId, "sticker", sticker)) }
+    public func sendSticker(chatId: String, sticker: InputFile): Payload { this.sendSticker(mediaPayload(chatId, "sticker", sticker)) }
+
+    public func sendMediaGroup(chatId: Int64, mediaJson: String): Payload {
+        let payload = Payload("")
+        addChatId(payload, chatId)
+        payload.addRawJson("media", mediaJson)
+        this.sendMediaGroup(payload)
+    }
+
+    public func sendMediaGroup(chatId: String, mediaJson: String): Payload {
+        let payload = Payload("")
+        addChatId(payload, chatId)
+        payload.addRawJson("media", mediaJson)
+        this.sendMediaGroup(payload)
+    }
+
+    public func sendPaidMedia(chatId: Int64, starCount: Int64, mediaJson: String): Payload {
+        let payload = Payload("")
+        addChatId(payload, chatId)
+        payload.addInt("star_count", starCount).addRawJson("media", mediaJson)
+        this.sendPaidMedia(payload)
+    }
+
+    public func sendPoll(chatId: Int64, question: String, options: Array<String>): Payload {
+        let payload = Payload("")
+        addChatId(payload, chatId)
+        payload.addValue("question", question)
+        addPollOptions(payload, options)
+        this.sendPoll(payload)
+    }
+
+    public func sendPoll(chatId: Int64, question: String, options: Array<String>, other: Payload): Payload {
+        let payload = Payload("")
+        addChatId(payload, chatId)
+        payload.addValue("question", question)
+        addPollOptions(payload, options)
+        this.sendPoll(mergeOtherPayload(payload, other))
+    }
+
+    public func editMessageText(chatId: Int64, messageId: Int64, text: String): Payload {
+        this.editMessageText(Payload("").addInt("chat_id", chatId).addInt("message_id", messageId).addValue("text", text))
+    }
+
+    public func editMessageText(chatId: String, messageId: Int64, text: String): Payload {
+        this.editMessageText(Payload("").addValue("chat_id", chatId).addInt("message_id", messageId).addValue("text", text))
+    }
+
+    public func editMessageTextInline(inlineMessageId: String, text: String): Payload {
+        this.editMessageTextInline(Payload("").addValue("inline_message_id", inlineMessageId).addValue("text", text))
+    }
+
+    public func editMessageCaption(chatId: Int64, messageId: Int64, other: Payload): Payload {
+        this.editMessageCaption(mergeOtherPayload(Payload("").addInt("chat_id", chatId).addInt("message_id", messageId), other))
+    }
+
+    public func editMessageCaptionInline(inlineMessageId: String, other: Payload): Payload {
+        this.editMessageCaptionInline(mergeOtherPayload(Payload("").addValue("inline_message_id", inlineMessageId), other))
+    }
+
+    public func editMessageMedia(chatId: Int64, messageId: Int64, mediaJson: String): Payload {
+        this.editMessageMedia(Payload("").addInt("chat_id", chatId).addInt("message_id", messageId).addRawJson("media", mediaJson))
+    }
+
+    public func editMessageMediaInline(inlineMessageId: String, mediaJson: String): Payload {
+        this.editMessageMediaInline(Payload("").addValue("inline_message_id", inlineMessageId).addRawJson("media", mediaJson))
+    }
+
+    public func editMessageReplyMarkup(chatId: Int64, messageId: Int64, other: Payload): Payload {
+        this.editMessageReplyMarkup(mergeOtherPayload(Payload("").addInt("chat_id", chatId).addInt("message_id", messageId), other))
+    }
+
+    public func editMessageReplyMarkupInline(inlineMessageId: String, other: Payload): Payload {
+        this.editMessageReplyMarkupInline(mergeOtherPayload(Payload("").addValue("inline_message_id", inlineMessageId), other))
+    }
+
+    public func banChatMember(chatId: Int64, userId: Int64): Payload { this.banChatMember(Payload("").addInt("chat_id", chatId).addInt("user_id", userId)) }
+    public func banChatMember(chatId: String, userId: Int64): Payload { this.banChatMember(Payload("").addValue("chat_id", chatId).addInt("user_id", userId)) }
+    public func unbanChatMember(chatId: Int64, userId: Int64): Payload { this.unbanChatMember(Payload("").addInt("chat_id", chatId).addInt("user_id", userId)) }
+    public func restrictChatMember(chatId: Int64, userId: Int64, permissionsJson: String): Payload { this.restrictChatMember(Payload("").addInt("chat_id", chatId).addInt("user_id", userId).addRawJson("permissions", permissionsJson)) }
+    public func promoteChatMember(chatId: Int64, userId: Int64, other: Payload): Payload { this.promoteChatMember(mergeOtherPayload(Payload("").addInt("chat_id", chatId).addInt("user_id", userId), other)) }
+    public func setChatAdministratorCustomTitle(chatId: Int64, userId: Int64, customTitle: String): Payload { this.setChatAdministratorCustomTitle(Payload("").addInt("chat_id", chatId).addInt("user_id", userId).addValue("custom_title", customTitle)) }
+
+    public func createForumTopic(chatId: Int64, name: String): Payload { this.createForumTopic(Payload("").addInt("chat_id", chatId).addValue("name", name)) }
+    public func editForumTopic(chatId: Int64, messageThreadId: Int64, other: Payload): Payload { this.editForumTopic(mergeOtherPayload(Payload("").addInt("chat_id", chatId).addInt("message_thread_id", messageThreadId), other)) }
+    public func closeForumTopic(chatId: Int64, messageThreadId: Int64): Payload { this.closeForumTopic(Payload("").addInt("chat_id", chatId).addInt("message_thread_id", messageThreadId)) }
+    public func reopenForumTopic(chatId: Int64, messageThreadId: Int64): Payload { this.reopenForumTopic(Payload("").addInt("chat_id", chatId).addInt("message_thread_id", messageThreadId)) }
+    public func deleteForumTopic(chatId: Int64, messageThreadId: Int64): Payload { this.deleteForumTopic(Payload("").addInt("chat_id", chatId).addInt("message_thread_id", messageThreadId)) }
+
+    public func setBusinessAccountName(businessConnectionId: String, firstName: String): Payload {
+        this.setBusinessAccountName(Payload("").addValue("business_connection_id", businessConnectionId).addValue("first_name", firstName))
+    }
+
+    public func setBusinessAccountName(businessConnectionId: String, firstName: String, other: Payload): Payload {
+        this.setBusinessAccountName(mergeOtherPayload(Payload("").addValue("business_connection_id", businessConnectionId).addValue("first_name", firstName), other))
+    }
+
+    public func setBusinessAccountUsername(businessConnectionId: String, username: String): Payload {
+        this.setBusinessAccountUsername(Payload("").addValue("business_connection_id", businessConnectionId).addValue("username", username))
+    }
+
+    public func setBusinessAccountBio(businessConnectionId: String, bio: String): Payload {
+        this.setBusinessAccountBio(Payload("").addValue("business_connection_id", businessConnectionId).addValue("bio", bio))
+    }
+
+    public func setBusinessAccountGiftSettings(businessConnectionId: String, showGiftButton: Bool, acceptedGiftTypesJson: String): Payload {
+        this.setBusinessAccountGiftSettings(Payload("").addValue("business_connection_id", businessConnectionId).addBool("show_gift_button", showGiftButton).addRawJson("accepted_gift_types", acceptedGiftTypesJson))
+    }
+
+    public func transferBusinessAccountStars(businessConnectionId: String, starCount: Int64): Payload {
+        this.transferBusinessAccountStars(Payload("").addValue("business_connection_id", businessConnectionId).addInt("star_count", starCount))
+    }
+
+    public func readBusinessMessage(businessConnectionId: String, chatId: Int64, messageId: Int64): Payload {
+        this.readBusinessMessage(Payload("").addValue("business_connection_id", businessConnectionId).addInt("chat_id", chatId).addInt("message_id", messageId))
     }
 
     public func getUpdates(payload: Payload): Payload { this.call("getUpdates", payload) }
