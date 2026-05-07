@@ -10,8 +10,32 @@ public type MiddlewareFn = (Context, NextFunction) -> Unit
 public type Predicate = (Context) -> Bool
 public type MiddlewareFactory = (Context) -> MiddlewareFn
 public type MiddlewareArrayFactory = (Context) -> Array<MiddlewareFn>
-public type Router = (Context) -> String
+public type ComposerFactory = (Context) -> Composer
+public type Router = (Context) -> Option<String>
 public type ErrorHandler = (BotError, NextFunction) -> Unit
+
+public class ComposerMaybePromiseDecision {
+    public let callbackContract: String
+    public let futureBoundary: String
+    public let forkJoinContract: String
+    public let routeFallbackContract: String
+
+    public init(callbackContract: String, futureBoundary: String, forkJoinContract: String, routeFallbackContract: String) {
+        this.callbackContract = callbackContract
+        this.futureBoundary = futureBoundary
+        this.forkJoinContract = forkJoinContract
+        this.routeFallbackContract = routeFallbackContract
+    }
+}
+
+public func composerMaybePromiseDecision(): ComposerMaybePromiseDecision {
+    ComposerMaybePromiseDecision(
+        "sync-callback",
+        "Future work must be joined before the callback returns",
+        "fork spawns downstream and forked middleware, then joins downstream before fork",
+        "None<String> route values select fallback",
+    )
+}
 
 public class BotError <: Exception {
     public let error: Exception
@@ -87,12 +111,12 @@ private func queryArrayPredicate(queries: Array<String>): Predicate {
 
 private func routeMiddleware(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): MiddlewareFactory {
     { ctx: Context =>
-        let route = router(ctx)
-        if (route.isEmpty()) {
-            return fallback
-        }
-        match (routeHandlers.get(route)) {
-            case Some(mw) => mw
+        match (router(ctx)) {
+            case Some(route) =>
+                match (routeHandlers.get(route)) {
+                    case Some(mw) => mw
+                    case None => fallback
+                }
             case None => fallback
         }
     }
@@ -102,6 +126,10 @@ public class Composer {
     private var handler: MiddlewareFn = pass
 
     public init() {}
+
+    public init(composer: Composer) {
+        this.handler = composer.middleware()
+    }
 
     public init(middleware: MiddlewareFn) {
         this.handler = middleware
@@ -119,6 +147,11 @@ public class Composer {
 
     public func use(middleware: MiddlewareFn): Composer {
         this.use([middleware])
+    }
+
+    public func use(composer: Composer): Composer {
+        this.handler = concat(this.handler, composer.middleware())
+        composer
     }
 
     public func use(middleware: Array<MiddlewareFn>): Composer {
@@ -492,6 +525,12 @@ public class Composer {
         this.use({ ctx: Context, next: NextFunction =>
             let middleware = factory(ctx)
             Composer(middleware).middleware()(ctx, next)
+        })
+    }
+
+    public func lazy(factory: ComposerFactory): Composer {
+        this.use({ ctx: Context, next: NextFunction =>
+            factory(ctx).middleware()(ctx, next)
         })
     }
 
