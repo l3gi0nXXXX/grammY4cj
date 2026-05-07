@@ -12,6 +12,8 @@ import grammy4cj.core.ApiClientOptions
 import grammy4cj.core.CancelSignal
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
+import grammy4cj.test_support.FakeHttp
+import grammy4cj.types.ApiResponse
 import grammy4cj.types.ResponseParameters
 import grammy4cj.types.Update
 import grammy4cj.types.UserFromGetMe
@@ -93,7 +95,8 @@ private class BlockingGetMeRuntime <: BotRuntime {
         result
     }
 
-    override public func getMe(): UserFromGetMe {
+    override public func getMe(signal: CancelSignal): UserFromGetMe {
+        signal.throwIfCancelled()
         synchronized(this.mutex) {
             this.entered = true
             this.callCount += 1
@@ -117,11 +120,12 @@ private class BlockingGetMeRuntime <: BotRuntime {
         this.result
     }
 
-    override public func deleteWebhook(dropPendingUpdates: Bool): Unit {
-        ()
+    override public func deleteWebhook(dropPendingUpdates: Bool, signal: CancelSignal): Unit {
+        signal.throwIfCancelled()
     }
 
-    override public func getUpdates(request: PollingFetchRequest): Array<Update> {
+    override public func getUpdates(request: PollingFetchRequest, signal: CancelSignal): Array<Update> {
+        signal.throwIfCancelled()
         []
     }
 }
@@ -201,6 +205,50 @@ public class BotTest {
         @Expect(bot.isInited(), true)
         @Expect(bot.botInfo.username, "manual_bot")
         @Expect(bot.api.endpointFor("getMe"), "https://telegram.example/botfake-token/test/getMe")
+    }
+
+    @TestCase
+    public func defaultBotInitUsesApiBackedRuntimeThroughFakeTransport(): Unit {
+        let fake = FakeHttp()
+            .enqueueApi(ApiResponse.success("{\"id\":88,\"is_bot\":true,\"first_name\":\"Api\",\"username\":\"api_bot\"}"))
+        let bot = Bot("fake-token", BotConfig(fetcher: Some(fake)))
+
+        bot.`init`()
+
+        @Expect(bot.isInited(), true)
+        @Expect(bot.botInfo.username, "api_bot")
+        @Expect(fake.requests.size, 1)
+        @Expect(fake.requests[0].url, "https://api.telegram.org/botfake-token/getMe")
+        @Expect(fake.requests[0].body, "{}")
+    }
+
+    @TestCase
+    public func defaultBotStartDeletesWebhookAndPollsThroughFakeTransport(): Unit {
+        let fake = FakeHttp()
+            .enqueueApi(ApiResponse.success("{\"id\":89,\"is_bot\":true,\"first_name\":\"StartApi\",\"username\":\"start_api_bot\"}"))
+            .enqueueApi(ApiResponse.success("true"))
+            .enqueueApi(ApiResponse.success("[{\"update_id\":91,\"message\":{}}]"))
+        let handler = RecordingBotUpdateHandler()
+        let bot = Bot("fake-token", BotConfig(fetcher: Some(fake), updateHandler: handler))
+
+        bot.start(PollingOptions(
+            allowedUpdates: ["message"],
+            allowedUpdatesSpecified: true,
+            dropPendingUpdates: true,
+            maxFetchCycles: 1
+        ))
+
+        @Expect(fake.requests.size, 3)
+        @Expect(fake.requests[0].url.endsWith("/getMe"), true)
+        @Expect(fake.requests[1].url.endsWith("/deleteWebhook"), true)
+        @Expect(fake.requests[1].body.contains("\"drop_pending_updates\":true"), true)
+        @Expect(fake.requests[2].url.endsWith("/getUpdates"), true)
+        @Expect(fake.requests[2].body.contains("\"offset\":1"), true)
+        @Expect(fake.requests[2].body.contains("\"limit\":100"), true)
+        @Expect(fake.requests[2].body.contains("\"timeout\":30"), true)
+        @Expect(fake.requests[2].body.contains("\"allowed_updates\":[\"message\"]"), true)
+        @Expect(handler.contexts.size, 1)
+        @Expect(handler.contexts[0].update.updateId, 91)
     }
 
     @TestCase
@@ -770,6 +818,8 @@ public class BotTest {
         @Expect(runtime.getUpdatesCalls, 2)
         @Expect(runtime.pollingRequests[1].offset, 51)
         @Expect(runtime.pollingRequests[1].limit, 1)
+        @Expect(runtime.pollingSignals[0].cancelled, true)
+        @Expect(runtime.pollingSignals[1].cancelled, false)
         @Expect(bot.isRunning(), false)
     }
 

@@ -11,6 +11,7 @@ import grammy4cj.context.Context
 import grammy4cj.core.Api
 import grammy4cj.core.ApiClientOptions
 import grammy4cj.core.CancelSignal
+import grammy4cj.core.CoreFetch
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
 import grammy4cj.filter.expandedFilterQueries
@@ -36,6 +37,7 @@ public class BotConfig {
     public let client: ApiClientOptions
     public let botInfo: Option<UserFromGetMe>
     public let runtime: BotRuntime
+    public let fetcher: Option<CoreFetch>
     public let clock: BotClock
     public let retry: BotRetryConfig
     public let updateHandler: BotUpdateHandler
@@ -44,7 +46,8 @@ public class BotConfig {
     public init(botInfo: UserFromGetMe) {
         this.client = ApiClientOptions()
         this.botInfo = Some(botInfo)
-        this.runtime = OfflineBotRuntime()
+        this.runtime = DefaultBotRuntime()
+        this.fetcher = None<CoreFetch>
         this.clock = NoopBotClock()
         this.retry = BotRetryConfig()
         this.updateHandler = NoopBotUpdateHandler()
@@ -55,6 +58,7 @@ public class BotConfig {
         this.client = ApiClientOptions()
         this.botInfo = None<UserFromGetMe>
         this.runtime = runtime
+        this.fetcher = None<CoreFetch>
         this.clock = NoopBotClock()
         this.retry = BotRetryConfig()
         this.updateHandler = NoopBotUpdateHandler()
@@ -64,7 +68,8 @@ public class BotConfig {
     public init(
         client!: ApiClientOptions = ApiClientOptions(),
         botInfo!: Option<UserFromGetMe> = None<UserFromGetMe>,
-        runtime!: BotRuntime = OfflineBotRuntime(),
+        runtime!: BotRuntime = DefaultBotRuntime(),
+        fetcher!: Option<CoreFetch> = None<CoreFetch>,
         clock!: BotClock = NoopBotClock(),
         retry!: BotRetryConfig = BotRetryConfig(),
         updateHandler!: BotUpdateHandler = NoopBotUpdateHandler(),
@@ -73,6 +78,7 @@ public class BotConfig {
         this.client = client
         this.botInfo = botInfo
         this.runtime = runtime
+        this.fetcher = fetcher
         this.clock = clock
         this.retry = retry
         this.updateHandler = updateHandler
@@ -99,6 +105,7 @@ public class Bot {
     private var initFailure: Option<Exception> = None<Exception>
     private var initWaitCount: Int64 = 0
     private var pollingRunning: Bool = false
+    private var pollingSignal: Option<CancelSignal> = None<CancelSignal>
     private var middlewareLocked: Bool = false
     private var lastTriedUpdate: Int64 = 0
     private let observedTypes = ArrayList<String>()
@@ -115,7 +122,7 @@ public class Bot {
         this.token = token
         this.api = Api(token, config.client)
         this.apiBoundary = BotApiBoundary(token, config.client)
-        this.runtime = config.runtime
+        this.runtime = resolveBotRuntime(token, config)
         this.clock = config.clock
         this.retry = config.retry
         this.contextFactory = config.contextFactory
@@ -130,7 +137,7 @@ public class Bot {
         this.token = token
         this.api = Api(token, config.client)
         this.apiBoundary = BotApiBoundary(token, config.client)
-        this.runtime = config.runtime
+        this.runtime = resolveBotRuntime(token, config)
         this.clock = config.clock
         this.retry = config.retry
         this.contextFactory = config.contextFactory
@@ -338,6 +345,7 @@ public class Bot {
         }
 
         this.pollingRunning = true
+        this.pollingSignal = Some(CancelSignal())
         try {
             if (!this.isInited()) {
                 this.`init`()
@@ -350,6 +358,7 @@ public class Bot {
             this.validateAllowedUpdates(if (options.allowedUpdatesSpecified) { options.allowedUpdates } else { defaultUpdateTypes() })
         } catch (e: Exception) {
             this.pollingRunning = false
+            this.pollingSignal = None<CancelSignal>
             throw e
         }
 
@@ -364,9 +373,17 @@ public class Bot {
             return
         }
         this.pollingRunning = false
+        match (this.pollingSignal) {
+            case Some(signal) => signal.cancel("Polling stopped")
+            case None => ()
+        }
         let offset = this.lastTriedUpdate + 1
         let request = PollingFetchRequest(offset, 1, 0, [], false)
-        let _ = this.runtime.getUpdates(request)
+        try {
+            let _ = this.runtime.getUpdates(request, CancelSignal())
+        } finally {
+            this.pollingSignal = None<CancelSignal>
+        }
     }
 
     public func isRunning(): Bool {
@@ -413,6 +430,9 @@ public class Bot {
             if (this.pollingRunning) {
                 this.pollingRunning = false
             }
+            if (!this.pollingRunning) {
+                this.pollingSignal = None<CancelSignal>
+            }
         }
     }
 
@@ -442,7 +462,7 @@ public class Bot {
                 includesAllowedUpdates
             )
             try {
-                return this.runtime.getUpdates(request)
+                return this.runtime.getUpdates(request, this.currentPollingSignal())
             } catch (e: GrammyError) {
                 this.handlePollingGrammyError(e)
             } catch (e: HttpError) {
@@ -454,12 +474,19 @@ public class Bot {
         []
     }
 
+    private func currentPollingSignal(): CancelSignal {
+        match (this.pollingSignal) {
+            case Some(signal) => signal
+            case None => CancelSignal()
+        }
+    }
+
     private func getMeWithRetries(signal: CancelSignal): UserFromGetMe {
         var nextDelay = this.retry.initialDelayMillis
         while (true) {
             try {
                 signal.throwIfCancelled()
-                return this.runtime.getMe()
+                return this.runtime.getMe(signal)
             } catch (e: HttpError) {
                 nextDelay = this.retryAfterInitFailure(nextDelay, signal)
             } catch (e: GrammyError) {
@@ -499,7 +526,7 @@ public class Bot {
         var nextDelay = this.retry.initialDelayMillis
         while (true) {
             try {
-                this.runtime.deleteWebhook(dropPendingUpdates)
+                this.runtime.deleteWebhook(dropPendingUpdates, this.currentPollingSignal())
                 return
             } catch (e: HttpError) {
                 nextDelay = this.retryAfterInitFailure(nextDelay)
@@ -621,4 +648,14 @@ private func firstFilterSegment(path: String): String {
         case Some(index) => path[0..index]
         case None => path
     }
+}
+
+private func resolveBotRuntime(token: String, config: BotConfig): BotRuntime {
+    if (config.runtime is DefaultBotRuntime) {
+        match (config.fetcher) {
+            case Some(fetcher) => return ApiBackedBotRuntime(token, config.client, fetcher)
+            case None => return ApiBackedBotRuntime(token, config.client)
+        }
+    }
+    config.runtime
 }
