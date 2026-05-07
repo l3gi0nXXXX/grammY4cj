@@ -7,7 +7,7 @@ REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
 if [ "$#" -gt 0 ]; then
   docs="$*"
 else
-  docs="README.md CONTRIBUTING.md src/README.md"
+  docs="README.md CONTRIBUTING.md src/README.md LICENSE"
 fi
 
 for doc in $docs; do
