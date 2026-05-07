@@ -4,6 +4,7 @@ import grammy4cj.context.Context
 import grammy4cj.core.Api
 import grammy4cj.types.{Chat, Message, Update, UserFromGetMe}
 import std.collection.{ArrayList, HashMap}
+import std.sync.Mutex
 import std.unittest.*
 
 private class CounterSession {
@@ -70,6 +71,160 @@ private class CountingStorage<T> <: StorageAdapter<T> {
     }
 }
 
+private class AsyncCountingStorage<T> <: AsyncStorageAdapter<T> {
+    public let inner: CountingStorage<T> = CountingStorage<T>()
+
+    public init() {}
+
+    public func read(key: String): SessionTask<Option<T>> {
+        SessionTask<Option<T>>({ => this.inner.read(key) })
+    }
+
+    public func write(key: String, value: T): SessionTask<Unit> {
+        SessionTask<Unit>({ => this.inner.write(key, value) })
+    }
+
+    public func delete(key: String): SessionTask<Unit> {
+        SessionTask<Unit>({ => this.inner.delete(key) })
+    }
+
+    public func has(key: String): SessionTask<Bool> {
+        SessionTask<Bool>({ => this.inner.has(key) })
+    }
+
+    public func readAll(): SessionTask<Array<T>> {
+        SessionTask<Array<T>>({ => this.inner.readAll() })
+    }
+
+    public func readAllKeys(): SessionTask<Array<String>> {
+        SessionTask<Array<String>>({ => this.inner.readAllKeys() })
+    }
+
+    public func readAllValues(): SessionTask<Array<T>> {
+        SessionTask<Array<T>>({ => this.inner.readAllValues() })
+    }
+
+    public func readAllEntries(): SessionTask<Array<StorageEntry<T>>> {
+        SessionTask<Array<StorageEntry<T>>>({ => this.inner.readAllEntries() })
+    }
+}
+
+private class BlockingReadStorage<T> <: StorageAdapter<T> {
+    private let mutex: Mutex = Mutex()
+    private var entered: Bool = false
+    private var released: Bool = false
+    public var value: Option<T>
+    public var readCount: Int64 = 0
+    public var writeCount: Int64 = 0
+    public var deleteCount: Int64 = 0
+    public var written: Option<T> = None<T>
+
+    public init(value: Option<T>) {
+        this.value = value
+    }
+
+    public func release(): Unit {
+        synchronized(this.mutex) {
+            this.released = true
+        }
+    }
+
+    public func waitUntilEntered(): Unit {
+        var done = false
+        while (!done) {
+            synchronized(this.mutex) {
+                done = this.entered
+            }
+        }
+    }
+
+    public func read(key: String): Option<T> {
+        synchronized(this.mutex) {
+            this.entered = true
+            this.readCount += 1
+        }
+        var done = false
+        while (!done) {
+            synchronized(this.mutex) {
+                done = this.released
+            }
+        }
+        this.value
+    }
+
+    public func write(key: String, value: T): Unit {
+        this.writeCount += 1
+        this.written = Some(value)
+    }
+
+    public func delete(key: String): Unit {
+        this.deleteCount += 1
+        this.written = None<T>
+    }
+
+    public func has(key: String): Bool {
+        match (this.value) {
+            case Some(_) => true
+            case None => false
+        }
+    }
+
+    public func readAll(): Array<T> {
+        this.readAllValues()
+    }
+
+    public func readAllKeys(): Array<String> {
+        []
+    }
+
+    public func readAllValues(): Array<T> {
+        []
+    }
+
+    public func readAllEntries(): Array<StorageEntry<T>> {
+        []
+    }
+}
+
+private class ThrowingReadStorage<T> <: StorageAdapter<T> {
+    public var writeCount: Int64 = 0
+    public var deleteCount: Int64 = 0
+
+    public init() {}
+
+    public func read(key: String): Option<T> {
+        throw Exception("read failed:" + key)
+    }
+
+    public func write(key: String, value: T): Unit {
+        this.writeCount += 1
+    }
+
+    public func delete(key: String): Unit {
+        this.deleteCount += 1
+    }
+
+    public func has(key: String): Bool {
+        false
+    }
+
+    public func readAll(): Array<T> {
+        []
+    }
+
+    public func readAllKeys(): Array<String> {
+        []
+    }
+
+    public func readAllValues(): Array<T> {
+        []
+    }
+
+    public func readAllEntries(): Array<StorageEntry<T>> {
+        []
+    }
+}
+
 private func testCtx(updateId: Int64): Context {
     Context(Update.withMessage(updateId, Message(1, Chat(updateId, "private"), "")), Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
 }
@@ -133,6 +288,15 @@ private func throwsException(action: () -> Unit): Bool {
         false
     } catch (_: Exception) {
         true
+    }
+}
+
+private func exceptionMessage(action: () -> Unit): String {
+    try {
+        action()
+        ""
+    } catch (e: Exception) {
+        e.message
     }
 }
 
@@ -265,11 +429,12 @@ public class SessionMiddlewareTest {
     public func defaultKeyUsesChatIdAndSkipsNoChatUpdates(): Unit {
         let contract = sessionPropertyContract()
         @Expect(contract.upstreamProperty, "ctx.session")
-        @Expect(contract.strictRead, "SessionContext.session()")
-        @Expect(contract.strictWrite, "SessionContext.setSession(value)")
+        @Expect(contract.strictRead, "SessionContext.session")
+        @Expect(contract.strictWrite, "SessionContext.session = value")
         @Expect(contract.strictDelete, "SessionContext.deleteSession()")
-        @Expect(contract.lazyRead, "LazySessionMiddleware + SessionContext.session()")
-        @Expect(contract.multiDelete, "MultiSessionContext2.deleteSession()")
+        @Expect(contract.lazyRead, "LazySessionMiddleware + SessionContext.session")
+        @Expect(contract.multiDelete, "MultiSessionContext2.session slots or deleteSession()")
+        @Expect(contract.contextIntegration, "typed session wrapper exposes ctx.session property")
         @Expect(stringValue(defaultGetSessionKey(testCtx(7))), "7")
         @Expect(stringValue(defaultGetSessionKey(noChatCtx(8))), "")
     }
@@ -281,14 +446,14 @@ public class SessionMiddlewareTest {
         let middleware = session<CounterSession>(options)
 
         middleware.handle(testCtx(7), { ctx: SessionContext<CounterSession> =>
-            let current = ctx.session()
+            let current = ctx.session
             current.count += 1
         })
 
         @Expect(counterValue(storage.read("7")), 2)
 
         middleware.handle(testCtx(7), { ctx: SessionContext<CounterSession> =>
-            @Expect(ctx.session().count, 2)
+            @Expect(ctx.session.count, 2)
             ctx.deleteSession()
         })
 
@@ -305,15 +470,15 @@ public class SessionMiddlewareTest {
         let middleware = session<Int64>(SessionOptions<Int64>(storage))
 
         middleware.handle(testCtx(8), { ctx: SessionContext<Int64> =>
-            if (ctx.session() == 0) {
-                ctx.setSession(1)
+            if (ctx.session == 0) {
+                ctx.session = 1
             } else {
                 ctx.deleteSession()
             }
         })
         middleware.handle(testCtx(8), { ctx: SessionContext<Int64> =>
-            if (ctx.session() == 0) {
-                ctx.setSession(1)
+            if (ctx.session == 0) {
+                ctx.session = 1
             } else {
                 ctx.deleteSession()
             }
@@ -323,6 +488,24 @@ public class SessionMiddlewareTest {
         @Expect(storage.writeCount, 1)
         @Expect(storage.deleteCount, 1)
         @Expect(intValue(storage.inner.read("8")), -1)
+    }
+
+    @TestCase
+    public func sessionAcceptsTaskBackedAsyncStorage(): Unit {
+        let storage = AsyncCountingStorage<Int64>()
+        storage.inner.write("9", 0)
+        storage.inner.readCount = 0
+        storage.inner.writeCount = 0
+        storage.inner.deleteCount = 0
+
+        session<Int64>(SessionOptions<Int64>(storage)).handle(testCtx(9), { ctx: SessionContext<Int64> =>
+            ctx.session = ctx.session + 1
+        })
+
+        @Expect(storage.inner.readCount, 1)
+        @Expect(storage.inner.writeCount, 1)
+        @Expect(storage.inner.deleteCount, 0)
+        @Expect(intValue(storage.inner.inner.read("9")), 1)
     }
 
     @TestCase
@@ -347,12 +530,52 @@ public class SessionMiddlewareTest {
 
         let threw = throwsException({ =>
             session<CounterSession>(options).handle(testCtx(18), { ctx: SessionContext<CounterSession> =>
-                ctx.session().count += 1
+                ctx.session.count += 1
             })
         })
 
         @Expect(threw, true)
         @Expect(storage.readCount, 0)
+        @Expect(storage.writeCount, 0)
+        @Expect(storage.deleteCount, 0)
+    }
+
+    @TestCase
+    public func sessionReportsUpstreamUndefinedKeyReasons(): Unit {
+        let defaultMessage = exceptionMessage({ =>
+            session<CounterSession>(SessionOptions<CounterSession>({ => CounterSession(0) })).handle(
+                noChatCtx(81),
+                { ctx: SessionContext<CounterSession> => ctx.session.count += 1 },
+            )
+        })
+        let customOptions = SessionOptions<CounterSession>(
+            "",
+            Some({ => CounterSession(0) }),
+            CountingStorage<CounterSession>(),
+            { _ctx: Context => None<String> },
+        )
+        let customMessage = exceptionMessage({ =>
+            session<CounterSession>(customOptions).handle(
+                testCtx(82),
+                { ctx: SessionContext<CounterSession> => ctx.session = CounterSession(1) },
+            )
+        })
+
+        @Expect(defaultMessage, "Cannot access session data because this update does not belong to a chat, so the session key is undefined!")
+        @Expect(customMessage, "Cannot assign session data because the custom `getSessionKey` function returned undefined for this update!")
+    }
+
+    @TestCase
+    public func sessionPropagatesStorageReadErrorsAndDoesNotWriteBack(): Unit {
+        let storage = ThrowingReadStorage<CounterSession>()
+        let message = exceptionMessage({ =>
+            session<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
+                testCtx(83),
+                { _ctx: SessionContext<CounterSession> => () },
+            )
+        })
+
+        @Expect(message, "read failed:83")
         @Expect(storage.writeCount, 0)
         @Expect(storage.deleteCount, 0)
     }
@@ -369,7 +592,7 @@ public class SessionMiddlewareTest {
 
         let threw = throwsException({ =>
             session<CounterSession>(options).handle(testCtx(19), { ctx: SessionContext<CounterSession> =>
-                ctx.setSession(CounterSession(1))
+                ctx.session = CounterSession(1)
             })
         })
 
@@ -413,8 +636,8 @@ public class SessionMiddlewareTest {
             session<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
                 testCtx(21),
                 { ctx: SessionContext<CounterSession> =>
-                    @Expect(ctx.session().count, 5)
-                    ctx.setSession(CounterSession(6))
+                    @Expect(ctx.session.count, 5)
+                    ctx.session = CounterSession(6)
                     throw Exception("err")
                 },
             )
@@ -438,7 +661,7 @@ public class SessionMiddlewareTest {
         )
 
         session<CounterSession>(options).handle(testCtx(10), { ctx: SessionContext<CounterSession> =>
-            ctx.session().count += 4
+            ctx.session.count += 4
         })
 
         @Expect(counterValue(storage.read("session:chat-1")), 7)
@@ -452,7 +675,7 @@ public class SessionMiddlewareTest {
         let middleware = session<CounterSession>(options).middleware(
             { ctx: SessionContext<CounterSession>, next: () -> Unit =>
                 events.add("handler")
-                ctx.session().count = 9
+                ctx.session.count = 9
                 next()
             },
         )
@@ -482,21 +705,43 @@ public class MultiSessionMiddlewareTest {
         )
 
         middleware.handle(testCtx(31), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
-            ctx.first.session().count += 1
-            ctx.second.session().count += 2
+            ctx.first.session.count += 1
+            ctx.second.session.count += 2
         })
 
         @Expect(counterValue(first.read("31")), 1)
         @Expect(counterValue(second.read("31")), 12)
 
         middleware.handle(testCtx(31), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
-            @Expect(ctx.first.session().count, 1)
-            @Expect(ctx.second.session().count, 12)
+            @Expect(ctx.first.session.count, 1)
+            @Expect(ctx.second.session.count, 12)
             ctx.deleteSession()
         })
 
         @Expect(first.has("31"), false)
         @Expect(second.has("31"), false)
+    }
+
+    @TestCase
+    public func multiSessionDeletingOneSlotDoesNotAffectTheOther(): Unit {
+        let first = MemorySessionStorage<CounterSession>()
+        let second = MemorySessionStorage<CounterSession>()
+        first.write("35", CounterSession(1))
+        second.write("35", CounterSession(2))
+        let middleware = multiSession<CounterSession, CounterSession>(
+            MultiSessionOptions2<CounterSession, CounterSession>(
+                SessionOptions<CounterSession>(first),
+                SessionOptions<CounterSession>(second),
+            ),
+        )
+
+        middleware.handle(testCtx(35), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
+            ctx.first.deleteSession()
+            ctx.second.session.count += 10
+        })
+
+        @Expect(first.has("35"), false)
+        @Expect(counterValue(second.read("35")), 12)
     }
 
     @TestCase
@@ -521,10 +766,10 @@ public class MultiSessionMiddlewareTest {
 
         let threw = throwsException({ =>
             middleware.handle(testCtx(32), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
-                @Expect(ctx.first.session().count, 1)
-                @Expect(ctx.second.session().count, 2)
-                ctx.first.setSession(CounterSession(11))
-                ctx.second.setSession(CounterSession(12))
+                @Expect(ctx.first.session.count, 1)
+                @Expect(ctx.second.session.count, 2)
+                ctx.first.session = CounterSession(11)
+                ctx.second.session = CounterSession(12)
                 throw Exception("err")
             })
         })
@@ -558,7 +803,7 @@ public class MultiSessionMiddlewareTest {
 
         let threw = throwsException({ =>
             middleware.handle(testCtx(33), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
-                ctx.first.session().count += 1
+                ctx.first.session.count += 1
             })
         })
 
@@ -586,7 +831,7 @@ public class MultiSessionMiddlewareTest {
 
         let threw = throwsException({ =>
             middleware.handle(testCtx(34), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
-                ctx.first.setSession(CounterSession(3))
+                ctx.first.session = CounterSession(3)
             })
         })
 
@@ -624,7 +869,7 @@ public class LazySessionMiddlewareTest {
             testCtx(5),
             { ctx: SessionContext<CounterSession> =>
                 @Expect(ctx.isLoaded(), false)
-                ctx.setSession(CounterSession(12))
+                ctx.session = CounterSession(12)
             },
         )
 
@@ -644,7 +889,7 @@ public class LazySessionMiddlewareTest {
             testCtx(6),
             { ctx: SessionContext<CounterSession> =>
                 @Expect(ctx.isLoaded(), false)
-                ctx.session().count += 1
+                ctx.session.count += 1
                 @Expect(ctx.isLoaded(), true)
             },
         )
@@ -664,15 +909,15 @@ public class LazySessionMiddlewareTest {
         let middleware = lazySession<Int64>(SessionOptions<Int64>(storage))
 
         middleware.handle(testCtx(40), { ctx: SessionContext<Int64> =>
-            if (ctx.session() == 0) {
-                ctx.setSession(1)
+            if (ctx.session == 0) {
+                ctx.session = 1
             } else {
                 ctx.deleteSession()
             }
         })
         middleware.handle(testCtx(40), { ctx: SessionContext<Int64> =>
-            if (ctx.session() == 0) {
-                ctx.setSession(1)
+            if (ctx.session == 0) {
+                ctx.session = 1
             } else {
                 ctx.deleteSession()
             }
@@ -696,13 +941,47 @@ public class LazySessionMiddlewareTest {
 
         let threw = throwsException({ =>
             lazySession<CounterSession>(options).handle(testCtx(41), { ctx: SessionContext<CounterSession> =>
-                ctx.session().count += 1
+                ctx.session.count += 1
             })
         })
 
         @Expect(threw, true)
         @Expect(storage.readCount, 0)
         @Expect(storage.writeCount, 0)
+    }
+
+    @TestCase
+    public func lazySessionReportsLazyUndefinedKeyReason(): Unit {
+        let message = exceptionMessage({ =>
+            lazySession<CounterSession>(SessionOptions<CounterSession>({ => CounterSession(0) })).handle(
+                noChatCtx(84),
+                { ctx: SessionContext<CounterSession> => ctx.session.count += 1 },
+            )
+        })
+
+        @Expect(message, "Cannot access lazy session data because this update does not belong to a chat, so the session key is undefined!")
+    }
+
+    @TestCase
+    public func lazySessionThrowsWhenAssigningEmptySessionKey(): Unit {
+        let storage = CountingStorage<CounterSession>()
+        let options = SessionOptions<CounterSession>(
+            "",
+            Some({ => CounterSession(0) }),
+            storage,
+            { _ctx: Context => None<String> },
+        )
+
+        let message = exceptionMessage({ =>
+            lazySession<CounterSession>(options).handle(testCtx(85), { ctx: SessionContext<CounterSession> =>
+                ctx.session = CounterSession(1)
+            })
+        })
+
+        @Expect(message, "Cannot assign lazy session data because the custom `getSessionKey` function returned undefined for this update!")
+        @Expect(storage.readCount, 0)
+        @Expect(storage.writeCount, 0)
+        @Expect(storage.deleteCount, 0)
     }
 
     @TestCase
@@ -717,8 +996,8 @@ public class LazySessionMiddlewareTest {
             lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
                 testCtx(42),
                 { ctx: SessionContext<CounterSession> =>
-                    @Expect(ctx.session().count, 2)
-                    ctx.setSession(CounterSession(3))
+                    @Expect(ctx.session.count, 2)
+                    ctx.session = CounterSession(3)
                     throw Exception("err")
                 },
             )
@@ -761,14 +1040,37 @@ public class LazySessionMiddlewareTest {
         lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
             testCtx(44),
             { ctx: SessionContext<CounterSession> =>
-                ctx.setSession(CounterSession(9))
-                @Expect(ctx.session().count, 9)
+                ctx.session = CounterSession(9)
+                @Expect(ctx.session.count, 9)
             },
         )
 
         @Expect(storage.readCount, 0)
         @Expect(storage.writeCount, 1)
         @Expect(counterValue(storage.inner.read("44")), 9)
+    }
+
+    @TestCase
+    public func lazySessionDiscardReadThatCompletesAfterManualWrite(): Unit {
+        let storage = BlockingReadStorage<CounterSession>(Some(CounterSession(3)))
+
+        lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
+            testCtx(47),
+            { ctx: SessionContext<CounterSession> =>
+                let reader = spawn { =>
+                    @Expect(ctx.session.count, 42)
+                }
+                storage.waitUntilEntered()
+                @Expect(ctx.isFetching(), true)
+                ctx.session = CounterSession(42)
+                storage.release()
+                reader.get()
+            },
+        )
+
+        @Expect(storage.readCount, 1)
+        @Expect(storage.writeCount, 1)
+        @Expect(counterValue(storage.written), 42)
     }
 
     @TestCase
@@ -781,8 +1083,8 @@ public class LazySessionMiddlewareTest {
         lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
             testCtx(46),
             { ctx: SessionContext<CounterSession> =>
-                ctx.setSession(CounterSession(11))
-                @Expect(ctx.session().count, 11)
+                ctx.session = CounterSession(11)
+                @Expect(ctx.session.count, 11)
                 @Expect(ctx.wasRead(), true)
             },
         )
@@ -802,9 +1104,9 @@ public class LazySessionMiddlewareTest {
         lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
             testCtx(45),
             { ctx: SessionContext<CounterSession> =>
-                @Expect(ctx.session().count, 4)
-                @Expect(ctx.session().count, 4)
-                ctx.session().count += 1
+                @Expect(ctx.session.count, 4)
+                @Expect(ctx.session.count, 4)
+                ctx.session.count += 1
             },
         )
 

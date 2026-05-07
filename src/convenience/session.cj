@@ -23,12 +23,12 @@ public class SessionPropertyContract {
 
     public init() {
         this.upstreamProperty = "ctx.session"
-        this.strictRead = "SessionContext.session()"
-        this.strictWrite = "SessionContext.setSession(value)"
+        this.strictRead = "SessionContext.session"
+        this.strictWrite = "SessionContext.session = value"
         this.strictDelete = "SessionContext.deleteSession()"
-        this.lazyRead = "LazySessionMiddleware + SessionContext.session()"
-        this.multiDelete = "MultiSessionContext2.deleteSession()"
-        this.contextIntegration = "explicit SessionContext until Context property flavors are available"
+        this.lazyRead = "LazySessionMiddleware + SessionContext.session"
+        this.multiDelete = "MultiSessionContext2.session slots or deleteSession()"
+        this.contextIntegration = "typed session wrapper exposes ctx.session property"
     }
 }
 
@@ -46,6 +46,22 @@ public class StorageEntry<T> {
     }
 }
 
+public class SessionTask<T> {
+    private let wait: () -> T
+
+    public init(value: T) {
+        this.wait = { => value }
+    }
+
+    public init(wait: () -> T) {
+        this.wait = wait
+    }
+
+    public func get(): T {
+        this.wait()
+    }
+}
+
 public interface StorageAdapter<T> {
     func read(key: String): Option<T>
     func write(key: String, value: T): Unit
@@ -55,6 +71,57 @@ public interface StorageAdapter<T> {
     func readAllKeys(): Array<String>
     func readAllValues(): Array<T>
     func readAllEntries(): Array<StorageEntry<T>>
+}
+
+public interface AsyncStorageAdapter<T> {
+    func read(key: String): SessionTask<Option<T>>
+    func write(key: String, value: T): SessionTask<Unit>
+    func delete(key: String): SessionTask<Unit>
+    func has(key: String): SessionTask<Bool>
+    func readAll(): SessionTask<Array<T>>
+    func readAllKeys(): SessionTask<Array<String>>
+    func readAllValues(): SessionTask<Array<T>>
+    func readAllEntries(): SessionTask<Array<StorageEntry<T>>>
+}
+
+public class AsyncStorageAdapterShim<T> <: StorageAdapter<T> {
+    private let storage: AsyncStorageAdapter<T>
+
+    public init(storage: AsyncStorageAdapter<T>) {
+        this.storage = storage
+    }
+
+    public func read(key: String): Option<T> {
+        this.storage.read(key).get()
+    }
+
+    public func write(key: String, value: T): Unit {
+        this.storage.write(key, value).get()
+    }
+
+    public func delete(key: String): Unit {
+        this.storage.delete(key).get()
+    }
+
+    public func has(key: String): Bool {
+        this.storage.has(key).get()
+    }
+
+    public func readAll(): Array<T> {
+        this.storage.readAll().get()
+    }
+
+    public func readAllKeys(): Array<String> {
+        this.storage.readAllKeys().get()
+    }
+
+    public func readAllValues(): Array<T> {
+        this.storage.readAllValues().get()
+    }
+
+    public func readAllEntries(): Array<StorageEntry<T>> {
+        this.storage.readAllEntries().get()
+    }
 }
 
 public class MemorySessionRecord<T> {
@@ -174,12 +241,14 @@ public class SessionOptions<T> {
     public var prefix: String
     public var getSessionKey: SessionKeyResolver
     public var storage: StorageAdapter<T>
+    public var customGetSessionKey: Bool
 
     public init() {
         this.initial = None
         this.prefix = ""
         this.getSessionKey = defaultGetSessionKey
         this.storage = MemorySessionStorage<T>()
+        this.customGetSessionKey = false
     }
 
     public init(initial: SessionInitializer<T>) {
@@ -187,6 +256,7 @@ public class SessionOptions<T> {
         this.prefix = ""
         this.getSessionKey = defaultGetSessionKey
         this.storage = MemorySessionStorage<T>()
+        this.customGetSessionKey = false
     }
 
     public init(storage: StorageAdapter<T>) {
@@ -194,6 +264,15 @@ public class SessionOptions<T> {
         this.prefix = ""
         this.getSessionKey = defaultGetSessionKey
         this.storage = storage
+        this.customGetSessionKey = false
+    }
+
+    public init(storage: AsyncStorageAdapter<T>) {
+        this.initial = None
+        this.prefix = ""
+        this.getSessionKey = defaultGetSessionKey
+        this.storage = AsyncStorageAdapterShim<T>(storage)
+        this.customGetSessionKey = false
     }
 
     public init(initial: SessionInitializer<T>, storage: StorageAdapter<T>) {
@@ -201,6 +280,15 @@ public class SessionOptions<T> {
         this.prefix = ""
         this.getSessionKey = defaultGetSessionKey
         this.storage = storage
+        this.customGetSessionKey = false
+    }
+
+    public init(initial: SessionInitializer<T>, storage: AsyncStorageAdapter<T>) {
+        this.initial = Some(initial)
+        this.prefix = ""
+        this.getSessionKey = defaultGetSessionKey
+        this.storage = AsyncStorageAdapterShim<T>(storage)
+        this.customGetSessionKey = false
     }
 
     public init(prefix: String, initial: Option<SessionInitializer<T>>, storage: StorageAdapter<T>, getSessionKey: SessionKeyResolver) {
@@ -208,48 +296,53 @@ public class SessionOptions<T> {
         this.prefix = prefix
         this.getSessionKey = getSessionKey
         this.storage = storage
+        this.customGetSessionKey = true
+    }
+
+    public init(prefix: String, initial: Option<SessionInitializer<T>>, storage: AsyncStorageAdapter<T>, getSessionKey: SessionKeyResolver) {
+        this.initial = initial
+        this.prefix = prefix
+        this.getSessionKey = getSessionKey
+        this.storage = AsyncStorageAdapterShim<T>(storage)
+        this.customGetSessionKey = true
     }
 }
 
-public class SessionContext<T> {
-    public let ctx: Context
-    public let key: String
-    private let hasKey: Bool
+private class PropertySession<T> {
     private let storage: StorageAdapter<T>
     private let initial: Option<SessionInitializer<T>>
+    private let key: String
+    private let hasKey: Bool
     private let lazy: Bool
+    private let custom: Bool
     private var value: Option<T> = None
+    private var fetching: Bool = false
     private var loaded: Bool = false
     private var readRequested: Bool = false
     private var wrote: Bool = false
     private var deleted: Bool = false
 
-    public init(ctx: Context, key: String, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>) {
-        this.ctx = ctx
-        this.key = key
-        this.hasKey = true
-        this.storage = storage
-        this.initial = initial
-        this.lazy = false
-    }
-
-    public init(ctx: Context, key: Option<String>, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>, lazy: Bool) {
-        this.ctx = ctx
+    public init(key: Option<String>, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>, lazy: Bool, custom: Bool) {
         this.key = sessionKeyValue(key)
         this.hasKey = sessionKeyPresent(key)
         this.storage = storage
         this.initial = initial
         this.lazy = lazy
+        this.custom = custom
     }
 
     public func preload(): Unit {
-        this.ensureLoaded(true)
+        this.load()
     }
 
-    public func session(): T {
+    public func get(): T {
         this.requireKey("access")
         this.readRequested = true
-        this.ensureLoaded(true)
+        if (!this.lazy || this.wrote) {
+            ()
+        } else {
+            this.load()
+        }
         match (this.value) {
             case Some(value) => value
             case None => throw Exception("Cannot access session data because no value is stored and no initial value was provided.")
@@ -259,29 +352,35 @@ public class SessionContext<T> {
     public func maybeSession(): Option<T> {
         this.requireKey("access")
         this.readRequested = true
-        this.ensureLoaded(true)
+        if (!this.lazy || this.wrote) {
+            ()
+        } else {
+            this.load()
+        }
         this.value
     }
 
-    public func setSession(value: T): Unit {
+    public func set(value: T): Unit {
         this.requireKey("assign")
         this.value = Some(value)
         this.loaded = true
         this.wrote = true
         this.deleted = false
+        this.fetching = false
     }
 
-    public func deleteSession(): Unit {
+    public func delete(): Unit {
         this.requireKey("assign")
         this.value = None
         this.loaded = true
         this.wrote = true
         this.deleted = true
+        this.fetching = false
     }
 
-    public func deleteSessionIfKeyPresent(): Unit {
+    public func deleteIfKeyPresent(): Unit {
         if (this.hasKey) {
-            this.deleteSession()
+            this.delete()
         }
     }
 
@@ -301,12 +400,16 @@ public class SessionContext<T> {
         this.wrote
     }
 
+    public func isFetching(): Bool {
+        this.fetching
+    }
+
     public func finish(): Unit {
         if (!this.hasKey) {
             return
         }
-        if (this.readRequested && !this.loaded) {
-            this.ensureLoaded(true)
+        if (this.readRequested) {
+            this.load()
         }
         if (this.deleted) {
             this.storage.delete(this.key)
@@ -320,23 +423,27 @@ public class SessionContext<T> {
         }
     }
 
-    private func ensureLoaded(markInitialWrite: Bool): Unit {
+    private func load(): Unit {
         if (!this.hasKey) {
             return
         }
         if (this.loaded || this.wrote) {
             return
         }
-        match (this.storage.read(this.key)) {
+        this.fetching = true
+        let stored = this.storage.read(this.key)
+        this.fetching = false
+        if (this.wrote) {
+            return
+        }
+        match (stored) {
             case Some(value) =>
                 this.value = Some(value)
             case None =>
                 match (this.initial) {
                     case Some(makeInitial) =>
                         this.value = Some(makeInitial())
-                        if (markInitialWrite) {
-                            this.wrote = true
-                        }
+                        this.wrote = true
                     case None => this.value = None
                 }
         }
@@ -345,8 +452,79 @@ public class SessionContext<T> {
 
     private func requireKey(op: String): Unit {
         if (!this.hasKey) {
-            throw Exception(undefinedSessionKeyMessage(op, this.lazy))
+            throw Exception(undefinedSessionKeyMessage(op, this.lazy, this.custom))
         }
+    }
+}
+
+public class SessionContext<T> {
+    public let ctx: Context
+    public let key: String
+    private let property: PropertySession<T>
+
+    public init(ctx: Context, key: String, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>) {
+        this.ctx = ctx
+        this.key = key
+        this.property = PropertySession<T>(Some(key), storage, initial, false, false)
+    }
+
+    public init(ctx: Context, key: Option<String>, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>, lazy: Bool, custom: Bool) {
+        this.ctx = ctx
+        this.key = sessionKeyValue(key)
+        this.property = PropertySession<T>(key, storage, initial, lazy, custom)
+    }
+
+    public mut prop session: T {
+        get() {
+            this.property.get()
+        }
+        set(value) {
+            this.property.set(value)
+        }
+    }
+
+    public func preload(): Unit {
+        this.property.preload()
+    }
+
+    public func maybeSession(): Option<T> {
+        this.property.maybeSession()
+    }
+
+    public func setSession(value: T): Unit {
+        this.session = value
+    }
+
+    public func deleteSession(): Unit {
+        this.property.delete()
+    }
+
+    public func deleteSessionIfKeyPresent(): Unit {
+        this.property.deleteIfKeyPresent()
+    }
+
+    public func isLoaded(): Bool {
+        this.property.isLoaded()
+    }
+
+    public func hasSessionKey(): Bool {
+        this.property.hasSessionKey()
+    }
+
+    public func wasRead(): Bool {
+        this.property.wasRead()
+    }
+
+    public func wasWritten(): Bool {
+        this.property.wasWritten()
+    }
+
+    public func isFetching(): Bool {
+        this.property.isFetching()
+    }
+
+    public func finish(): Unit {
+        this.property.finish()
     }
 }
 
@@ -374,8 +552,8 @@ public class SessionMiddleware<T> {
 
     private func createContext(ctx: Context): SessionContext<T> {
         match (this.options.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, false)
-            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, false)
+            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, false, this.options.customGetSessionKey)
+            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, false, this.options.customGetSessionKey)
         }
     }
 }
@@ -403,8 +581,8 @@ public class LazySessionMiddleware<T> {
 
     private func createContext(ctx: Context): SessionContext<T> {
         match (this.options.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, true)
-            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, true)
+            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, true, this.options.customGetSessionKey)
+            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, true, this.options.customGetSessionKey)
         }
     }
 }
@@ -470,15 +648,15 @@ public class MultiSessionMiddleware2<A, B> {
 
     private func createFirstContext(ctx: Context): SessionContext<A> {
         match (this.options.first.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<A>(ctx, Some(this.options.first.prefix + key), this.options.first.storage, this.options.first.initial, false)
-            case None => SessionContext<A>(ctx, None<String>, this.options.first.storage, this.options.first.initial, false)
+            case Some(key) => SessionContext<A>(ctx, Some(this.options.first.prefix + key), this.options.first.storage, this.options.first.initial, false, this.options.first.customGetSessionKey)
+            case None => SessionContext<A>(ctx, None<String>, this.options.first.storage, this.options.first.initial, false, this.options.first.customGetSessionKey)
         }
     }
 
     private func createSecondContext(ctx: Context): SessionContext<B> {
         match (this.options.second.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<B>(ctx, Some(this.options.second.prefix + key), this.options.second.storage, this.options.second.initial, false)
-            case None => SessionContext<B>(ctx, None<String>, this.options.second.storage, this.options.second.initial, false)
+            case Some(key) => SessionContext<B>(ctx, Some(this.options.second.prefix + key), this.options.second.storage, this.options.second.initial, false, this.options.second.customGetSessionKey)
+            case None => SessionContext<B>(ctx, None<String>, this.options.second.storage, this.options.second.initial, false, this.options.second.customGetSessionKey)
         }
     }
 }
@@ -534,9 +712,14 @@ private func sessionKeyPresent(key: Option<String>): Bool {
     }
 }
 
-private func undefinedSessionKeyMessage(op: String, lazy: Bool): String {
+private func undefinedSessionKeyMessage(op: String, lazy: Bool, custom: Bool): String {
     let kind = if (lazy) { "lazy session" } else { "session" }
-    "Cannot " + op + " " + kind + " data because the session key is undefined for this update."
+    let reason = if (custom) {
+        "the custom `getSessionKey` function returned undefined for this update"
+    } else {
+        "this update does not belong to a chat, so the session key is undefined"
+    }
+    "Cannot " + op + " " + kind + " data because " + reason + "!"
 }
 
 public class SessionEnvelope<T> {
