@@ -1,5 +1,6 @@
 package grammy4cj.convenience
 
+import std.collection.ArrayList
 import std.unittest.*
 
 @Test
@@ -57,6 +58,67 @@ public class InlineQueryResultBuilderTest {
                 "{\"type\":\"video\",\"id\":\"video-cached\",\"title\":\"Video\",\"video_file_id\":\"video-file-id\"}\n" +
                 "{\"type\":\"voice\",\"id\":\"voice\",\"title\":\"Voice\",\"voice_url\":\"https://example.test/voice.ogg\"}\n" +
                 "{\"type\":\"voice\",\"id\":\"voice-cached\",\"title\":\"Voice\",\"voice_file_id\":\"voice-file-id\"}"
+        )
+    }
+
+    @TestCase
+    public func inlineQueryResultsAttachInputMessageContentGoldenObjects(): Unit {
+        let textOptions = TelegramObject()
+        textOptions.addString("parse_mode", "Markdown")
+
+        let locationOptions = TelegramObject()
+        locationOptions.addInt("heading", 1)
+
+        let venueOptions = TelegramObject()
+        venueOptions.addString("foursquare_id", "grammy-foursquare-id")
+
+        let contactOptions = TelegramObject()
+        contactOptions.addString("last_name", "Doe")
+
+        let prices = ArrayList<TelegramObject>()
+        let price = TelegramObject()
+        price.addInt("amount", 10)
+        price.addString("label", "Item 0")
+        prices.add(price)
+
+        let invoiceOptions = TelegramObject()
+        invoiceOptions.addBool("need_name", true)
+
+        let audioOptions = TelegramObject()
+        audioOptions.addString("caption", "cap")
+
+        let golden =
+            InlineQueryResultBuilder.audio("id-audio", "Audio", "https://grammy.dev/audio.mp3", audioOptions)
+                .text("#Text", textOptions).toJSON() + "\n" +
+            InlineQueryResultBuilder.contact("id-contact", "phone", "John", contactOptions)
+                .location(83.0, 136.0, locationOptions).toJSON() + "\n" +
+            InlineQueryResultBuilder.documentPdf("id-pdf", "PDF", "https://grammy.dev/file.pdf")
+                .venue("grammY Venue", 83.0, 136.0, "1 grammY Venue", venueOptions).toJSON() + "\n" +
+            InlineQueryResultBuilder.gif("id-gif", "https://grammy.dev/a.gif", "https://grammy.dev/thumb.jpg")
+                .contact("John", "498963648018", contactOptions).toJSON() + "\n" +
+            InlineQueryResultBuilder.photo("id-photo", "https://grammy.dev/photo.jpg")
+                .invoice("Invoice", "Invoice Description", "Payload", "Token", "Currency", prices, invoiceOptions)
+                .toJSON()
+
+        @Expect(
+            golden,
+            "{\"type\":\"audio\",\"id\":\"id-audio\",\"title\":\"Audio\",\"audio_url\":\"https://grammy.dev/audio.mp3\",\"caption\":\"cap\",\"input_message_content\":{\"message_text\":\"#Text\",\"parse_mode\":\"Markdown\"}}\n" +
+                "{\"type\":\"contact\",\"id\":\"id-contact\",\"phone_number\":\"phone\",\"first_name\":\"John\",\"last_name\":\"Doe\",\"input_message_content\":{\"latitude\":83.000000,\"longitude\":136.000000,\"heading\":1}}\n" +
+                "{\"type\":\"document\",\"mime_type\":\"application/pdf\",\"id\":\"id-pdf\",\"title\":\"PDF\",\"document_url\":\"https://grammy.dev/file.pdf\",\"input_message_content\":{\"title\":\"grammY Venue\",\"latitude\":83.000000,\"longitude\":136.000000,\"address\":\"1 grammY Venue\",\"foursquare_id\":\"grammy-foursquare-id\"}}\n" +
+                "{\"type\":\"gif\",\"id\":\"id-gif\",\"gif_url\":\"https://grammy.dev/a.gif\",\"thumbnail_url\":\"https://grammy.dev/thumb.jpg\",\"input_message_content\":{\"first_name\":\"John\",\"phone_number\":\"498963648018\",\"last_name\":\"Doe\"}}\n" +
+                "{\"type\":\"photo\",\"id\":\"id-photo\",\"photo_url\":\"https://grammy.dev/photo.jpg\",\"thumbnail_url\":\"https://grammy.dev/photo.jpg\",\"input_message_content\":{\"title\":\"Invoice\",\"description\":\"Invoice Description\",\"payload\":\"Payload\",\"provider_token\":\"Token\",\"currency\":\"Currency\",\"prices\":[{\"amount\":10,\"label\":\"Item 0\"}],\"need_name\":true}}"
+        )
+    }
+
+    @TestCase
+    public func photoBuilderLetsOptionsOverrideDefaultThumbnailGolden(): Unit {
+        let options = TelegramObject()
+        options.addString("thumbnail_url", "https://grammy.dev/explicit-thumb.jpg")
+        options.addString("caption", "explicit thumbnail")
+
+        @Expect(
+            InlineQueryResultBuilder.photo("id-photo", "https://grammy.dev/photo.jpg", options).toJSON(),
+            "{\"type\":\"photo\",\"id\":\"id-photo\",\"photo_url\":\"https://grammy.dev/photo.jpg\",\"thumbnail_url\":\"https://grammy.dev/explicit-thumb.jpg\",\"caption\":\"explicit thumbnail\"}"
         )
     }
 }
