@@ -8,6 +8,11 @@ public let SECRET_HEADER: String = "X-Telegram-Bot-Api-Secret-Token"
 public let SECRET_HEADER_LOWERCASE: String = "x-telegram-bot-api-secret-token"
 public let WRONG_TOKEN_ERROR: String = "secret token is wrong"
 
+public type WebhookUpdateResolver = () -> Update
+public type WebhookRespondAction = (String) -> Unit
+public type WebhookUnitAction = () -> Unit
+public type FrameworkAdapter = (WebhookRequest) -> ReqResHandler
+
 public class WebhookHeader {
     public let key: String
     public let value: String
@@ -102,6 +107,12 @@ public class WebhookRequest {
     public let headers: WebhookHeaders
     public let adapterName: String
     public let bodyPresent: Bool
+    public let updateDelayMilliseconds: Int64
+    public let updateFailureMessage: String
+    public var bodyObjectReads: Int64 = 0
+    public var jsonReads: Int64 = 0
+    public var rawStreamReads: Int64 = 0
+    public var headerReads: Int64 = 0
 
     public init(update: Update) {
         this.update = update
@@ -109,6 +120,8 @@ public class WebhookRequest {
         this.headers = WebhookHeaders()
         this.adapterName = "callback"
         this.bodyPresent = true
+        this.updateDelayMilliseconds = 0
+        this.updateFailureMessage = ""
     }
 
     public init(update: Update, headers: WebhookHeaders) {
@@ -117,6 +130,8 @@ public class WebhookRequest {
         this.headers = headers
         this.adapterName = "callback"
         this.bodyPresent = true
+        this.updateDelayMilliseconds = 0
+        this.updateFailureMessage = ""
     }
 
     public init(update: Update, headers: WebhookHeaders, adapterName: String) {
@@ -125,6 +140,8 @@ public class WebhookRequest {
         this.headers = headers
         this.adapterName = adapterName
         this.bodyPresent = true
+        this.updateDelayMilliseconds = 0
+        this.updateFailureMessage = ""
     }
 
     public init(update: Update, rawBody: String, headers: WebhookHeaders, adapterName: String) {
@@ -133,6 +150,8 @@ public class WebhookRequest {
         this.headers = headers
         this.adapterName = adapterName
         this.bodyPresent = true
+        this.updateDelayMilliseconds = 0
+        this.updateFailureMessage = ""
     }
 
     public init(update: Update, rawBody: String, headers: WebhookHeaders, adapterName: String, bodyPresent: Bool) {
@@ -141,6 +160,26 @@ public class WebhookRequest {
         this.headers = headers
         this.adapterName = adapterName
         this.bodyPresent = bodyPresent
+        this.updateDelayMilliseconds = 0
+        this.updateFailureMessage = ""
+    }
+
+    public init(
+        update: Update,
+        rawBody: String,
+        headers: WebhookHeaders,
+        adapterName: String,
+        bodyPresent: Bool,
+        updateDelayMilliseconds: Int64,
+        updateFailureMessage: String
+    ) {
+        this.update = update
+        this.rawBody = rawBody
+        this.headers = headers
+        this.adapterName = adapterName
+        this.bodyPresent = bodyPresent
+        this.updateDelayMilliseconds = updateDelayMilliseconds
+        this.updateFailureMessage = updateFailureMessage
     }
 
     public static func raw(rawBody: String, headers: WebhookHeaders, adapterName: String): WebhookRequest {
@@ -151,12 +190,95 @@ public class WebhookRequest {
         WebhookRequest(Update(0), "", headers, adapterName, false)
     }
 
+    public static func delayed(update: Update, rawBody: String, headers: WebhookHeaders, adapterName: String, delay: Int64): WebhookRequest {
+        WebhookRequest(update, rawBody, headers, adapterName, true, delay, "")
+    }
+
+    public static func failing(update: Update, rawBody: String, headers: WebhookHeaders, adapterName: String, message: String): WebhookRequest {
+        WebhookRequest(update, rawBody, headers, adapterName, true, 0, message)
+    }
+
     public func secretHeader(): String {
         this.headers.get(SECRET_HEADER)
     }
 
     public func secretHeaderPresent(): Bool {
         this.headers.has(SECRET_HEADER)
+    }
+
+    public func readBodyObject(adapterName: String): Update {
+        this.bodyObjectReads += 1
+        this.failUpdateIfConfigured()
+        if (!this.bodyPresent) {
+            throw MissingWebhookBodyError(adapterName)
+        }
+        this.update
+    }
+
+    public func readJson(adapterName: String): Update {
+        this.jsonReads += 1
+        this.failUpdateIfConfigured()
+        if (!this.bodyPresent) {
+            throw MissingWebhookBodyError(adapterName)
+        }
+        parseRawUpdateOrFallback(adapterName, this.rawBody, this.update)
+    }
+
+    public func readRawStream(adapterName: String): Update {
+        this.rawStreamReads += 1
+        this.failUpdateIfConfigured()
+        if (!this.bodyPresent) {
+            throw MissingWebhookBodyError(adapterName)
+        }
+        if (this.rawBody.isEmpty()) {
+            return this.update
+        }
+        parseRawUpdate(adapterName, this.rawBody)
+    }
+
+    public func readOptionalEventBody(adapterName: String): Update {
+        this.jsonReads += 1
+        this.failUpdateIfConfigured()
+        if (!this.bodyPresent) {
+            return Update(0)
+        }
+        parseRawUpdateOrFallback(adapterName, this.rawBody, this.update)
+    }
+
+    public func headerCanonical(): String {
+        this.headerReads += 1
+        this.headers.get(SECRET_HEADER)
+    }
+
+    public func headerCanonicalPresent(): Bool {
+        this.headers.has(SECRET_HEADER)
+    }
+
+    public func headerLowercaseExact(): String {
+        this.headerReads += 1
+        this.headers.getExact(SECRET_HEADER_LOWERCASE)
+    }
+
+    public func headerLowercaseExactPresent(): Bool {
+        this.headers.hasExact(SECRET_HEADER_LOWERCASE)
+    }
+
+    public func headerAws(): String {
+        this.headerReads += 1
+        if (this.headers.hasExact(SECRET_HEADER)) {
+            return this.headers.getExact(SECRET_HEADER)
+        }
+        this.headers.getExact(SECRET_HEADER_LOWERCASE)
+    }
+
+    public func headerAwsPresent(): Bool {
+        this.headers.hasExact(SECRET_HEADER) || this.headers.hasExact(SECRET_HEADER_LOWERCASE)
+    }
+
+    private func failUpdateIfConfigured(): Unit {
+        if (!this.updateFailureMessage.isEmpty()) {
+            throw WebhookUpdateSourceError(this.updateFailureMessage)
+        }
     }
 }
 
@@ -181,6 +303,9 @@ public class WebhookResponse {
     public var respondProtocol: String = ""
     public var unauthorizedProtocol: String = ""
     public var responseDelivery: String = ""
+    public var respondWithRegistered: Bool = false
+    public var callbackCalled: Bool = false
+    public let calls: ArrayList<String> = ArrayList<String>()
 
     public init() {}
 
@@ -209,33 +334,146 @@ public class WebhookResponse {
     }
 
     public func endForAdapter(adapterName: String): Unit {
-        this.statusCode = adapterEndStatusCode(adapterName)
-        this.body = adapterEndBody(adapterName)
-        this.contentType = ""
-        this.statusText = ""
-        this.ended = true
-        this.lastAction = "end"
-        this.resolveHandlerReturn()
+        this.recordAdapterEnd(adapterName)
     }
 
     public func respondJsonForAdapter(adapterName: String, json: String): Unit {
-        this.statusCode = 200
-        this.statusText = ""
-        this.contentType = "application/json"
-        this.body = json
-        this.responded = true
-        this.lastAction = "respond"
-        this.resolveHandlerReturn()
+        this.recordAdapterRespond(adapterName, json)
     }
 
     public func unauthorizedForAdapter(adapterName: String): Unit {
-        this.statusCode = 401
-        this.statusText = adapterUnauthorizedStatusText(adapterName)
-        this.contentType = ""
-        this.body = adapterUnauthorizedBody(adapterName)
-        this.unauthorizedCalled = true
-        this.lastAction = "unauthorized"
+        this.recordAdapterUnauthorized(adapterName)
+    }
+
+    public func recordCallback(statusCode: Int64, body: String, contentType: String): Unit {
+        this.callbackCalled = true
+        this.statusCode = statusCode
+        this.statusText = ""
+        this.contentType = contentType
+        this.body = body
+        if (statusCode == 401) {
+            this.unauthorizedCalled = true
+            this.lastAction = "unauthorized"
+        } else if (body.isEmpty() && contentType.isEmpty()) {
+            this.ended = true
+            this.lastAction = "end"
+        } else {
+            this.responded = true
+            this.lastAction = "respond"
+        }
+        this.calls.add("callback")
+    }
+
+    public func recordHandlerReturn(statusCode: Int64, body: String, contentType: String, statusText: String): Unit {
+        this.statusCode = statusCode
+        this.statusText = statusText
+        this.contentType = contentType
+        this.body = body
+        if (statusCode == 401) {
+            this.unauthorizedCalled = true
+            this.lastAction = "unauthorized"
+        } else if (contentType == "application/json") {
+            this.responded = true
+            this.lastAction = "respond"
+        } else {
+            this.ended = true
+            this.lastAction = "end"
+        }
         this.resolveHandlerReturn()
+        this.calls.add("resolve")
+    }
+
+    public func recordEventRespondWith(statusCode: Int64, body: String, contentType: String, statusText: String): Unit {
+        this.respondWithRegistered = true
+        this.statusCode = statusCode
+        this.statusText = statusText
+        this.contentType = contentType
+        this.body = body
+        if (statusCode == 401) {
+            this.unauthorizedCalled = true
+            this.lastAction = "unauthorized"
+        } else if (contentType == "application/json") {
+            this.responded = true
+            this.lastAction = "respond"
+        } else {
+            this.ended = true
+            this.lastAction = "end"
+        }
+        this.calls.add("respondWith")
+    }
+
+    public func recordAdapterEnd(adapterName: String): Unit {
+        if (adapterName == "aws-lambda") {
+            this.recordCallback(200, "", "")
+        } else if (adapterName == "aws-lambda-async") {
+            this.recordHandlerReturn(200, "", "", "")
+        } else if (adapterName == "azure") {
+            this.recordMutable("context.res", 200, "", "", "end")
+        } else if (adapterName == "azure-v4") {
+            this.recordHandlerReturn(204, "", "", "")
+        } else if (adapterName == "cloudflare" || adapterName == "serveHttp") {
+            this.recordEventRespondWith(200, "", "", "")
+        } else if (adapterHasHandlerReturn(adapterName)) {
+            this.recordHandlerReturn(200, "", "", "")
+        } else if (adapterName == "fastify") {
+            this.recordMutable("reply.send", 200, "", "", "end")
+        } else if (adapterName == "nhttp") {
+            this.recordMutable("sendStatus", 200, "", "", "end")
+        } else if (adapterName == "oak") {
+            this.recordMutable("ctx.response.status", 200, "", "", "end")
+        } else if (adapterName == "worktop") {
+            this.recordMutable("res.end", 200, "", "", "end")
+        } else {
+            this.recordMutable("response.end", 200, "", "", "end")
+        }
+    }
+
+    public func recordAdapterRespond(adapterName: String, json: String): Unit {
+        if (adapterName == "aws-lambda") {
+            this.recordCallback(200, json, "application/json")
+        } else if (adapterName == "aws-lambda-async") {
+            this.recordHandlerReturn(200, json, "application/json", "")
+        } else if (adapterName == "azure") {
+            this.recordMutable("context.res.send", 200, json, "application/json", "respond")
+        } else if (adapterName == "azure-v4") {
+            this.recordHandlerReturn(200, json, "application/json", "")
+        } else if (adapterName == "cloudflare" || adapterName == "serveHttp") {
+            this.recordEventRespondWith(200, json, "application/json", "")
+        } else if (adapterHasHandlerReturn(adapterName)) {
+            this.recordHandlerReturn(200, json, "application/json", "")
+        } else if (adapterName == "http" || adapterName == "https") {
+            this.recordMutable("writeHead.end", 200, json, "application/json", "respond")
+        } else {
+            this.recordMutable("response.send", 200, json, "application/json", "respond")
+        }
+    }
+
+    public func recordAdapterUnauthorized(adapterName: String): Unit {
+        let body = adapterUnauthorizedBody(adapterName)
+        let statusText = adapterUnauthorizedStatusText(adapterName)
+        if (adapterName == "aws-lambda") {
+            this.recordCallback(401, "", "")
+        } else if (adapterName == "aws-lambda-async") {
+            this.recordHandlerReturn(401, "", "", "")
+        } else if (adapterName == "cloudflare" || adapterName == "serveHttp") {
+            this.recordEventRespondWith(401, body, "", statusText)
+        } else if (adapterHasHandlerReturn(adapterName)) {
+            this.recordHandlerReturn(401, body, "", statusText)
+        } else {
+            this.recordMutable("unauthorized", 401, body, "", "unauthorized")
+        }
+    }
+
+    private func recordMutable(call: String, statusCode: Int64, body: String, contentType: String, action: String): Unit {
+        this.statusCode = statusCode
+        this.statusText = ""
+        this.contentType = contentType
+        this.body = body
+        this.ended = action == "end"
+        this.responded = action == "respond"
+        this.unauthorizedCalled = action == "unauthorized"
+        this.lastAction = action
+        this.calls.add(call)
     }
 
     private func resolveHandlerReturn(): Unit {
@@ -246,21 +484,42 @@ public class WebhookResponse {
 }
 
 public class ReqResHandler {
-    private let request: WebhookRequest
+    private let readUpdate: WebhookUpdateResolver
+    private let respondAction: WebhookRespondAction
+    private let unauthorizedAction: WebhookUnitAction
+    private let endAction: WebhookUnitAction
     private var cachedUpdate: Option<Update> = None<Update>
     public let header: String
     public let headerPresent: Bool
     public let response: WebhookResponse
     public let handlerReturn: WebhookResponse
     public let adapterName: String
+    public let endAvailable: Bool
+    public let updateDelayMilliseconds: Int64
 
-    public init(request: WebhookRequest, header: String, headerPresent: Bool, response: WebhookResponse, adapterName: String) {
-        this.request = request
+    public init(
+        adapterName: String,
+        header: String,
+        headerPresent: Bool,
+        response: WebhookResponse,
+        updateDelayMilliseconds: Int64,
+        endAvailable: Bool,
+        readUpdate: WebhookUpdateResolver,
+        respondAction: WebhookRespondAction,
+        unauthorizedAction: WebhookUnitAction,
+        endAction: WebhookUnitAction
+    ) {
+        this.adapterName = adapterName
         this.header = header
         this.headerPresent = headerPresent
         this.response = response
         this.handlerReturn = response
-        this.adapterName = adapterName
+        this.updateDelayMilliseconds = updateDelayMilliseconds
+        this.endAvailable = endAvailable
+        this.readUpdate = readUpdate
+        this.respondAction = respondAction
+        this.unauthorizedAction = unauthorizedAction
+        this.endAction = endAction
     }
 
     public prop update: Update {
@@ -268,7 +527,7 @@ public class ReqResHandler {
             match (this.cachedUpdate) {
                 case Some(update) => update
                 case None =>
-                    let parsed = resolveUpdateForAdapter(this.adapterName, this.request)
+                    let parsed = this.readUpdate()
                     this.cachedUpdate = Some(parsed)
                     parsed
             }
@@ -276,15 +535,17 @@ public class ReqResHandler {
     }
 
     public func respond(json: String): Unit {
-        this.response.respondJsonForAdapter(this.adapterName, json)
+        this.respondAction(json)
     }
 
     public func unauthorized(): Unit {
-        this.response.unauthorizedForAdapter(this.adapterName)
+        this.unauthorizedAction()
     }
 
     public func end(): Unit {
-        this.response.endForAdapter(this.adapterName)
+        if (this.endAvailable) {
+            this.endAction()
+        }
     }
 }
 
@@ -363,6 +624,12 @@ public class MissingWebhookBodyError <: Exception {
     }
 }
 
+public class WebhookUpdateSourceError <: Exception {
+    public init(message: String) {
+        super(message)
+    }
+}
+
 public func upstreamFrameworkAdapterNames(): Array<String> {
     [
         "aws-lambda",
@@ -390,30 +657,7 @@ public func upstreamFrameworkAdapterNames(): Array<String> {
 }
 
 public func registeredFrameworkAdapterNames(): Array<String> {
-    [
-        "callback",
-        "aws-lambda",
-        "aws-lambda-async",
-        "azure",
-        "azure-v4",
-        "bun",
-        "cloudflare",
-        "cloudflare-mod",
-        "elysia",
-        "express",
-        "fastify",
-        "hono",
-        "http",
-        "https",
-        "koa",
-        "next-js",
-        "nhttp",
-        "oak",
-        "serveHttp",
-        "std/http",
-        "sveltekit",
-        "worktop"
-    ]
+    upstreamFrameworkAdapterNames()
 }
 
 public func registeredFrameworkAdapterCount(): Int64 {
@@ -465,8 +709,11 @@ public func adapterHandlerReturnKind(name: String): String {
     if (name == "azure-v4") {
         return "promise-azure-response"
     }
-    if (name == "elysia" || name == "hono") {
-        return "promise-string-or-response"
+    if (name == "elysia") {
+        return "promise-string"
+    }
+    if (name == "hono") {
+        return "promise-response"
     }
     "promise-response"
 }
@@ -492,9 +739,6 @@ public func adapterResponseDelivery(name: String): String {
         name == "oak" ||
         name == "worktop") {
         return "mutable-response"
-    }
-    if (name == "callback") {
-        return "callback-return"
     }
     "unknown"
 }
@@ -523,8 +767,7 @@ public func adapterUpdateSource(name: String): String {
         name == "fastify" ||
         name == "koa" ||
         name == "next-js" ||
-        name == "nhttp" ||
-        name == "callback") {
+        name == "nhttp") {
         return "body-object"
     }
     if (name == "http" || name == "https") {
@@ -544,9 +787,6 @@ public func adapterHeaderSource(name: String): String {
         name == "https" ||
         name == "next-js") {
         return "headers-lowercase"
-    }
-    if (name == "callback") {
-        return "callback-argument"
     }
     return "headers-get-canonical"
 }
@@ -592,9 +832,6 @@ public func adapterEndProtocol(name: String): String {
     }
     if (name == "worktop") {
         return "res-end-null"
-    }
-    if (name == "callback") {
-        return "callback-default-200"
     }
     "unknown"
 }
@@ -647,9 +884,6 @@ public func adapterRespondProtocol(name: String): String {
     if (name == "worktop") {
         return "res-send-200"
     }
-    if (name == "callback") {
-        return "callback-json"
-    }
     "unknown"
 }
 
@@ -701,9 +935,6 @@ public func adapterUnauthorizedProtocol(name: String): String {
     if (name == "worktop") {
         return "res-send-401"
     }
-    if (name == "callback") {
-        return "callback-unauthorized-json"
-    }
     "unknown"
 }
 
@@ -714,10 +945,7 @@ public func adapterEndStatusCode(name: String): Int64 {
     200
 }
 
-public func adapterEndBody(name: String): String {
-    if (name == "azure" || name == "fastify" || name == "hono" || name == "koa" || name == "worktop") {
-        return ""
-    }
+public func adapterEndBody(_name: String): String {
     ""
 }
 
@@ -742,8 +970,7 @@ public func adapterUnauthorizedBody(name: String): String {
         name == "oak") {
         return ""
     }
-    if (name == "callback" ||
-        name == "bun" ||
+    if (name == "bun" ||
         name == "cloudflare" ||
         name == "cloudflare-mod" ||
         name == "serveHttp" ||
@@ -763,7 +990,6 @@ public func frameworkAdapterContract(name: String): FrameworkAdapterContract {
 
 public func frameworkAdapterContracts(): Array<FrameworkAdapterContract> {
     [
-        FrameworkAdapterContract("callback"),
         FrameworkAdapterContract("aws-lambda"),
         FrameworkAdapterContract("aws-lambda-async"),
         FrameworkAdapterContract("azure"),
@@ -792,45 +1018,204 @@ public func createReqResHandler(adapterName: String, request: WebhookRequest): R
     if (!adapterIsSupported(adapterName)) {
         throw UnsupportedAdapterError(adapterName)
     }
-    let response = WebhookResponse(adapterName)
-    ReqResHandler(
-        request,
-        headerValueForAdapter(adapterName, request.headers),
-        headerPresentForAdapter(adapterName, request.headers),
-        response,
-        adapterName
-    )
+    createNativeAdapterReqResHandler(adapterName, request)
+}
+
+public func frameworkAdapter(name: String): FrameworkAdapter {
+    if (name == "aws-lambda") { return awsLambdaAdapter }
+    if (name == "aws-lambda-async") { return awsLambdaAsyncAdapter }
+    if (name == "azure") { return azureAdapter }
+    if (name == "azure-v4") { return azureV4Adapter }
+    if (name == "bun") { return bunAdapter }
+    if (name == "cloudflare") { return cloudflareAdapter }
+    if (name == "cloudflare-mod") { return cloudflareModuleAdapter }
+    if (name == "elysia") { return elysiaAdapter }
+    if (name == "express") { return expressAdapter }
+    if (name == "fastify") { return fastifyAdapter }
+    if (name == "hono") { return honoAdapter }
+    if (name == "http") { return nodeHttpAdapter }
+    if (name == "https") { return httpsAdapter }
+    if (name == "koa") { return koaAdapter }
+    if (name == "next-js") { return nextJsAdapter }
+    if (name == "nhttp") { return nhttpAdapter }
+    if (name == "oak") { return oakAdapter }
+    if (name == "serveHttp") { return serveHttpAdapter }
+    if (name == "std/http") { return stdHttpAdapter }
+    if (name == "sveltekit") { return sveltekitAdapter }
+    if (name == "worktop") { return worktopAdapter }
+    throw UnsupportedAdapterError(name)
 }
 
 public func callbackAdapter(update: Update, header: String): ReqResHandler {
+    callbackAdapter(update, header, { _json: String => () })
+}
+
+public func callbackAdapter(update: Update, header: String, callback: WebhookRespondAction): ReqResHandler {
     let headers = WebhookHeaders().set(SECRET_HEADER, header)
-    createReqResHandler("callback", WebhookRequest(update, headers, "callback"))
+    let request = WebhookRequest(update, headers, "callback")
+    let response = WebhookResponse("callback")
+    ReqResHandler(
+        "callback",
+        header,
+        !header.isEmpty(),
+        response,
+        request.updateDelayMilliseconds,
+        false,
+        { => request.readBodyObject("callback") },
+        { json: String =>
+            callback(json)
+            response.recordCallback(200, json, "application/json")
+        },
+        { =>
+            callback("\"unauthorized\"")
+            response.recordCallback(401, "\"unauthorized\"", "")
+        },
+        { => () }
+    )
+}
+
+public func callbackRequestAdapter(request: WebhookRequest): ReqResHandler {
+    let response = WebhookResponse("callback")
+    ReqResHandler(
+        "callback",
+        request.secretHeader(),
+        request.secretHeaderPresent(),
+        response,
+        request.updateDelayMilliseconds,
+        false,
+        { => request.readBodyObject("callback") },
+        { json: String => response.recordCallback(200, json, "application/json") },
+        { => response.recordCallback(401, "\"unauthorized\"", "") },
+        { => () }
+    )
 }
 
 public func nodeHttpAdapter(request: WebhookRequest): ReqResHandler {
-    createReqResHandler("http", request)
+    createNativeAdapterReqResHandler("http", request)
 }
 
 public func expressAdapter(request: WebhookRequest): ReqResHandler {
-    createReqResHandler("express", request)
+    createNativeAdapterReqResHandler("express", request)
+}
+
+public func awsLambdaAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("aws-lambda", request)
+}
+
+public func awsLambdaAsyncAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("aws-lambda-async", request)
+}
+
+public func azureAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("azure", request)
+}
+
+public func azureV4Adapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("azure-v4", request)
+}
+
+public func bunAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("bun", request)
+}
+
+public func cloudflareAdapter(request: WebhookRequest): ReqResHandler {
+    let handler = createNativeAdapterReqResHandler("cloudflare", request)
+    handler.response.respondWithRegistered = true
+    handler
+}
+
+public func cloudflareModuleAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("cloudflare-mod", request)
+}
+
+public func elysiaAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("elysia", request)
+}
+
+public func fastifyAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("fastify", request)
+}
+
+public func honoAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("hono", request)
+}
+
+public func httpsAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("https", request)
+}
+
+public func koaAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("koa", request)
+}
+
+public func nextJsAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("next-js", request)
+}
+
+public func nhttpAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("nhttp", request)
+}
+
+public func oakAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("oak", request)
+}
+
+public func serveHttpAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("serveHttp", request)
+}
+
+public func stdHttpAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("std/http", request)
+}
+
+public func sveltekitAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("sveltekit", request)
+}
+
+public func worktopAdapter(request: WebhookRequest): ReqResHandler {
+    createNativeAdapterReqResHandler("worktop", request)
+}
+
+private func createNativeAdapterReqResHandler(adapterName: String, request: WebhookRequest): ReqResHandler {
+    let response = WebhookResponse(adapterName)
+    ReqResHandler(
+        adapterName,
+        headerValueForAdapter(adapterName, request),
+        headerPresentForAdapter(adapterName, request),
+        response,
+        request.updateDelayMilliseconds,
+        true,
+        updateResolverForAdapter(adapterName, request),
+        { json: String => response.recordAdapterRespond(adapterName, json) },
+        { => response.recordAdapterUnauthorized(adapterName) },
+        { => response.recordAdapterEnd(adapterName) }
+    )
+}
+
+private func updateResolverForAdapter(adapterName: String, request: WebhookRequest): WebhookUpdateResolver {
+    let source = adapterUpdateSource(adapterName)
+    if (source == "body-object") {
+        return { => request.readBodyObject(adapterName) }
+    }
+    if (source == "event.body-json") {
+        return { => request.readOptionalEventBody(adapterName) }
+    }
+    if (source == "node-raw-json-stream") {
+        return { => request.readRawStream(adapterName) }
+    }
+    { => request.readJson(adapterName) }
 }
 
 private func adapterReason(name: String): String {
-    if (name == "callback") {
-        return "Cangjie callback adapter mirrors grammY's test adapter."
-    }
     if (name == "http" || name == "https") {
-        return "Node http/https contract mirrored by WebhookRequest/WebhookResponse fakes."
+        return "Node http/https adapter reads raw JSON stream and writes with writeHead/end."
     }
-    "Upstream grammY adapter contract mirrored by WebhookRequest/WebhookResponse fakes."
+    "Upstream grammY adapter request, header, response, and handlerReturn semantics are mirrored by injectable fake framework objects."
 }
 
-private func headerValueForAdapter(adapterName: String, headers: WebhookHeaders): String {
+private func headerValueForAdapter(adapterName: String, request: WebhookRequest): String {
     if (adapterName == "aws-lambda" || adapterName == "aws-lambda-async") {
-        if (headers.hasExact(SECRET_HEADER)) {
-            return headers.getExact(SECRET_HEADER)
-        }
-        return headers.getExact(SECRET_HEADER_LOWERCASE)
+        return request.headerAws()
     }
     if (adapterName == "azure" ||
         adapterName == "elysia" ||
@@ -838,53 +1223,24 @@ private func headerValueForAdapter(adapterName: String, headers: WebhookHeaders)
         adapterName == "http" ||
         adapterName == "https" ||
         adapterName == "next-js") {
-        return headers.getExact(SECRET_HEADER_LOWERCASE)
+        return request.headerLowercaseExact()
     }
-    return headers.get(SECRET_HEADER)
+    request.headerCanonical()
 }
 
-private func headerPresentForAdapter(adapterName: String, headers: WebhookHeaders): Bool {
+private func headerPresentForAdapter(adapterName: String, request: WebhookRequest): Bool {
     if (adapterName == "aws-lambda" || adapterName == "aws-lambda-async") {
-        headers.hasExact(SECRET_HEADER) || headers.hasExact(SECRET_HEADER_LOWERCASE)
+        request.headerAwsPresent()
     } else if (adapterName == "azure" ||
         adapterName == "elysia" ||
         adapterName == "fastify" ||
         adapterName == "http" ||
         adapterName == "https" ||
         adapterName == "next-js") {
-        headers.hasExact(SECRET_HEADER_LOWERCASE)
+        request.headerLowercaseExactPresent()
     } else {
-        headers.has(SECRET_HEADER)
+        request.headerCanonicalPresent()
     }
-}
-
-private func resolveUpdateForAdapter(adapterName: String, request: WebhookRequest): Update {
-    let source = adapterUpdateSource(adapterName)
-    if (source == "body-object") {
-        if (!request.bodyPresent) {
-            throw MissingWebhookBodyError(adapterName)
-        }
-        return request.update
-    }
-    if (source == "event.body-json") {
-        if (!request.bodyPresent) {
-            return Update(0)
-        }
-        return parseRawUpdateOrFallback(adapterName, request.rawBody, request.update)
-    }
-    if (source == "node-raw-json-stream") {
-        if (!request.bodyPresent) {
-            throw MissingWebhookBodyError(adapterName)
-        }
-        if (request.rawBody.isEmpty()) {
-            return request.update
-        }
-        return parseRawUpdate(adapterName, request.rawBody)
-    }
-    if (!request.bodyPresent) {
-        throw MissingWebhookBodyError(adapterName)
-    }
-    parseRawUpdateOrFallback(adapterName, request.rawBody, request.update)
 }
 
 private func parseRawUpdateOrFallback(adapterName: String, rawBody: String, fallback: Update): Update {

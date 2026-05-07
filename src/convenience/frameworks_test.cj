@@ -25,52 +25,84 @@ private func updateSourceUsesJson(adapterName: String): Bool {
     adapterUpdateSource(adapterName) != "body-object"
 }
 
+private func assertBodySourceWasRead(adapterName: String, request: WebhookRequest): Unit {
+    let source = adapterUpdateSource(adapterName)
+    if (source == "body-object") {
+        @Expect(request.bodyObjectReads, 1)
+        @Expect(request.jsonReads, 0)
+        @Expect(request.rawStreamReads, 0)
+    } else if (source == "node-raw-json-stream") {
+        @Expect(request.bodyObjectReads, 0)
+        @Expect(request.jsonReads, 0)
+        @Expect(request.rawStreamReads, 1)
+    } else {
+        @Expect(request.bodyObjectReads, 0)
+        @Expect(request.jsonReads, 1)
+        @Expect(request.rawStreamReads, 0)
+    }
+}
+
 @Test
 public class FrameworkAdaptersTest {
     @TestCase
-    public func frameworkAdaptersMirrorUpstreamRequestResponseContracts(): Unit {
+    public func registryContainsExactlyUpstreamTwentyOneAdapters(): Unit {
         @Expect(upstreamFrameworkAdapterCount(), 21)
-        @Expect(registeredFrameworkAdapterCount(), 22)
-        @Expect(adapterStatus("callback").supported, true)
+        @Expect(registeredFrameworkAdapterCount(), 21)
+        @Expect(adapterStatus("callback").supported, false)
         @Expect(adapterStatus("unknown").supported, false)
 
-        var updateId: Int64 = 100
         for (contract in frameworkAdapterContracts()) {
             @Expect(hasAdapterStatus(contract.name), true)
             @Expect(adapterStatus(contract.name).supported, true)
             @Expect(adapterStatus(contract.name).name, contract.name)
             @Expect(adapterStatus(contract.name).reason.isEmpty(), false)
+        }
+    }
 
+    @TestCase
+    public func eachAdapterReadsUpstreamBodyAndSecretHeaderSource(): Unit {
+        var updateId: Int64 = 100
+        for (contract in frameworkAdapterContracts()) {
             let headers = WebhookHeaders()
                 .set(SECRET_HEADER_LOWERCASE, "secret-lower")
                 .set(SECRET_HEADER, "secret-canonical")
-            let request = WebhookRequest(Update(updateId), "{\"update_id\":${updateId}}", headers, contract.name)
-            let handler = createReqResHandler(contract.name, request)
+            let request = adapterRequest(contract.name, updateId, headers)
+            let handler = frameworkAdapter(contract.name)(request)
 
             @Expect(handler.adapterName, contract.name)
             @Expect(handler.update.updateId, updateId)
             @Expect(handler.header, expectedHeaderFromDualSource(contract.name))
             @Expect(handler.headerPresent, true)
-            @Expect(handler.handlerReturn.handlerReturnAvailable, contract.handlerReturnAvailable)
-            @Expect(handler.handlerReturn.handlerReturnKind, contract.handlerReturnKind)
+            @Expect(request.headerReads, 1)
             @Expect(handler.response.updateSource, contract.updateSource)
             @Expect(handler.response.headerSource, contract.headerSource)
-            @Expect(handler.response.responseDelivery, contract.responseDelivery)
+            assertBodySourceWasRead(contract.name, request)
 
-            let endHandler = createReqResHandler(contract.name, request)
+            updateId += 1
+        }
+    }
+
+    @TestCase
+    public func eachAdapterEndsRespondsAndRejectsWithUpstreamSemantics(): Unit {
+        var updateId: Int64 = 200
+        for (contract in frameworkAdapterContracts()) {
+            let request = adapterRequest(contract.name, updateId, testHeaders("secret"))
+
+            let endHandler = frameworkAdapter(contract.name)(request)
             endHandler.end()
             @Expect(endHandler.response.statusCode, contract.endStatusCode)
             @Expect(endHandler.response.body, contract.endBody)
             @Expect(endHandler.response.ended, true)
             @Expect(endHandler.response.lastAction, "end")
             @Expect(endHandler.response.endProtocol, contract.endProtocol)
+            @Expect(endHandler.response.responseDelivery, contract.responseDelivery)
+            @Expect(endHandler.response.handlerReturnAvailable, contract.handlerReturnAvailable)
+            @Expect(endHandler.response.handlerReturnKind, contract.handlerReturnKind)
             if (contract.handlerReturnAvailable) {
                 @Expect(endHandler.response.handlerReturnResolved, true)
-            } else {
-                @Expect(contract.responseDelivery.isEmpty(), false)
             }
 
-            let respondHandler = createReqResHandler(contract.name, request)
+            let respondHandler = frameworkAdapter(contract.name)(request)
             respondHandler.respond("{\"method\":\"sendMessage\"}")
             @Expect(respondHandler.response.statusCode, 200)
             @Expect(respondHandler.response.contentType, "application/json")
@@ -82,7 +114,7 @@ public class FrameworkAdaptersTest {
                 @Expect(respondHandler.response.handlerReturnResolved, true)
             }
 
-            let unauthorizedHandler = createReqResHandler(contract.name, request)
+            let unauthorizedHandler = frameworkAdapter(contract.name)(request)
             unauthorizedHandler.unauthorized()
             @Expect(unauthorizedHandler.response.statusCode, 401)
             @Expect(unauthorizedHandler.response.body, contract.unauthorizedBody)
@@ -99,7 +131,7 @@ public class FrameworkAdaptersTest {
     }
 
     @TestCase
-    public func webhookCallbacksDriveEveryAdapterFakeProtocol(): Unit {
+    public func webhookCallbacksDriveEveryRegisteredAdapterThroughRealAdapter(): Unit {
         var updateId: Int64 = 400
         for (contract in frameworkAdapterContracts()) {
             let normalHandler = FakeWebhookUpdateHandler()
@@ -130,6 +162,7 @@ public class FrameworkAdaptersTest {
 
             @Expect(reply.usedWebhookReply, true)
             @Expect(reply.response.responded, true)
+            @Expect(reply.response.ended, false)
             @Expect(reply.response.contentType, "application/json")
             @Expect(reply.response.body, "{\"method\":\"sendMessage\",\"adapter\":\"${contract.name}\"}")
             if (contract.handlerReturnAvailable) {
@@ -146,8 +179,7 @@ public class FrameworkAdaptersTest {
             if (updateSourceUsesJson(contract.name)) {
                 var thrown = false
                 try {
-                    let handler = createReqResHandler(
-                        contract.name,
+                    let handler = frameworkAdapter(contract.name)(
                         WebhookRequest.raw("{", WebhookHeaders(), contract.name)
                     )
                     let _ = handler.update
@@ -163,8 +195,7 @@ public class FrameworkAdaptersTest {
     @TestCase
     public func missingBodiesFollowAdapterBodySourceContract(): Unit {
         for (contract in frameworkAdapterContracts()) {
-            let handler = createReqResHandler(
-                contract.name,
+            let handler = frameworkAdapter(contract.name)(
                 WebhookRequest.missingBody(WebhookHeaders(), contract.name)
             )
             if (contract.name == "aws-lambda" || contract.name == "aws-lambda-async") {
@@ -187,24 +218,24 @@ public class FrameworkAdaptersTest {
         let awsHeaders = WebhookHeaders()
             .set(SECRET_HEADER_LOWERCASE, "lower")
             .set(SECRET_HEADER, "canonical")
-        let aws = createReqResHandler("aws-lambda", adapterRequest("aws-lambda", 500, awsHeaders))
+        let aws = awsLambdaAdapter(adapterRequest("aws-lambda", 500, awsHeaders))
         @Expect(aws.header, "canonical")
         @Expect(aws.headerPresent, true)
 
         let fastifyHeaders = WebhookHeaders()
             .set(SECRET_HEADER, "canonical")
             .set(SECRET_HEADER_LOWERCASE, "lower")
-        let fastify = createReqResHandler("fastify", adapterRequest("fastify", 501, fastifyHeaders))
+        let fastify = fastifyAdapter(adapterRequest("fastify", 501, fastifyHeaders))
         @Expect(fastify.header, "lower")
 
         let httpHeaders = WebhookHeaders()
             .setValues(SECRET_HEADER_LOWERCASE, ["first", "second"])
-        let http = createReqResHandler("http", adapterRequest("http", 502, httpHeaders))
+        let http = nodeHttpAdapter(adapterRequest("http", 502, httpHeaders))
         @Expect(http.header, "first")
 
         let fetchHeaders = WebhookHeaders()
             .set(SECRET_HEADER_LOWERCASE, "fetch-lower")
-        let bun = createReqResHandler("bun", adapterRequest("bun", 503, fetchHeaders))
+        let bun = bunAdapter(adapterRequest("bun", 503, fetchHeaders))
         @Expect(bun.header, "fetch-lower")
     }
 
@@ -247,8 +278,7 @@ public class FrameworkAdaptersTest {
 
     @TestCase
     public func nonEmptyRawJsonWithoutUpdateIdIsMalformed(): Unit {
-        let handler = createReqResHandler(
-            "bun",
+        let handler = bunAdapter(
             WebhookRequest.raw("{,}", WebhookHeaders(), "bun")
         )
         var thrown = false
@@ -261,6 +291,17 @@ public class FrameworkAdaptersTest {
         }
 
         @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func callbackAdapterExistsOnlyAsWebhookTestAdapter(): Unit {
+        @Expect(adapterIsSupported("callback"), false)
+        let callback = callbackAdapter(Update(900), "secret")
+        @Expect(callback.adapterName, "callback")
+        @Expect(callback.header, "secret")
+        callback.respond("{\"ok\":true}")
+        @Expect(callback.response.responded, true)
+        @Expect(callback.response.body, "{\"ok\":true}")
     }
 
     @TestCase

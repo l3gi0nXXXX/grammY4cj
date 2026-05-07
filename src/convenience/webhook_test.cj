@@ -59,8 +59,8 @@ public class WebhookCallbackTest {
         let first = callback.handle(WebhookRequest(Update(201), WebhookHeaders(), "callback"))
         let second = callback.handle(WebhookRequest(Update(202), WebhookHeaders(), "callback"))
 
-        @Expect(first.response.ended, true)
-        @Expect(second.response.ended, true)
+        @Expect(first.response.ended, false)
+        @Expect(second.response.ended, false)
         @Expect(runtime.getMeCalls, 1)
         @Expect(recording.contexts.size, 2)
         @Expect(recording.contexts[0].update.updateId, 201)
@@ -159,6 +159,40 @@ public class WebhookCallbackTest {
     }
 
     @TestCase
+    public func legacyOptionsOverloadAndCustomAdapterAreAccepted(): Unit {
+        let legacyHandler = FakeWebhookUpdateHandler()
+        let legacy = webhookCallback(
+            legacyHandler,
+            "callback",
+            WEBHOOK_TIMEOUT_RETURN,
+            100,
+            "shared-secret"
+        )
+        let legacyResult = legacy.handle(WebhookRequest(
+            Update(239),
+            WebhookHeaders().set(SECRET_HEADER, "shared-secret"),
+            "callback"
+        ))
+
+        @Expect(legacyResult.unauthorized, false)
+        @Expect(legacyHandler.handleUpdateCount, 1)
+
+        let customHandler = FakeWebhookUpdateHandler()
+        let custom = webhookCallback(customHandler, { request: WebhookRequest =>
+            expressAdapter(request)
+        }, WebhookOptions("custom-secret"))
+        let customResult = custom.handle(WebhookRequest(
+            Update(240),
+            WebhookHeaders().set(SECRET_HEADER, "custom-secret"),
+            "express"
+        ))
+
+        @Expect(customResult.unauthorized, false)
+        @Expect(customResult.response.responseDelivery, "mutable-response")
+        @Expect(customHandler.lastUpdateId, 240)
+    }
+
+    @TestCase
     public func webhookReplyRespondsWithJsonInsteadOfEnd(): Unit {
         let handler = FakeWebhookUpdateHandler()
         handler.webhookReplyJson = "{\"method\":\"sendMessage\"}"
@@ -195,7 +229,7 @@ public class WebhookCallbackTest {
         let result = callback.handle(WebhookRequest(Update(211), WebhookHeaders(), "callback"))
 
         @Expect(result.timedOut, true)
-        @Expect(result.response.ended, true)
+        @Expect(result.response.ended, false)
         @Expect(handler.handleUpdateCount, 1)
         @Expect(handler.lastUpdateId, 211)
     }
@@ -261,10 +295,78 @@ public class WebhookCallbackTest {
         let result = callback.handle(WebhookRequest(Update(215), WebhookHeaders(), "callback"))
 
         @Expect(result.timedOut, true)
-        @Expect(result.response.ended, true)
+        @Expect(result.response.ended, false)
         @Expect(result.response.responded, false)
         @Expect(result.response.lateWebhookReplySent, true)
         @Expect(result.response.lateWebhookReplyPayload, "{\"ok\":true}")
+    }
+
+    @TestCase
+    public func updateSourceFailureIsPropagatedBeforeTimeout(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        let callback = webhookCallback(handler, "http", WebhookOptions(WEBHOOK_TIMEOUT_THROW, 200, ""))
+        var thrown = false
+
+        try {
+            let _ = callback.handle(WebhookRequest.failing(
+                Update(241),
+                "{\"update_id\":241}",
+                WebhookHeaders(),
+                "http",
+                "request body failed"
+            ))
+        } catch (e: WebhookUpdateSourceError) {
+            thrown = true
+            @Expect(e.message, "request body failed")
+        }
+
+        @Expect(thrown, true)
+        @Expect(handler.handleUpdateCount, 0)
+    }
+
+    @TestCase
+    public func updateSourceTimeoutUsesThrowOrReturnStrategy(): Unit {
+        let returnHandler = FakeWebhookUpdateHandler()
+        let returnCallback = webhookCallback(
+            returnHandler,
+            "http",
+            WebhookOptions(WEBHOOK_TIMEOUT_RETURN, 10, "")
+        )
+        let returned = returnCallback.handle(WebhookRequest.delayed(
+            Update(242),
+            "{\"update_id\":242}",
+            WebhookHeaders(),
+            "http",
+            25
+        ))
+
+        @Expect(returned.timedOut, true)
+        @Expect(returned.response.ended, true)
+        @Expect(returned.updateId, 0)
+        @Expect(returnHandler.handleUpdateCount, 1)
+
+        let throwHandler = FakeWebhookUpdateHandler()
+        let throwCallback = webhookCallback(
+            throwHandler,
+            "http",
+            WebhookOptions(WEBHOOK_TIMEOUT_THROW, 10, "")
+        )
+        var thrown = false
+        try {
+            let _ = throwCallback.handle(WebhookRequest.delayed(
+                Update(243),
+                "{\"update_id\":243}",
+                WebhookHeaders(),
+                "http",
+                25
+            ))
+        } catch (e: WebhookTimeoutError) {
+            thrown = true
+            @Expect(e.timeoutMilliseconds, 10)
+        }
+
+        @Expect(thrown, true)
+        @Expect(throwHandler.handleUpdateCount, 1)
     }
 
     @TestCase
@@ -364,7 +466,7 @@ public class WebhookCallbackTest {
 
         let result = callback.handle(webhookRequest("elysia", 223))
 
-        @Expect(result.response.handlerReturnKind, "promise-string-or-response")
+        @Expect(result.response.handlerReturnKind, "promise-string")
         @Expect(result.response.respondProtocol, "set-content-type-resolve-json")
         @Expect(result.response.body, "{\"ok\":true}")
     }
@@ -402,7 +504,7 @@ public class WebhookCallbackTest {
         let result = callback.handle(webhookRequest("hono", 226))
 
         @Expect(result.response.handlerReturnAvailable, true)
-        @Expect(result.response.handlerReturnKind, "promise-string-or-response")
+        @Expect(result.response.handlerReturnKind, "promise-response")
         @Expect(result.response.endProtocol, "resolve-empty-body")
     }
 
@@ -478,7 +580,7 @@ public class WebhookCallbackTest {
         let result = noTimeoutCallback.handle(webhookRequest("callback", 238))
 
         @Expect(result.timedOut, false)
-        @Expect(result.response.ended, true)
+        @Expect(result.response.ended, false)
         @Expect(noTimeoutHandler.handleUpdateCount, 1)
     }
 }

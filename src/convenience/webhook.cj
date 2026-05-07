@@ -191,43 +191,56 @@ public class WebhookCallbackResult {
 public class WebhookCallback {
     public let handler: WebhookUpdateHandler
     public let adapterName: String
+    public let adapter: FrameworkAdapter
     public let options: WebhookOptions
+    private var initialized: Bool = false
 
     public init(handler: WebhookUpdateHandler, adapterName: String, options: WebhookOptions) {
         this.handler = handler
         this.adapterName = adapterName
+        this.adapter = adapterForWebhook(adapterName)
+        this.options = options
+    }
+
+    public init(handler: WebhookUpdateHandler, adapterName: String, adapter: FrameworkAdapter, options: WebhookOptions) {
+        this.handler = handler
+        this.adapterName = adapterName
+        this.adapter = adapter
         this.options = options
     }
 
     public func handle(request: WebhookRequest): WebhookCallbackResult {
         this.rejectLongPollingConflict()
-        let reqRes = createReqResHandler(this.adapterName, request)
-        this.handler.ensureInitialized()
+        let reqRes = this.adapter(request)
+        if (!this.initialized) {
+            this.handler.ensureInitialized()
+            this.initialized = true
+        }
 
         if (!secretTokenMatches(reqRes.header, this.options.secretToken, this.options.secretTokenConfigured, reqRes.headerPresent)) {
             reqRes.unauthorized()
             return WebhookCallbackResult(reqRes.handlerReturn, true, false, false, 0)
         }
 
-        if (this.shouldTimeout()) {
-            if (this.options.onTimeout == WEBHOOK_TIMEOUT_THROW) {
-                this.recordBackgroundUpdate(reqRes)
-                throw WebhookTimeoutError(this.options.timeoutMilliseconds)
-            }
-            this.runTimeoutCallback()
-            reqRes.end()
-            this.recordBackgroundUpdate(reqRes)
-            return WebhookCallbackResult(reqRes.handlerReturn, false, true, false, reqRes.update.updateId)
+        let updateDelay = reqRes.updateDelayMilliseconds
+        let handlerDelay = this.handler.simulatedDelayMilliseconds()
+        if (this.updateSourceTimesOut(updateDelay)) {
+            return this.timeoutBeforeUpdateResolves(reqRes)
+        }
+
+        let update = reqRes.update
+        if (this.updateHandlerTimesOut(updateDelay, handlerDelay)) {
+            return this.timeoutAfterUpdateResolves(reqRes, update)
         }
 
         let webhookReplyEnvelope = WebhookReplyEnvelope()
-        this.handler.handleUpdate(reqRes.update, webhookReplyEnvelope)
+        this.handler.handleUpdate(update, webhookReplyEnvelope)
         if (webhookReplyEnvelope.sent) {
             reqRes.respond(webhookReplyEnvelope.payload)
         } else {
             reqRes.end()
         }
-        WebhookCallbackResult(reqRes.handlerReturn, false, false, webhookReplyEnvelope.sent, reqRes.update.updateId)
+        WebhookCallbackResult(reqRes.handlerReturn, false, false, webhookReplyEnvelope.sent, update.updateId)
     }
 
     private func rejectLongPollingConflict(): Unit {
@@ -238,9 +251,39 @@ public class WebhookCallback {
         }
     }
 
-    private func shouldTimeout(): Bool {
-        this.options.timeoutMilliseconds >= 0 &&
-            this.handler.simulatedDelayMilliseconds() > this.options.timeoutMilliseconds
+    private func updateSourceTimesOut(updateDelayMilliseconds: Int64): Bool {
+        this.timeoutEnabled() && updateDelayMilliseconds > this.options.timeoutMilliseconds
+    }
+
+    private func updateHandlerTimesOut(updateDelayMilliseconds: Int64, handlerDelayMilliseconds: Int64): Bool {
+        this.timeoutEnabled() &&
+            updateDelayMilliseconds + handlerDelayMilliseconds > this.options.timeoutMilliseconds
+    }
+
+    private func timeoutEnabled(): Bool {
+        this.options.timeoutMilliseconds >= 0
+    }
+
+    private func timeoutBeforeUpdateResolves(reqRes: ReqResHandler): WebhookCallbackResult {
+        if (this.options.onTimeout == WEBHOOK_TIMEOUT_THROW) {
+            this.recordBackgroundUpdate(reqRes)
+            throw WebhookTimeoutError(this.options.timeoutMilliseconds)
+        }
+        this.runTimeoutCallback()
+        reqRes.end()
+        this.recordBackgroundUpdate(reqRes)
+        WebhookCallbackResult(reqRes.handlerReturn, false, true, false, 0)
+    }
+
+    private func timeoutAfterUpdateResolves(reqRes: ReqResHandler, update: Update): WebhookCallbackResult {
+        if (this.options.onTimeout == WEBHOOK_TIMEOUT_THROW) {
+            this.recordBackgroundUpdate(reqRes, update)
+            throw WebhookTimeoutError(this.options.timeoutMilliseconds)
+        }
+        this.runTimeoutCallback()
+        reqRes.end()
+        this.recordBackgroundUpdate(reqRes, update)
+        WebhookCallbackResult(reqRes.handlerReturn, false, true, false, update.updateId)
     }
 
     private func runTimeoutCallback(): Unit {
@@ -254,11 +297,23 @@ public class WebhookCallback {
     }
 
     private func recordBackgroundUpdate(reqRes: ReqResHandler): Unit {
+        try {
+            this.recordBackgroundUpdate(reqRes, reqRes.update)
+        } catch (_e: Exception) {
+            ()
+        }
+    }
+
+    private func recordBackgroundUpdate(reqRes: ReqResHandler, update: Update): Unit {
         let envelope = WebhookReplyEnvelope()
-        this.handler.handleUpdate(reqRes.update, envelope)
-        if (envelope.sent) {
-            reqRes.response.lateWebhookReplySent = true
-            reqRes.response.lateWebhookReplyPayload = envelope.payload
+        try {
+            this.handler.handleUpdate(update, envelope)
+            if (envelope.sent) {
+                reqRes.response.lateWebhookReplySent = true
+                reqRes.response.lateWebhookReplyPayload = envelope.payload
+            }
+        } catch (_e: Exception) {
+            ()
         }
     }
 }
@@ -269,6 +324,18 @@ public func webhookCallback(handler: FakeWebhookUpdateHandler, adapterName: Stri
 
 public func webhookCallback(handler: FakeWebhookUpdateHandler, adapterName: String, options: WebhookOptions): WebhookCallback {
     WebhookCallback(handler, adapterName, options)
+}
+
+public func webhookCallback(handler: FakeWebhookUpdateHandler, adapterName: String, onTimeout: String, timeoutMilliseconds: Int64, secretToken: String): WebhookCallback {
+    WebhookCallback(handler, adapterName, WebhookOptions(onTimeout, timeoutMilliseconds, secretToken, true))
+}
+
+public func webhookCallback(handler: FakeWebhookUpdateHandler, adapter: FrameworkAdapter): WebhookCallback {
+    WebhookCallback(handler, "custom", adapter, WebhookOptions())
+}
+
+public func webhookCallback(handler: FakeWebhookUpdateHandler, adapter: FrameworkAdapter, options: WebhookOptions): WebhookCallback {
+    WebhookCallback(handler, "custom", adapter, options)
 }
 
 public func webhookCallback(bot: Bot, adapterName: String): WebhookCallback {
@@ -282,6 +349,30 @@ public func webhookCallback(bot: Bot, adapterName: String, options: WebhookOptio
         )
     }
     WebhookCallback(BotWebhookUpdateHandler(bot), adapterName, options)
+}
+
+public func webhookCallback(bot: Bot, adapterName: String, onTimeout: String, timeoutMilliseconds: Int64, secretToken: String): WebhookCallback {
+    webhookCallback(bot, adapterName, WebhookOptions(onTimeout, timeoutMilliseconds, secretToken, true))
+}
+
+public func webhookCallback(bot: Bot, adapter: FrameworkAdapter): WebhookCallback {
+    webhookCallback(bot, adapter, WebhookOptions())
+}
+
+public func webhookCallback(bot: Bot, adapter: FrameworkAdapter, options: WebhookOptions): WebhookCallback {
+    if (bot.isRunning()) {
+        throw WebhookLongPollingConflictError(
+            "Bot is already running via long polling, the webhook setup won't receive any updates!"
+        )
+    }
+    WebhookCallback(BotWebhookUpdateHandler(bot), "custom", adapter, options)
+}
+
+private func adapterForWebhook(adapterName: String): FrameworkAdapter {
+    if (adapterName == "callback") {
+        return callbackRequestAdapter
+    }
+    frameworkAdapter(adapterName)
 }
 
 public func secretTokenMatches(header: String, token: String): Bool {
