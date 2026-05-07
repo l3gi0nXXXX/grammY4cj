@@ -57,6 +57,15 @@ private func payloadBody(payload: Payload): String {
     ""
 }
 
+private func throwsException(action: () -> Unit): Bool {
+    try {
+        action()
+        false
+    } catch (_: Exception) {
+        true
+    }
+}
+
 @Test
 public class ContextGetterTest {
     @TestCase
@@ -325,11 +334,13 @@ public class ContextShortcutTest {
     public func shortcutMappingTableCoversAvailableApiWrapperSkeleton(): Unit {
         let mappings = contextShortcutMappings()
 
-        @Expect(mappings.size, 15)
-        @Expect(mappings[0].shortcut, "reply")
-        @Expect(mappings[0].apiMethod, "sendMessage")
-        @Expect(mappings[14].shortcut, "replyWithLocation")
-        @Expect(mappings[14].apiMethod, "sendLocation")
+        @Expect(mappings.size, 136)
+        @Expect(contextShortcutApiTargets().size, 136)
+        @Expect(mappings[0].shortcut, "answerCallbackQuery")
+        @Expect(mappings[0].apiMethod, "answerCallbackQuery")
+        @Expect(contextShortcutRequiredContext("answerCallbackQuery"), "callback_query_id")
+        @Expect(contextShortcutRequiredContext("setChatMenuButton"), "none")
+        @Expect(contextShortcutRequiredContext("editMessageTextInline"), "inline_message_id")
     }
 
     @TestCase
@@ -344,5 +355,151 @@ public class ContextShortcutTest {
         @Expect(methodName(payload), "sendMessage")
         @Expect(payloadBody(payload).contains("\"chat_id\":\"777\""), true)
         @Expect(payloadBody(payload).contains("\"text\":\"pong\""), true)
+    }
+
+    @TestCase
+    public func replyFamilyPrefillsChatBusinessThreadAndDirectTopic(): Unit {
+        let chat = Chat(701, "supergroup")
+        let user = User(801, false, "Ada", "ada")
+        let message = Message(901, chat, "incoming", user)
+        message.businessConnectionId = "bc-701"
+        message.isTopicMessage = true
+        message.messageThreadId = 77
+        message.directMessagesTopicId = 88
+        let ctx = testContext(Update.withMessage(101, message))
+
+        let payload = ctx.replyWithChatAction("typing")
+
+        @Expect(methodName(payload), "sendChatAction")
+        @Expect(payloadBody(payload).contains("\"chat_id\":\"701\""), true)
+        @Expect(payloadBody(payload).contains("\"business_connection_id\":\"bc-701\""), true)
+        @Expect(payloadBody(payload).contains("\"message_thread_id\":\"77\""), true)
+        @Expect(payloadBody(payload).contains("\"direct_messages_topic_id\":\"88\""), true)
+        @Expect(payloadBody(payload).contains("\"action\":\"typing\""), true)
+    }
+
+    @TestCase
+    public func editShortcutsSelectMessageOrInlineTarget(): Unit {
+        let chat = Chat(702, "private")
+        let user = User(802, false, "Grace", "grace")
+        let messageCtx = testContext(Update.withMessage(102, Message(902, chat, "incoming", user)))
+
+        let messagePayload = messageCtx.editMessageText("edited")
+
+        @Expect(methodName(messagePayload), "editMessageText")
+        @Expect(payloadBody(messagePayload).contains("\"chat_id\":702"), true)
+        @Expect(payloadBody(messagePayload).contains("\"message_id\":902"), true)
+        @Expect(payloadBody(messagePayload).contains("\"text\":\"edited\""), true)
+
+        let inlineCtx = testContext(Update.withCallbackQuery(
+            103,
+            CallbackQuery(user, "callback-id", "", Message(), "inline-902")
+        ))
+        let inlinePayload = inlineCtx.editMessageText("inline-edited")
+
+        @Expect(methodName(inlinePayload), "editMessageTextInline")
+        @Expect(payloadBody(inlinePayload).contains("\"inline_message_id\":\"inline-902\""), true)
+        @Expect(payloadBody(inlinePayload).contains("\"text\":\"inline-edited\""), true)
+    }
+
+    @TestCase
+    public func adminMemberAndForumShortcutsPrefillContextTargets(): Unit {
+        let chat = Chat(703, "supergroup")
+        let user = User(803, false, "Lin", "lin")
+        let message = Message(903, chat, "topic", user)
+        message.isTopicMessage = true
+        message.messageThreadId = 33
+        let ctx = testContext(Update.withMessage(104, message))
+
+        let ban = ctx.banAuthor()
+        @Expect(methodName(ban), "banChatMember")
+        @Expect(payloadBody(ban).contains("\"chat_id\":703"), true)
+        @Expect(payloadBody(ban).contains("\"user_id\":803"), true)
+
+        let restrict = ctx.restrictChatMember(804, "{\"can_send_messages\":false}")
+        @Expect(methodName(restrict), "restrictChatMember")
+        @Expect(payloadBody(restrict).contains("\"user_id\":804"), true)
+        @Expect(payloadBody(restrict).contains("\"permissions\":{\"can_send_messages\":false}"), true)
+
+        let forum = ctx.closeForumTopic()
+        @Expect(methodName(forum), "closeForumTopic")
+        @Expect(payloadBody(forum).contains("\"chat_id\":703"), true)
+        @Expect(payloadBody(forum).contains("\"message_thread_id\":33"), true)
+    }
+
+    @TestCase
+    public func businessGiftStoryAndReadShortcutsPrefillBusinessConnection(): Unit {
+        let chat = Chat(704, "private")
+        let user = User(804, false, "Edsger", "edsger")
+        let message = Message(904, chat, "business", user)
+        message.businessConnectionId = "bc-704"
+        let ctx = testContext(Update.withMessage(105, message))
+
+        let name = ctx.setBusinessAccountName("NewName")
+        @Expect(methodName(name), "setBusinessAccountName")
+        @Expect(payloadBody(name).contains("\"business_connection_id\":\"bc-704\""), true)
+        @Expect(payloadBody(name).contains("\"first_name\":\"NewName\""), true)
+
+        let checklist = ctx.replyWithChecklist("{\"title\":\"todo\"}")
+        @Expect(methodName(checklist), "sendChecklist")
+        @Expect(payloadBody(checklist).contains("\"chat_id\":704"), true)
+        @Expect(payloadBody(checklist).contains("\"checklist\":{\"title\":\"todo\"}"), true)
+
+        let story = ctx.postStory("{\"type\":\"photo\"}", 86400)
+        @Expect(methodName(story), "postStory")
+        @Expect(payloadBody(story).contains("\"active_period\":86400"), true)
+
+        let read = ctx.readBusinessMessage()
+        @Expect(methodName(read), "readBusinessMessage")
+        @Expect(payloadBody(read).contains("\"message_id\":904"), true)
+    }
+
+    @TestCase
+    public func queryPaymentFileAndMenuShortcutsBuildPayloads(): Unit {
+        let chat = Chat(705, "private")
+        let user = User(805, false, "Barbara", "barbara")
+
+        let callbackCtx = testContext(Update.withCallbackQuery(106, CallbackQuery(user, "callback-id", Message(905, chat, "cb", user))))
+        let callback = callbackCtx.answerCallbackQuery("ok")
+        @Expect(methodName(callback), "answerCallbackQuery")
+        @Expect(payloadBody(callback).contains("\"callback_query_id\":\"callback-id\""), true)
+
+        let inlineCtx = testContext(Update.withInlineQuery(107, InlineQuery(user, "inline-id")))
+        let inline = inlineCtx.answerInlineQuery("[{\"type\":\"article\",\"id\":\"1\"}]")
+        @Expect(methodName(inline), "answerInlineQuery")
+        @Expect(payloadBody(inline).contains("\"inline_query_id\":\"inline-id\""), true)
+        @Expect(payloadBody(inline).contains("\"results\":[{\"type\":\"article\",\"id\":\"1\"}]"), true)
+
+        let shippingCtx = testContext(Update.withShippingQuery(108, ShippingQuery(user, "shipping-id")))
+        let shipping = shippingCtx.answerShippingQuery(true)
+        @Expect(methodName(shipping), "answerShippingQuery")
+        @Expect(payloadBody(shipping).contains("\"shipping_query_id\":\"shipping-id\""), true)
+
+        let profileCtx = testContext(Update.withMessage(109, Message(906, chat, "pay", user)))
+        let profile = profileCtx.getUserProfilePhotos()
+        @Expect(methodName(profile), "getUserProfilePhotos")
+        @Expect(payloadBody(profile).contains("\"user_id\":805"), true)
+
+        let file = profileCtx.getFile("file-805")
+        @Expect(methodName(file), "getFile")
+        @Expect(payloadBody(file).contains("\"file_id\":\"file-805\""), true)
+
+        let menu = profileCtx.setChatMenuButton()
+        @Expect(methodName(menu), "setChatMenuButton")
+        @Expect(payloadBody(menu), "{}")
+    }
+
+    @TestCase
+    public func missingRequiredContextThrowsForEachShortcutFamily(): Unit {
+        let empty = testContext(Update(110))
+
+        @Expect(throwsException({ => empty.reply("no chat") }), true)
+        @Expect(throwsException({ => empty.banAuthor() }), true)
+        @Expect(throwsException({ => empty.closeForumTopic() }), true)
+        @Expect(throwsException({ => empty.getBusinessConnection() }), true)
+        @Expect(throwsException({ => empty.answerInlineQuery("[]") }), true)
+        @Expect(throwsException({ => empty.answerCallbackQuery("missing") }), true)
+        @Expect(throwsException({ => empty.getUserProfilePhotos() }), true)
+        @Expect(throwsException({ => empty.readBusinessMessage() }), true)
     }
 }
