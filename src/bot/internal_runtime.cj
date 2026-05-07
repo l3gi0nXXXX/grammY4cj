@@ -2,6 +2,7 @@ package grammy4cj.bot
 
 import std.collection.ArrayList
 
+import grammy4cj.composer.BotError
 import grammy4cj.core.ApiClientOptions
 import grammy4cj.core.WebhookReplyEnvelope
 import grammy4cj.types.Update
@@ -137,6 +138,10 @@ public class BotUpdateContextBoundary {
 
 public interface BotUpdateHandler {
     func handle(ctx: BotUpdateContextBoundary): Unit
+}
+
+public interface BotErrorHandler {
+    func handle(error: BotError): Unit
 }
 
 public class NoopBotUpdateHandler <: BotUpdateHandler {
