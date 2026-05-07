@@ -8,6 +8,7 @@ PARITY_LEDGER="$REPO_DIR/src/architecture/upstream_test_parity_ledger.tsv"
 PHASE_STATUS="$REPO_DIR/src/architecture/phase_status.tsv"
 GATE_STATUS="$REPO_DIR/src/architecture/gate_status.tsv"
 WORKFLOW_LEDGER="$REPO_DIR/src/architecture/upstream_diff_workflow.tsv"
+ROOT_EXPORT_MANIFEST="$REPO_DIR/src/architecture/root_public_export_manifest.tsv"
 
 failures=0
 
@@ -39,6 +40,7 @@ check_header "$PARITY_LEDGER" 'key	upstream_count	port_count	classification	gate
 check_header "$PHASE_STATUS" 'phase	phase_group	status	evidence	next_action'
 check_header "$GATE_STATUS" 'gate	status	owner_artifact	acceptance	next_action'
 check_header "$WORKFLOW_LEDGER" 'upstream_path	gate	required_checks	docs_impact	note'
+check_header "$ROOT_EXPORT_MANIFEST" 'export_name	module	category	upstream_anchor	note'
 
 if [ -f "$PARITY_LEDGER" ]; then
   parity_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$PARITY_LEDGER")"

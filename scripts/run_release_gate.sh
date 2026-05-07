@@ -32,6 +32,8 @@ run_cjpm_gate() {
     exit 2
   fi
 
+  : "${DYLD_LIBRARY_PATH:=}"
+  export DYLD_LIBRARY_PATH
   . "$CANGJIE_SDK_HOME/envsetup.sh"
 
   if ! command -v cjpm >/dev/null 2>&1; then
@@ -49,6 +51,7 @@ run_cjpm_gate() {
 
 run_step "check_architecture_artifacts" sh "$SCRIPT_DIR/check_architecture_artifacts.sh"
 run_step "check_formal_substitute_ledger" sh "$SCRIPT_DIR/check_formal_substitute_ledger.sh"
+run_step "check_root_public_surface" sh "$SCRIPT_DIR/check_root_public_surface.sh"
 run_step "check_optional_integration_plan" sh "$SCRIPT_DIR/check_optional_integration_plan.sh"
 run_step "check_public_docs" sh "$SCRIPT_DIR/check_public_docs.sh"
 

@@ -1,0 +1,60 @@
+export_name	module	category	upstream_anchor	note
+APIConstants	grammy4cj.convenience	public	grammY/src/mod.ts:25;grammY/src/convenience/constants.ts:32	Cangjie value-level equivalent of upstream ApiConstants interface.
+API_CONSTANTS	grammy4cj.convenience	public	grammY/src/mod.ts:25;grammY/src/convenience/constants.ts:109	Upstream convenience constants root export.
+Api	grammy4cj.core	expert-public	grammY/src/mod.ts:51	Expert public Api class.
+ApiCallFn	grammy4cj.core	expert-public	grammY/src/mod.ts:53	Expert public API call function type.
+ApiClientOptions	grammy4cj.core	expert-public	grammY/src/mod.ts:54	Expert public API client options.
+Bot	grammy4cj.bot	public	grammY/src/mod.ts:3	Common root Bot export.
+BotConfig	grammy4cj.bot	public	grammY/src/mod.ts:4	Common root BotConfig export.
+BotError	grammy4cj.composer	public	grammY/src/mod.ts:5	Common root BotError equivalent.
+Composer	grammy4cj.composer	public	grammY/src/mod.ts:37	Advanced root Composer export.
+Context	grammy4cj.context	public	grammY/src/mod.ts:17	Common root Context export.
+ErrorHandler	grammy4cj.composer	public	grammY/src/mod.ts:6	Common root ErrorHandler equivalent.
+FilterPredicate	grammy4cj.filter	public	grammY/src/mod.ts:48	Cangjie value-level equivalent of upstream Filter type.
+FilterQuery	grammy4cj.filter	public	grammY/src/mod.ts:48	Advanced root FilterQuery export.
+GRAMMY4CJ_VERSION	grammy4cj	internal	grammY4cj/src/mod.cj	Release metadata constant, not an upstream grammY public API.
+GRAMMY_BASELINE_HEAD	grammy4cj	internal	grammY4cj/src/mod.cj	Release metadata constant, not an upstream grammY public API.
+GRAMMY_BASELINE_TAG	grammy4cj	internal	grammY4cj/src/mod.cj	Release metadata constant, not an upstream grammY public API.
+GrammyError	grammy4cj.core	expert-public	grammY/src/mod.ts:60	Expert public GrammyError export.
+HttpError	grammy4cj.core	expert-public	grammY/src/mod.ts:60	Expert public HttpError export.
+InlineKeyboard	grammy4cj.convenience	public	grammY/src/mod.ts:28;grammY/src/convenience/keyboard.ts:696	Convenience root inline keyboard builder export.
+InlineKeyboardButton	grammy4cj.convenience	public	grammY/src/mod.ts:28	Cangjie concrete return type for upstream keyboard helper methods.
+InlineQueryResult	grammy4cj.convenience	public	grammY/src/mod.ts:26	Cangjie concrete return type for upstream inline query result builders.
+InlineQueryResultBuilder	grammy4cj.convenience	public	grammY/src/mod.ts:26;grammY/src/convenience/inline_query.ts:160	Convenience root inline query builder export.
+InputFile	grammy4cj.types	public	grammY/src/mod.ts:10	Common root InputFile export.
+InputMedia	grammy4cj.convenience	public	grammY/src/mod.ts:27	Cangjie concrete return type for upstream input media builders.
+InputMediaBuilder	grammy4cj.convenience	public	grammY/src/mod.ts:27;grammY/src/convenience/input_media.ts:39	Convenience root input media builder export.
+Keyboard	grammy4cj.convenience	public	grammY/src/mod.ts:28;grammY/src/convenience/keyboard.ts:55	Convenience root keyboard builder export.
+KeyboardButton	grammy4cj.convenience	public	grammY/src/mod.ts:28	Cangjie concrete return type for upstream keyboard helper methods.
+LazySessionMiddleware	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:48	Cangjie explicit lazy session middleware equivalent.
+MemorySessionStorage	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:661	Convenience root memory session storage export.
+MiddlewareFn	grammy4cj.composer	public	grammY/src/mod.ts:42	Advanced root MiddlewareFn export.
+MigrationOptions	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:499	Convenience root migration options export.
+MultiSessionContext2	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:162	Cangjie explicit multi-session context equivalent.
+MultiSessionMiddleware2	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:162	Cangjie explicit multi-session middleware equivalent.
+MultiSessionOptions2	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:162	Cangjie explicit equivalent of upstream MultiSessionOptions.
+NextFunction	grammy4cj.composer	public	grammY/src/mod.ts:44	Advanced root NextFunction export.
+PollingOptions	grammy4cj.bot	public	grammY/src/mod.ts:7	Common root PollingOptions export.
+RawApiFacade	grammy4cj.core	expert-public	grammY/src/mod.ts:55	Cangjie value-level equivalent of upstream RawApi type.
+SessionContext	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:19	Cangjie explicit equivalent of upstream SessionFlavor access.
+SessionInitializer	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:109	Cangjie type helper used by public SessionOptions.
+SessionKeyResolver	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:109	Cangjie type helper used by public SessionOptions.
+SessionMiddleware	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:221	Cangjie explicit session middleware equivalent.
+SessionNowMillis	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:109	Cangjie type helper used by public SessionOptions.
+SessionOptions	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:109	Convenience root session options export.
+StorageAdapter	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:72	Convenience root storage adapter export.
+StorageEntry	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:72	Cangjie concrete storage enumeration entry type.
+TelegramObject	grammy4cj.convenience	public	grammY/src/mod.ts:25-30	Cangjie structural object bag used by convenience helper options.
+TransformableApi	grammy4cj.core	expert-public	grammY/src/mod.ts:56	Expert public transformable API type.
+Transformer	grammy4cj.core	expert-public	grammY/src/mod.ts:57	Expert public transformer type.
+WebhookCallback	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/convenience/webhook.ts:108	Cangjie concrete return type for webhookCallback.
+WebhookCallbackResult	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/convenience/webhook.ts:108	Cangjie concrete webhook callback result type.
+WebhookOptions	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/convenience/webhook.ts:76	Convenience root webhook options export.
+WebhookReplyEnvelope	grammy4cj.core	expert-public	grammY/src/mod.ts:58	Expert public webhook reply envelope type.
+enhanceStorage	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:547	Convenience root enhanceStorage export.
+lazySession	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:306	Convenience root lazySession export.
+matchFilter	grammy4cj.filter	public	grammY/src/mod.ts:48	Advanced root matchFilter export.
+multiSession	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:162	Cangjie explicit multi-session helper.
+session	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:221	Convenience root session export.
+sourceBaselineHead	grammy4cj	internal	grammY4cj/src/mod.cj	Release metadata helper, not an upstream grammY public API.
+webhookCallback	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/convenience/webhook.ts:108	Convenience root webhook callback export.

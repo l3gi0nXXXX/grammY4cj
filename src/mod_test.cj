@@ -1,6 +1,15 @@
 package grammy4cj
 
 import std.unittest.*
+import grammy4cj.architecture.rootPublicExportManifestEntryCount
+import grammy4cj.architecture.rootPublicExportManifestExpertPublicCount
+import grammy4cj.architecture.rootPublicExportManifestInternalCount
+import grammy4cj.architecture.rootPublicExportManifestPublicCount
+import grammy4cj.architecture.rootPublicExportManifestTestOnlyCount
+import grammy4cj.architecture.rootSurfaceExpectedFrameworkAdapterCount
+import grammy4cj.architecture.rootSurfaceExpectedHonoHandlerReturnKind
+import grammy4cj.types.Update
+import grammy4cj.types.UserFromGetMe
 
 @Test
 public class Grammy4cjRootTest {
@@ -22,7 +31,7 @@ public class Grammy4cjRootTest {
         @Expect(ctx.update.updateId, 1001)
         @Expect(ctx.me.username, "grammy4cj_bot")
         @Expect(API_CONSTANTS.defaultUpdateTypeCount, 23)
-        @Expect(defaultPlatform().runtime, "cjnative")
+        @Expect(InputFile.fromUrl("https://example.test/files/photo.jpg").toRaw().summary(), "url:deferred-fetch:photo.jpg")
     }
 
     @TestCase
@@ -37,47 +46,27 @@ public class Grammy4cjRootTest {
         inlineKeyboard.text("press", "payload")
         storage.write("session:1", "value")
 
-        @Expect(apiWrapperCount(), 180)
+        @Expect(Api("token").endpointFor("sendMessage"), "https://api.telegram.org/bottoken/sendMessage")
         @Expect(media.kind, "photo")
         @Expect(inline.toJSON().contains("\"type\":\"article\""), true)
         @Expect(keyboard.buttonCount, 1)
         @Expect(inlineKeyboard.buttonCount, 1)
-        @Expect(registeredFrameworkAdapterCount(), 22)
         @Expect(storage.has("session:1"), true)
     }
 
     @TestCase
     public func rootPackageReExportsIntegratedGateSurface(): Unit {
-        let file = InputFile(InputFileSource.url("https://example.test/files/photo.jpg?token=redacted"))
-        let raw: InputFileRawData = file.toRaw()
-        let fetchConfig: BaseFetchConfig = baseFetchConfig("https://api.telegram.org")
-        let stream = itrToStream(ByteIterator("chunks", 2))
-        let api = createRawApi("token")
         let sessionMiddleware = multiSession<String, String>(
             MultiSessionOptions2<String, String>(SessionOptions<String>(), SessionOptions<String>()),
         )
 
-        api.use("root-transformer")
-
-        @Expect(raw.summary(), "url:deferred-fetch:photo.jpg")
-        @Expect(inferFilename("/tmp/archive.tar"), "archive.tar")
-        @Expect(inferUrlFilename("https://example.test/path/document.pdf#hash"), "document.pdf")
-        @Expect(looksLikeRemoteUrl("https://example.test/file"), true)
-        @Expect(DEFAULT_WEBHOOK_ADAPTER, "callback")
-        @Expect(defaultAdapter(), "callback")
-        @Expect(fetchConfig.summary(), "https:keepAlive=true:compress=true")
-        @Expect(stream.contract, "async-iterable-to-byte-stream")
-        @Expect(api.installedTransformers.size, 1)
-        @Expect(apiWrapperGenerationSkeletonCount(), 180)
-        @Expect(composerControlMethodCount(), 20)
-        @Expect(composerControlMethodNames().size, 20)
-        @Expect(adapterHasHandlerReturn("hono"), true)
-        @Expect(adapterHandlerReturnKind("hono"), "promise-string-or-response")
-        @Expect(adapterEndStatusCode("azure-v4"), 204)
-        @Expect(adapterUnauthorizedStatusText("bun"), WRONG_TOKEN_ERROR)
-        @Expect(constantTimeStringEquals("secret", "secret"), true)
-        @Expect(allChatPermissionKeys().size, 15)
-        @Expect(escapeConvenienceJson("a\"b"), "a\\\"b")
+        @Expect(rootPublicExportManifestEntryCount(), 59)
+        @Expect(rootPublicExportManifestPublicCount(), 46)
+        @Expect(rootPublicExportManifestExpertPublicCount(), 9)
+        @Expect(rootPublicExportManifestInternalCount(), 4)
+        @Expect(rootPublicExportManifestTestOnlyCount(), 0)
+        @Expect(rootSurfaceExpectedFrameworkAdapterCount(), 21)
+        @Expect(rootSurfaceExpectedHonoHandlerReturnKind(), "promise-response")
         @Expect(sessionMiddleware is MultiSessionMiddleware2<String, String>, true)
     }
 }
