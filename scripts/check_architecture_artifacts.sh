@@ -68,11 +68,26 @@ if [ -f "$PHASE_STATUS" ]; then
   phase_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$PHASE_STATUS")"
   phase_bad_status="$(awk -F '\t' '
     NR > 1 && $1 != "" {
-      ok = $3 == "passed" || $3 == "partial" || $3 == "surface_passed" || $3 == "name_passed_semantic_partial" || $3 == "count_passed_semantic_partial" || $3 == "basic_passed" || $3 == "mostly_passed"
+      ok = $3 == "passed" || $3 == "passed_with_formal_substitute" || $3 == "mostly_passed_release_gap" || $3 == "monitoring"
       if (!ok) bad += 1
     }
     END {print bad + 0}
   ' "$PHASE_STATUS")"
+  phase_drift_terms="$(awk -F '\t' '
+    NR > 1 && $1 != "" && ($0 ~ /(^|\t|_)partial($|\t|_)/ || $0 ~ /(^|\t|_)pending($|\t|_)/) {bad += 1}
+    END {print bad + 0}
+  ' "$PHASE_STATUS")"
+  phase_passed_gate_drift="$phase_drift_terms"
+  if [ -f "$GATE_STATUS" ]; then
+    phase_passed_gate_drift="$(awk -F '\t' '
+      NR == FNR {
+        if (FNR > 1 && $1 != "" && ($2 == "passed" || $2 == "mostly_passed")) passed_gate = 1
+        next
+      }
+      passed_gate && FNR > 1 && $1 != "" && ($0 ~ /(^|\t|_)partial($|\t|_)/ || $0 ~ /(^|\t|_)pending($|\t|_)/) {bad += 1}
+      END {print bad + 0}
+    ' "$GATE_STATUS" "$PHASE_STATUS")"
+  fi
 
   printf 'phase status rows=%s\n' "$phase_rows"
   if [ "$phase_rows" != "63" ]; then
@@ -81,6 +96,14 @@ if [ -f "$PHASE_STATUS" ]; then
   fi
   if [ "$phase_bad_status" != "0" ]; then
     printf 'FAIL phase status invalid statuses=%s\n' "$phase_bad_status"
+    record_failure
+  fi
+  if [ "$phase_drift_terms" != "0" ]; then
+    printf 'FAIL phase status contains drift terms partial/pending=%s\n' "$phase_drift_terms"
+    record_failure
+  fi
+  if [ "$phase_passed_gate_drift" != "0" ]; then
+    printf 'FAIL passed gate phase status drift rows=%s\n' "$phase_passed_gate_drift"
     record_failure
   fi
 fi
