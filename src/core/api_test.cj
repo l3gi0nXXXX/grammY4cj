@@ -11,6 +11,15 @@ private func methodName(payload: Payload): String {
     ""
 }
 
+private func payloadBody(payload: Payload): String {
+    for (field in payload.fields) {
+        if (field.key == "__payload") {
+            return field.value
+        }
+    }
+    ""
+}
+
 private func hasApiWrapperMethod(name: String): Bool {
     for (method in apiWrapperMethodNames()) {
         if (method == name) {
@@ -204,6 +213,18 @@ private func callWrapper(api: Api, name: String, payload: Payload): Payload {
     throw Exception("No API wrapper for " + name)
 }
 
+private func tracePulledFieldsAreInPayloadSchema(trace: ApiWrapperSchemaTrace): Bool {
+    if (trace.pulledPayloadFieldTrace == "") {
+        return true
+    }
+    for (field in trace.pulledPayloadFieldTrace.split(",")) {
+        if (field != "" && !trace.hasPayloadField(field)) {
+            return false
+        }
+    }
+    true
+}
+
 @Test
 public class ApiWrapperTest {
     @TestCase
@@ -211,22 +232,64 @@ public class ApiWrapperTest {
         @Expect(apiWrapperMethodNames().size, 180)
         @Expect(apiWrapperCount(), 180)
         @Expect(apiWrapperGenerationSkeletonCount(), 180)
+        @Expect(apiWrapperSchemaTraceCount(), 180)
+        @Expect(apiWrapperSchemaTraceRows().size, 180)
+        @Expect(apiRawZeroArgMethodNames().size, 8)
         @Expect(apiWrapperMethodNames()[0], "getUpdates")
         @Expect(apiWrapperMethodNames()[179], "getGameHighScoresInline")
     }
 
     @TestCase
-    public func everyWrapperOutputsItsPublicMethodName(): Unit {
+    public func everyWrapperDispatchesToUpstreamRawMethod(): Unit {
         let api = Api("token")
-        let payload = Payload("").addValue("chat_id", "42")
+        let payload = Payload("").addValue("chat_id", "42").addValue("payload_matrix", "kept")
 
         for (method in apiWrapperMethodNames()) {
-            @Expect(methodName(callWrapper(api, method, payload)), method)
+            let trace = apiWrapperSchemaTraceFor(method)
+            let output = callWrapper(api, method, payload)
+            @Expect(methodName(output), trace.rawMethodName)
+            if (!trace.isZeroArgRaw) {
+                @Expect(payloadBody(output).contains("\"payload_matrix\":\"kept\""), true)
+            }
         }
     }
 
     @TestCase
-    public func inlineVariantsAndAliasesAreNotOmitted(): Unit {
+    public func schemaTraceCoversEveryWrapperPayloadAndReturn(): Unit {
+        for (trace in apiWrapperSchemaTraces()) {
+            @Expect(hasApiWrapperMethod(trace.publicMethodName), true)
+            @Expect(trace.rawMethodName != "", true)
+            @Expect(trace.returnTypeTrace != "", true)
+            @Expect(tracePulledFieldsAreInPayloadSchema(trace), true)
+        }
+    }
+
+    @TestCase
+    public func inlineVariantsAliasesAndRawZeroArgTableAreTraced(): Unit {
+        var inlineCount = 0
+        var aliasCount = 0
+        var rawVariantCount = 0
+        var zeroArgCount = 0
+
+        for (trace in apiWrapperSchemaTraces()) {
+            if (trace.isInlineVariant) {
+                inlineCount += 1
+            }
+            if (trace.isAlias) {
+                aliasCount += 1
+            }
+            if (trace.isRawVariant) {
+                rawVariantCount += 1
+            }
+            if (trace.isZeroArgRaw) {
+                zeroArgCount += 1
+            }
+        }
+
+        @Expect(inlineCount, 8)
+        @Expect(aliasCount, 2)
+        @Expect(rawVariantCount, 9)
+        @Expect(zeroArgCount, 8)
         @Expect(hasApiWrapperMethod("editMessageLiveLocationInline"), true)
         @Expect(hasApiWrapperMethod("stopMessageLiveLocationInline"), true)
         @Expect(hasApiWrapperMethod("editMessageTextInline"), true)
@@ -238,5 +301,54 @@ public class ApiWrapperTest {
         @Expect(hasApiWrapperMethod("kickChatMember"), true)
         @Expect(hasApiWrapperMethod("getChatMembersCount"), true)
         @Expect(hasApiWrapperMethod("getChatMemberCount"), true)
+        @Expect(hasApiWrapperMethod("sendGiftToChannel"), true)
+        @Expect(apiWrapperSchemaTraceFor("getMe").isZeroArgRaw, true)
+        @Expect(apiWrapperSchemaTraceFor("getWebhookInfo").isZeroArgRaw, true)
+        @Expect(apiWrapperSchemaTraceFor("getForumTopicIconStickers").isZeroArgRaw, true)
+        @Expect(apiWrapperSchemaTraceFor("getAvailableGifts").isZeroArgRaw, true)
+        @Expect(apiWrapperSchemaTraceFor("removeMyProfilePhoto").isZeroArgRaw, true)
+    }
+
+    @TestCase
+    public func complexWrapperPayloadSchemaMatchesUpstreamOptionsMerge(): Unit {
+        let sendMessage = apiWrapperSchemaTraceFor("sendMessage")
+        @Expect(sendMessage.rawMethodName, "sendMessage")
+        @Expect(sendMessage.hasPayloadField("chat_id"), true)
+        @Expect(sendMessage.hasPayloadField("text"), true)
+        @Expect(sendMessage.hasPayloadField("reply_markup"), true)
+        @Expect(sendMessage.returnTypeTrace, "Message.TextMessage")
+
+        let sendPoll = apiWrapperSchemaTraceFor("sendPoll")
+        @Expect(sendPoll.hasPayloadField("chat_id"), true)
+        @Expect(sendPoll.hasPayloadField("question"), true)
+        @Expect(sendPoll.hasPayloadField("options"), true)
+        @Expect(sendPoll.hasPayloadField("question_parse_mode"), true)
+        @Expect(sendPoll.hasPayloadField("reply_markup"), true)
+        @Expect(sendPoll.returnTypeTrace, "Message.PollMessage")
+
+        let inlineEdit = apiWrapperSchemaTraceFor("editMessageTextInline")
+        @Expect(inlineEdit.rawMethodName, "editMessageText")
+        @Expect(inlineEdit.isInlineVariant, true)
+        @Expect(inlineEdit.hasPayloadField("inline_message_id"), true)
+        @Expect(inlineEdit.hasPayloadField("text"), true)
+        @Expect(inlineEdit.hasPayloadField("chat_id"), true)
+        @Expect(inlineEdit.returnTypeTrace, "(Update.Edited & Message.TextMessage) | true")
+
+        let kick = apiWrapperSchemaTraceFor("kickChatMember")
+        @Expect(kick.rawMethodName, "banChatMember")
+        @Expect(kick.aliasOf, "banChatMember")
+        @Expect(kick.isAlias, true)
+
+        let countAlias = apiWrapperSchemaTraceFor("getChatMembersCount")
+        @Expect(countAlias.rawMethodName, "getChatMemberCount")
+        @Expect(countAlias.aliasOf, "getChatMemberCount")
+        @Expect(countAlias.returnTypeTrace, "number")
+
+        let channelGift = apiWrapperSchemaTraceFor("sendGiftToChannel")
+        @Expect(channelGift.rawMethodName, "sendGift")
+        @Expect(channelGift.hasPayloadField("chat_id"), true)
+        @Expect(channelGift.hasPayloadField("gift_id"), true)
+        @Expect(channelGift.hasPayloadField("user_id"), true)
+        @Expect(channelGift.returnTypeTrace, "true")
     }
 }

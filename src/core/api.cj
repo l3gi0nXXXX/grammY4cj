@@ -92,9 +92,9 @@ public class Api {
     public func sendMediaGroup(payload: Payload): Payload { this.call("sendMediaGroup", payload) }
     public func sendLocation(payload: Payload): Payload { this.call("sendLocation", payload) }
     public func editMessageLiveLocation(payload: Payload): Payload { this.call("editMessageLiveLocation", payload) }
-    public func editMessageLiveLocationInline(payload: Payload): Payload { this.call("editMessageLiveLocationInline", payload) }
+    public func editMessageLiveLocationInline(payload: Payload): Payload { this.call("editMessageLiveLocation", payload) }
     public func stopMessageLiveLocation(payload: Payload): Payload { this.call("stopMessageLiveLocation", payload) }
-    public func stopMessageLiveLocationInline(payload: Payload): Payload { this.call("stopMessageLiveLocationInline", payload) }
+    public func stopMessageLiveLocationInline(payload: Payload): Payload { this.call("stopMessageLiveLocation", payload) }
     public func sendPaidMedia(payload: Payload): Payload { this.call("sendPaidMedia", payload) }
     public func sendVenue(payload: Payload): Payload { this.call("sendVenue", payload) }
     public func sendContact(payload: Payload): Payload { this.call("sendContact", payload) }
@@ -112,7 +112,7 @@ public class Api {
     public func getChatGifts(payload: Payload): Payload { this.call("getChatGifts", payload) }
     public func getBusinessConnection(payload: Payload): Payload { this.call("getBusinessConnection", payload) }
     public func getFile(payload: Payload): Payload { this.call("getFile", payload) }
-    public func kickChatMember(payload: Payload): Payload { this.call("kickChatMember", payload) }
+    public func kickChatMember(payload: Payload): Payload { this.call("banChatMember", payload) }
     public func banChatMember(payload: Payload): Payload { this.call("banChatMember", payload) }
     public func unbanChatMember(payload: Payload): Payload { this.call("unbanChatMember", payload) }
     public func restrictChatMember(payload: Payload): Payload { this.call("restrictChatMember", payload) }
@@ -144,7 +144,7 @@ public class Api {
     public func leaveChat(payload: Payload): Payload { this.call("leaveChat", payload) }
     public func getChat(payload: Payload): Payload { this.call("getChat", payload) }
     public func getChatAdministrators(payload: Payload): Payload { this.call("getChatAdministrators", payload) }
-    public func getChatMembersCount(payload: Payload): Payload { this.call("getChatMembersCount", payload) }
+    public func getChatMembersCount(payload: Payload): Payload { this.call("getChatMemberCount", payload) }
     public func getChatMemberCount(payload: Payload): Payload { this.call("getChatMemberCount", payload) }
     public func getChatMember(payload: Payload): Payload { this.call("getChatMember", payload) }
     public func setChatStickerSet(payload: Payload): Payload { this.call("setChatStickerSet", payload) }
@@ -180,13 +180,13 @@ public class Api {
     public func getMyDefaultAdministratorRights(payload: Payload): Payload { this.call("getMyDefaultAdministratorRights", payload) }
     public func getMyStarBalance(payload: Payload): Payload { this.call("getMyStarBalance", payload) }
     public func editMessageText(payload: Payload): Payload { this.call("editMessageText", payload) }
-    public func editMessageTextInline(payload: Payload): Payload { this.call("editMessageTextInline", payload) }
+    public func editMessageTextInline(payload: Payload): Payload { this.call("editMessageText", payload) }
     public func editMessageCaption(payload: Payload): Payload { this.call("editMessageCaption", payload) }
-    public func editMessageCaptionInline(payload: Payload): Payload { this.call("editMessageCaptionInline", payload) }
+    public func editMessageCaptionInline(payload: Payload): Payload { this.call("editMessageCaption", payload) }
     public func editMessageMedia(payload: Payload): Payload { this.call("editMessageMedia", payload) }
-    public func editMessageMediaInline(payload: Payload): Payload { this.call("editMessageMediaInline", payload) }
+    public func editMessageMediaInline(payload: Payload): Payload { this.call("editMessageMedia", payload) }
     public func editMessageReplyMarkup(payload: Payload): Payload { this.call("editMessageReplyMarkup", payload) }
-    public func editMessageReplyMarkupInline(payload: Payload): Payload { this.call("editMessageReplyMarkupInline", payload) }
+    public func editMessageReplyMarkupInline(payload: Payload): Payload { this.call("editMessageReplyMarkup", payload) }
     public func stopPoll(payload: Payload): Payload { this.call("stopPoll", payload) }
     public func deleteMessage(payload: Payload): Payload { this.call("deleteMessage", payload) }
     public func deleteMessages(payload: Payload): Payload { this.call("deleteMessages", payload) }
@@ -226,7 +226,7 @@ public class Api {
     public func getAvailableGifts(payload: Payload): Payload { this.call("getAvailableGifts", payload) }
     public func sendGift(payload: Payload): Payload { this.call("sendGift", payload) }
     public func giftPremiumSubscription(payload: Payload): Payload { this.call("giftPremiumSubscription", payload) }
-    public func sendGiftToChannel(payload: Payload): Payload { this.call("sendGiftToChannel", payload) }
+    public func sendGiftToChannel(payload: Payload): Payload { this.call("sendGift", payload) }
     public func answerInlineQuery(payload: Payload): Payload { this.call("answerInlineQuery", payload) }
     public func answerWebAppQuery(payload: Payload): Payload { this.call("answerWebAppQuery", payload) }
     public func savePreparedInlineMessage(payload: Payload): Payload { this.call("savePreparedInlineMessage", payload) }
@@ -246,9 +246,9 @@ public class Api {
     public func setPassportDataErrors(payload: Payload): Payload { this.call("setPassportDataErrors", payload) }
     public func sendGame(payload: Payload): Payload { this.call("sendGame", payload) }
     public func setGameScore(payload: Payload): Payload { this.call("setGameScore", payload) }
-    public func setGameScoreInline(payload: Payload): Payload { this.call("setGameScoreInline", payload) }
+    public func setGameScoreInline(payload: Payload): Payload { this.call("setGameScore", payload) }
     public func getGameHighScores(payload: Payload): Payload { this.call("getGameHighScores", payload) }
-    public func getGameHighScoresInline(payload: Payload): Payload { this.call("getGameHighScoresInline", payload) }
+    public func getGameHighScoresInline(payload: Payload): Payload { this.call("getGameHighScores", payload) }
 }
 
 public func apiWrapperGenerationSkeletonCount(): Int64 {

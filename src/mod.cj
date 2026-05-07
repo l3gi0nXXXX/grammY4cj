@@ -120,6 +120,7 @@ public import grammy4cj.convenience.upstreamFrameworkAdapterNames
 public import grammy4cj.convenience.webhookCallback
 public import grammy4cj.core.ApiCallFn
 public import grammy4cj.core.Api
+public import grammy4cj.core.ApiWrapperSchemaTrace
 public import grammy4cj.core.ApiClient
 public import grammy4cj.core.ApiClientOptions
 public import grammy4cj.core.CancelController
@@ -148,6 +149,11 @@ public import grammy4cj.core.createRawApi
 public import grammy4cj.core.apiWrapperCount
 public import grammy4cj.core.apiWrapperGenerationSkeletonCount
 public import grammy4cj.core.apiWrapperMethodNames
+public import grammy4cj.core.apiRawZeroArgMethodNames
+public import grammy4cj.core.apiWrapperSchemaTraceCount
+public import grammy4cj.core.apiWrapperSchemaTraceFor
+public import grammy4cj.core.apiWrapperSchemaTraceRows
+public import grammy4cj.core.apiWrapperSchemaTraces
 public import grammy4cj.core.defaultFileExtension
 public import grammy4cj.core.escapeJson
 public import grammy4cj.core.filePart
