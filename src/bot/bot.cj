@@ -1,6 +1,7 @@
 package grammy4cj.bot
 
 import std.collection.ArrayList
+import std.sync.Mutex
 
 import grammy4cj.composer.BotError
 import grammy4cj.composer.Composer
@@ -9,6 +10,7 @@ import grammy4cj.composer.run
 import grammy4cj.context.Context
 import grammy4cj.core.Api
 import grammy4cj.core.ApiClientOptions
+import grammy4cj.core.CancelSignal
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
 import grammy4cj.filter.expandedFilterQueries
@@ -90,7 +92,12 @@ public class Bot {
     private var updateHandler: BotUpdateHandler
     private var errorHandler: Option<BotErrorHandler> = None<BotErrorHandler>
     private var me: Option<UserFromGetMe>
+    private let initMutex: Mutex = Mutex()
     private var initInFlight: Bool = false
+    private var initAttemptId: Int64 = 0
+    private var initFailureId: Int64 = 0
+    private var initFailure: Option<Exception> = None<Exception>
+    private var initWaitCount: Int64 = 0
     private var pollingRunning: Bool = false
     private var middlewareLocked: Bool = false
     private var lastTriedUpdate: Int64 = 0
@@ -139,7 +146,9 @@ public class Bot {
             }
         }
         set(value) {
-            this.me = Some(value)
+            synchronized(this.initMutex) {
+                this.me = Some(value)
+            }
         }
     }
 
@@ -155,17 +164,70 @@ public class Bot {
     }
 
     public func `init`(): Unit {
-        if (this.isInited() || this.initInFlight) {
+        this.`init`(CancelSignal())
+    }
+
+    public func `init`(signal: CancelSignal): Unit {
+        var alreadyDone = false
+        var runAttempt = false
+        var waitForAttempt: Int64 = 0
+
+        synchronized(this.initMutex) {
+            signal.throwIfCancelled()
+            if (this.isInited()) {
+                alreadyDone = true
+            } else if (this.initInFlight) {
+                this.initWaitCount += 1
+                waitForAttempt = this.initAttemptId
+            } else {
+                this.initInFlight = true
+                this.initAttemptId += 1
+                this.initFailure = None<Exception>
+                waitForAttempt = this.initAttemptId
+                runAttempt = true
+            }
+        }
+
+        if (alreadyDone) {
             return
         }
-        this.initInFlight = true
-        try {
-            let info = this.getMeWithRetries()
-            if (!this.isInited()) {
-                this.me = Some(info)
+        if (!runAttempt) {
+            this.waitForInitAttempt(waitForAttempt, signal)
+            var retry = false
+            var failure = None<Exception>
+            synchronized(this.initMutex) {
+                if (!this.isInited() && this.initFailureId == waitForAttempt) {
+                    failure = this.initFailure
+                } else if (!this.isInited()) {
+                    retry = true
+                }
             }
-        } finally {
-            this.initInFlight = false
+            match (failure) {
+                case Some(err) => throw err
+                case None => ()
+            }
+            if (retry) {
+                this.`init`(signal)
+            }
+            return
+        }
+
+        try {
+            let info = this.getMeWithRetries(signal)
+            synchronized(this.initMutex) {
+                if (!this.isInited()) {
+                    this.me = Some(info)
+                }
+                this.initFailure = None<Exception>
+                this.initInFlight = false
+            }
+        } catch (e: Exception) {
+            synchronized(this.initMutex) {
+                this.initFailure = Some(e)
+                this.initFailureId = waitForAttempt
+                this.initInFlight = false
+            }
+            throw e
         }
     }
 
@@ -315,6 +377,14 @@ public class Bot {
         this.lastTriedUpdate
     }
 
+    public func initConcurrentWaitCount(): Int64 {
+        var count: Int64 = 0
+        synchronized(this.initMutex) {
+            count = this.initWaitCount
+        }
+        count
+    }
+
     private func loop(options: PollingOptions): Unit {
         var includeAllowedUpdates = true
         var cycles: Int64 = 0
@@ -384,23 +454,26 @@ public class Bot {
         []
     }
 
-    private func getMeWithRetries(): UserFromGetMe {
+    private func getMeWithRetries(signal: CancelSignal): UserFromGetMe {
         var nextDelay = this.retry.initialDelayMillis
         while (true) {
             try {
+                signal.throwIfCancelled()
                 return this.runtime.getMe()
             } catch (e: HttpError) {
-                nextDelay = this.retryAfterInitFailure(nextDelay)
+                nextDelay = this.retryAfterInitFailure(nextDelay, signal)
             } catch (e: GrammyError) {
                 if (e.errorCode >= 500) {
-                    nextDelay = this.retryAfterInitFailure(nextDelay)
+                    nextDelay = this.retryAfterInitFailure(nextDelay, signal)
                 } else if (e.errorCode == 429) {
                     let retryAfterMillis = e.parameters.retryAfter * 1000
                     if (retryAfterMillis > 0) {
+                        signal.throwIfCancelled()
                         this.clock.sleep(retryAfterMillis)
+                        signal.throwIfCancelled()
                         nextDelay = this.retry.initialDelayMillis
                     } else {
-                        nextDelay = this.retryAfterInitFailure(nextDelay)
+                        nextDelay = this.retryAfterInitFailure(nextDelay, signal)
                     }
                 } else {
                     throw e
@@ -410,6 +483,16 @@ public class Bot {
             }
         }
         defaultBotInfo()
+    }
+
+    private func waitForInitAttempt(attemptId: Int64, signal: CancelSignal): Unit {
+        var waiting = true
+        while (waiting) {
+            signal.throwIfCancelled()
+            synchronized(this.initMutex) {
+                waiting = this.initInFlight && this.initAttemptId == attemptId
+            }
+        }
     }
 
     private func deleteWebhookWithRetries(dropPendingUpdates: Bool): Unit {
@@ -441,9 +524,15 @@ public class Bot {
     }
 
     private func retryAfterInitFailure(nextDelay: Int64): Int64 {
+        this.retryAfterInitFailure(nextDelay, CancelSignal())
+    }
+
+    private func retryAfterInitFailure(nextDelay: Int64, signal: CancelSignal): Int64 {
         this.initRetryCount += 1
         if (nextDelay != this.retry.initialDelayMillis) {
+            signal.throwIfCancelled()
             this.clock.sleep(nextDelay)
+            signal.throwIfCancelled()
         }
         let doubled = nextDelay * 2
         if (doubled > this.retry.maxDelayMillis) {

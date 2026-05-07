@@ -1,12 +1,15 @@
 package grammy4cj.bot
 
 import std.collection.ArrayList
+import std.sync.Mutex
 import std.unittest.*
 
 import grammy4cj.composer.BotError
 import grammy4cj.composer.NextFunction
 import grammy4cj.context.Context
 import grammy4cj.core.Api
+import grammy4cj.core.ApiClientOptions
+import grammy4cj.core.CancelSignal
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
 import grammy4cj.types.ResponseParameters
@@ -46,6 +49,103 @@ private class ContextFactoryProbe {
         let ctx = Context(update, api, me)
         this.contexts.add(ctx)
         ctx
+    }
+}
+
+private class BlockingGetMeRuntime <: BotRuntime {
+    private let mutex: Mutex = Mutex()
+    private var entered: Bool = false
+    private var released: Bool = false
+    private var callCount: Int64 = 0
+    private let result: UserFromGetMe
+    private let firstError: Option<Exception>
+
+    public init(result: UserFromGetMe) {
+        this.result = result
+        this.firstError = None<Exception>
+    }
+
+    public init(firstError: Exception, result: UserFromGetMe) {
+        this.result = result
+        this.firstError = Some(firstError)
+    }
+
+    public func release(): Unit {
+        synchronized(this.mutex) {
+            this.released = true
+        }
+    }
+
+    public func waitUntilEntered(): Unit {
+        var done = false
+        while (!done) {
+            synchronized(this.mutex) {
+                done = this.entered
+            }
+        }
+    }
+
+    public func calls(): Int64 {
+        var result: Int64 = 0
+        synchronized(this.mutex) {
+            result = this.callCount
+        }
+        result
+    }
+
+    override public func getMe(): UserFromGetMe {
+        synchronized(this.mutex) {
+            this.entered = true
+            this.callCount += 1
+        }
+        var done = false
+        while (!done) {
+            synchronized(this.mutex) {
+                done = this.released
+            }
+        }
+        var failure = None<Exception>
+        synchronized(this.mutex) {
+            if (this.callCount == 1) {
+                failure = this.firstError
+            }
+        }
+        match (failure) {
+            case Some(err) => throw err
+            case None => ()
+        }
+        this.result
+    }
+
+    override public func deleteWebhook(dropPendingUpdates: Bool): Unit {
+        ()
+    }
+
+    override public func getUpdates(request: PollingFetchRequest): Array<Update> {
+        []
+    }
+}
+
+private class CancelOnSleepClock <: BotClock {
+    private let signal: CancelSignal
+    public var sleeps: Int64 = 0
+    public var lastMillis: Int64 = 0
+
+    public init(signal: CancelSignal) {
+        this.signal = signal
+    }
+
+    override public func sleep(millis: Int64): Unit {
+        this.sleeps += 1
+        this.lastMillis = millis
+        this.signal.cancel("init aborted")
+    }
+}
+
+private func waitForInitWaiter(bot: Bot): Unit {
+    var seen = false
+    while (!seen) {
+        seen = bot.initConcurrentWaitCount() > 0
     }
 }
 
@@ -91,6 +191,19 @@ public class BotTest {
     }
 
     @TestCase
+    public func botInfoSetterAndClientConfigArePreserved(): Unit {
+        let client = ApiClientOptions("https://telegram.example", "test")
+        let bot = Bot("fake-token", BotConfig(client: client))
+        let me = UserFromGetMe(77, true, "Manual", "manual_bot")
+
+        bot.botInfo = me
+
+        @Expect(bot.isInited(), true)
+        @Expect(bot.botInfo.username, "manual_bot")
+        @Expect(bot.api.endpointFor("getMe"), "https://telegram.example/botfake-token/test/getMe")
+    }
+
+    @TestCase
     public func initSkipsGetMeWhenBotInfoIsProvided(): Unit {
         let runtime = FakeBotRuntime()
         let me = UserFromGetMe(43, true, "Cached", "cached_bot")
@@ -121,6 +234,66 @@ public class BotTest {
         @Expect(bot.initRetryCount, 2)
         @Expect(clock.sleeps.size, 1)
         @Expect(clock.sleeps[0], 100)
+    }
+
+    @TestCase
+    public func concurrentInitCallsShareSingleRuntimeGetMe(): Unit {
+        let me = UserFromGetMe(47, true, "Concurrent", "concurrent_bot")
+        let runtime = BlockingGetMeRuntime(me)
+        let bot = Bot("fake-token", BotConfig(runtime: runtime))
+
+        let first = spawn { => bot.`init`() }
+        runtime.waitUntilEntered()
+        let second = spawn { => bot.`init`() }
+        let third = spawn { => bot.`init`() }
+        runtime.release()
+
+        first.get()
+        second.get()
+        third.get()
+
+        @Expect(bot.isInited(), true)
+        @Expect(bot.botInfo.username, "concurrent_bot")
+        @Expect(runtime.calls(), 1)
+    }
+
+    @TestCase
+    public func concurrentInitFailuresAreSharedAndLaterRetryWorks(): Unit {
+        let me = UserFromGetMe(48, true, "Recovered", "recovered_concurrent_bot")
+        let runtime = BlockingGetMeRuntime(Exception("blocked init failure"), me)
+        let bot = Bot("fake-token", BotConfig(runtime: runtime))
+        var firstThrown = false
+        var secondThrown = false
+
+        let first = spawn { => bot.`init`() }
+        runtime.waitUntilEntered()
+        let second = spawn { => bot.`init`() }
+        waitForInitWaiter(bot)
+        runtime.release()
+
+        try {
+            first.get()
+        } catch (e: Exception) {
+            firstThrown = true
+            @Expect(e.message, "blocked init failure")
+        }
+        try {
+            second.get()
+        } catch (e: Exception) {
+            secondThrown = true
+            @Expect(e.message, "blocked init failure")
+        }
+
+        @Expect(firstThrown, true)
+        @Expect(secondThrown, true)
+        @Expect(bot.isInited(), false)
+        @Expect(runtime.calls(), 1)
+
+        bot.`init`()
+
+        @Expect(bot.isInited(), true)
+        @Expect(bot.botInfo.username, "recovered_concurrent_bot")
+        @Expect(runtime.calls(), 2)
     }
 
     @TestCase
@@ -176,6 +349,29 @@ public class BotTest {
         @Expect(runtime.getMeCalls, 2)
         @Expect(bot.initRetryCount, 1)
         @Expect(clock.sleeps.size, 0)
+    }
+
+    @TestCase
+    public func initSignalCancelsRetryAfterBeforeSecondAttempt(): Unit {
+        let runtime = FakeBotRuntime()
+        let signal = CancelSignal()
+        let clock = CancelOnSleepClock(signal)
+        runtime.failGetMeOnce(GrammyError("getMe", "{}", 429, "Too Many Requests", ResponseParameters(0, 2)))
+        let bot = Bot("fake-token", BotConfig(runtime: runtime, clock: clock))
+        var thrown = false
+
+        try {
+            bot.`init`(signal)
+        } catch (e: Exception) {
+            thrown = true
+            @Expect(e.message.contains("Operation cancelled"), true)
+        }
+
+        @Expect(thrown, true)
+        @Expect(bot.isInited(), false)
+        @Expect(runtime.getMeCalls, 1)
+        @Expect(clock.sleeps, 1)
+        @Expect(clock.lastMillis, 2000)
     }
 
     @TestCase
@@ -410,6 +606,45 @@ public class BotTest {
         @Expect(clock.sleeps[0], 2000)
         @Expect(handler.contexts.size, 1)
         @Expect(bot.lastTriedUpdateId(), 30)
+    }
+
+    @TestCase
+    public func pollingRetriesFiveHundredGrammyErrorsWithDefaultDelay(): Unit {
+        let runtime = FakeBotRuntime()
+        let clock = FakeBotClock()
+        let me = UserFromGetMe(14, true, "Server", "server_bot")
+        runtime.enqueuePollingError(GrammyError("getUpdates", "{}", 500, "Internal Server Error", ResponseParameters()))
+        runtime.enqueueUpdates([Update(31, "message")])
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me), runtime: runtime, clock: clock))
+
+        bot.start(PollingOptions(maxFetchCycles: 1))
+
+        @Expect(runtime.getUpdatesCalls, 2)
+        @Expect(bot.pollingErrorCount, 1)
+        @Expect(clock.sleeps.size, 1)
+        @Expect(clock.sleeps[0], 3000)
+        @Expect(bot.lastTriedUpdateId(), 31)
+    }
+
+    @TestCase
+    public func pollingSendsAllowedUpdatesOnlyOnFirstFetch(): Unit {
+        let runtime = FakeBotRuntime()
+        let me = UserFromGetMe(15, true, "Allowed", "allowed_bot")
+        runtime.enqueueUpdates([])
+        runtime.enqueueUpdates([])
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me), runtime: runtime))
+
+        bot.start(PollingOptions(
+            allowedUpdates: ["message", "callback_query"],
+            allowedUpdatesSpecified: true,
+            maxFetchCycles: 2
+        ))
+
+        @Expect(runtime.pollingRequests.size, 2)
+        @Expect(runtime.pollingRequests[0].includesAllowedUpdates, true)
+        @Expect(runtime.pollingRequests[0].allowedUpdates.size, 2)
+        @Expect(runtime.pollingRequests[1].includesAllowedUpdates, false)
+        @Expect(runtime.pollingRequests[1].allowedUpdates.size, 0)
     }
 
     @TestCase
