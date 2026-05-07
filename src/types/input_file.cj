@@ -1,5 +1,11 @@
 package grammy4cj.types
 
+import grammy4cj.platform_contract.platformInputFileRawContractFor as contractInputFileRawContractFor
+import grammy4cj.platform_contract.platformInputFileRuntimeNames as contractInputFileRuntimeNames
+import grammy4cj.platform_contract.platformInputFileSourceKindNames as contractInputFileSourceKindNames
+import grammy4cj.platform_contract.platformNormalizeInputFileRuntime as contractNormalizeInputFileRuntime
+import grammy4cj.platform_contract.platformSupportsInputFileSourceKind as contractSupportsInputFileSourceKind
+
 public class InputFileSource {
     public let kind: String
     public let value: String
@@ -208,6 +214,7 @@ public class InputFileRawData {
     public let originalSourceKind: String
     public let supplierLabel: String
     public let singleUseBoundary: Bool
+    public let body: InputFileRawBody
 
     public init(
         sourceKind: String,
@@ -231,6 +238,7 @@ public class InputFileRawData {
         this.originalSourceKind = sourceKind
         this.supplierLabel = ""
         this.singleUseBoundary = !reusable
+        this.body = InputFileRawBody(sourceKind, sourceValue, filename, contract, rawChunkCount(sourceKind), reusable)
     }
 
     public init(
@@ -260,6 +268,7 @@ public class InputFileRawData {
         this.originalSourceKind = originalSourceKind
         this.supplierLabel = supplierLabel
         this.singleUseBoundary = !reusable
+        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind), reusable)
     }
 
     public func summary(): String {
@@ -268,6 +277,45 @@ public class InputFileRawData {
 
     public func platformSummary(): String {
         this.runtime + ":" + this.rawSourceKind + ":" + this.platformContract + ":" + this.filename
+    }
+
+    public func consume(): String {
+        this.body.consume()
+        this.platformSummary()
+    }
+
+    public func rawConsumed(): Bool {
+        this.body.consumed
+    }
+}
+
+public class InputFileRawBody {
+    public let sourceKind: String
+    public let sourceValue: String
+    public let filename: String
+    public let contract: String
+    public let chunkCount: Int64
+    public let reusableSource: Bool
+    public var consumed: Bool = false
+
+    public init(sourceKind: String, sourceValue: String, filename: String, contract: String, chunkCount: Int64, reusableSource: Bool) {
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.contract = contract
+        this.chunkCount = chunkCount
+        this.reusableSource = reusableSource
+    }
+
+    public func consume(): Unit {
+        if (this.consumed) {
+            throw Exception("InputFile raw data has already been consumed.")
+        }
+        this.consumed = true
+    }
+
+    public func summary(): String {
+        this.sourceKind + ":" + this.contract + ":" + this.filename + ":chunks=" + this.chunkCount.toString()
     }
 }
 
@@ -465,82 +513,83 @@ public func looksLikeRemoteUrl(source: String): Bool {
 }
 
 public func inputFileRuntimeNames(): Array<String> {
-    ["deno", "node", "web"]
+    contractInputFileRuntimeNames()
 }
 
 public func inputFileSourceKindNames(): Array<String> {
-    ["path", "url", "url_like", "bytes", "blob", "response", "stream", "iterable", "async_iterable", "supplier"]
+    contractInputFileSourceKindNames()
 }
 
 public func inputFileSourceKindCount(): Int64 {
     10
 }
 
+public class InputFileSourceMatrixRow {
+    public let sourceKind: String
+    public let upstreamDeno: Bool
+    public let upstreamNode: Bool
+    public let upstreamWeb: Bool
+    public let rawContract: String
+    public let filenameInference: String
+    public let singleUse: Bool
+
+    public init(
+        sourceKind: String,
+        upstreamDeno: Bool,
+        upstreamNode: Bool,
+        upstreamWeb: Bool,
+        rawContract: String,
+        filenameInference: String,
+        singleUse: Bool
+    ) {
+        this.sourceKind = sourceKind
+        this.upstreamDeno = upstreamDeno
+        this.upstreamNode = upstreamNode
+        this.upstreamWeb = upstreamWeb
+        this.rawContract = rawContract
+        this.filenameInference = filenameInference
+        this.singleUse = singleUse
+    }
+}
+
+public func inputFileSourceMatrix(): Array<InputFileSourceMatrixRow> {
+    [
+        InputFileSourceMatrixRow("path", true, true, false, "deferred-file-read", "basename(path)", false),
+        InputFileSourceMatrixRow("url", true, true, true, "deferred-fetch", "basename(pathname) or hostname", false),
+        InputFileSourceMatrixRow("url_like", true, true, true, "deferred-fetch", "basename(url)", false),
+        InputFileSourceMatrixRow("bytes", true, true, true, "bytes-as-is", "explicit filename", false),
+        InputFileSourceMatrixRow("blob", true, false, true, "blob-stream", "explicit filename", false),
+        InputFileSourceMatrixRow("response", true, false, false, "response-body", "explicit filename", false),
+        InputFileSourceMatrixRow("stream", true, true, true, "stream-as-is", "explicit filename", true),
+        InputFileSourceMatrixRow("iterable", true, true, true, "iterator-as-is", "explicit filename", true),
+        InputFileSourceMatrixRow("async_iterable", true, true, true, "async-iterator-as-is", "explicit filename", true),
+        InputFileSourceMatrixRow("supplier", true, true, false, "supplier-deferred", "supplied source or explicit filename", false)
+    ]
+}
+
+public func inputFileSourceMatrixCount(): Int64 {
+    10
+}
+
+public func inputFileSourceMatrixFor(sourceKind: String): InputFileSourceMatrixRow {
+    for (row in inputFileSourceMatrix()) {
+        if (row.sourceKind == sourceKind) {
+            return row
+        }
+    }
+    InputFileSourceMatrixRow(sourceKind, false, false, false, "", "", false)
+}
+
 public func inputFileSourceSupportedOnRuntime(sourceKind: String, runtime: String): Bool {
-    let normalizedRuntime = normalizeInputFileRuntime(runtime)
-    if (sourceKind == "path") {
-        return normalizedRuntime == "deno" || normalizedRuntime == "node"
-    }
-    if (sourceKind == "blob") {
-        return normalizedRuntime == "deno" || normalizedRuntime == "web"
-    }
-    if (sourceKind == "response") {
-        return normalizedRuntime == "deno"
-    }
-    if (sourceKind == "supplier") {
-        return normalizedRuntime == "deno" || normalizedRuntime == "node"
-    }
-    inputFileSourceKindExists(sourceKind)
+    contractSupportsInputFileSourceKind(sourceKind, runtime)
 }
 
 public func inputFilePlatformContract(sourceKind: String, runtime: String, fallbackContract: String): String {
-    let normalizedRuntime = normalizeInputFileRuntime(runtime)
-    if (sourceKind == "path") {
-        if (normalizedRuntime == "deno") {
-            return "deno-open-file-async-iterator"
-        }
-        if (normalizedRuntime == "node") {
-            return "node-create-read-stream"
-        }
-    }
-    if (sourceKind == "url" || sourceKind == "url_like") {
-        return "fetch-body-async-iterable"
-    }
-    if (sourceKind == "bytes") {
-        return "uint8-array-as-is"
-    }
-    if (sourceKind == "blob") {
-        return "blob-stream"
-    }
-    if (sourceKind == "response") {
-        return "response-body"
-    }
-    if (sourceKind == "stream") {
-        if (normalizedRuntime == "node") {
-            return "node-read-stream-as-is"
-        }
-        return "readable-stream-as-is"
-    }
-    if (sourceKind == "iterable") {
-        return "iterator-as-is"
-    }
-    if (sourceKind == "async_iterable") {
-        return "async-iterator-as-is"
-    }
-    if (sourceKind == "supplier") {
-        return "supplier-deferred"
-    }
-    fallbackContract
+    contractInputFileRawContractFor(sourceKind, runtime, fallbackContract)
 }
 
 private func normalizeInputFileRuntime(runtime: String): String {
-    if (runtime == "deno" || runtime == "node" || runtime == "web") {
-        return runtime
-    }
-    if (runtime.isEmpty() || runtime == "cjnative") {
-        return "node"
-    }
-    runtime
+    contractNormalizeInputFileRuntime(runtime)
 }
 
 private func inputFileSourceKindExists(sourceKind: String): Bool {
@@ -550,6 +599,13 @@ private func inputFileSourceKindExists(sourceKind: String): Bool {
         }
     }
     false
+}
+
+private func rawChunkCount(sourceKind: String): Int64 {
+    if (sourceKind == "stream" || sourceKind == "iterable" || sourceKind == "async_iterable") {
+        return 2
+    }
+    1
 }
 
 private func legacySource(sourceKind: String, sourceValue: String, filename: String): InputFileSource {

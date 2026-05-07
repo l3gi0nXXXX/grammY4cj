@@ -1,10 +1,68 @@
 package grammy4cj.platform
 
 import grammy4cj.core.BaseFetchConfig as CoreBaseFetchConfig
+import grammy4cj.platform_contract.platformInputFileRawContractFor as contractInputFileRawContractFor
+import grammy4cj.platform_contract.platformNormalizeInputFileRuntime as contractNormalizeInputFileRuntime
+import grammy4cj.platform_contract.platformSupportsInputFileSourceKind as contractSupportsInputFileSourceKind
 
 public type BaseFetchConfig = CoreBaseFetchConfig
 
 public let DEFAULT_WEBHOOK_ADAPTER: String = "callback"
+
+public class PlatformRuntimeContract {
+    public let runtime: String
+    public let defaultAdapter: String
+    public let baseFetchConfigContract: String
+    public let byteStreamContract: String
+    public let debugContract: String
+
+    public init(
+        runtime: String,
+        defaultAdapter: String,
+        baseFetchConfigContract: String,
+        byteStreamContract: String,
+        debugContract: String
+    ) {
+        this.runtime = runtime
+        this.defaultAdapter = defaultAdapter
+        this.baseFetchConfigContract = baseFetchConfigContract
+        this.byteStreamContract = byteStreamContract
+        this.debugContract = debugContract
+    }
+
+    public func summary(): String {
+        this.runtime + ":" + this.defaultAdapter + ":" + this.baseFetchConfigContract + ":" + this.byteStreamContract
+    }
+}
+
+public class DebugContract {
+    public let runtime: String
+    public let namespace: String
+    public let implementation: String
+    public let envVariable: String
+    public let permissionAware: Bool
+    public let colorAware: Bool
+
+    public init(
+        runtime: String,
+        namespace: String,
+        implementation: String,
+        envVariable: String,
+        permissionAware: Bool,
+        colorAware: Bool
+    ) {
+        this.runtime = runtime
+        this.namespace = namespace
+        this.implementation = implementation
+        this.envVariable = envVariable
+        this.permissionAware = permissionAware
+        this.colorAware = colorAware
+    }
+
+    public func summary(): String {
+        this.runtime + ":" + this.implementation + ":" + this.envVariable
+    }
+}
 
 public class PlatformHttpRequest {
     public let method: String
@@ -83,6 +141,7 @@ public class PlatformRawSource {
     public let filename: String
     public let chunkCount: Int64
     public let reusable: Bool
+    public let hasBody: Bool
     public var consumed: Bool = false
 
     public init(sourceKind: String, sourceValue: String, filename: String, chunkCount: Int64, reusable: Bool) {
@@ -91,6 +150,16 @@ public class PlatformRawSource {
         this.filename = filename
         this.chunkCount = chunkCount
         this.reusable = reusable
+        this.hasBody = true
+    }
+
+    public init(sourceKind: String, sourceValue: String, filename: String, chunkCount: Int64, reusable: Bool, hasBody: Bool) {
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.chunkCount = chunkCount
+        this.reusable = reusable
+        this.hasBody = hasBody
     }
 
     public static func bytes(label: String, filename: String): PlatformRawSource {
@@ -105,8 +174,28 @@ public class PlatformRawSource {
         PlatformRawSource("url", url, filename, 1, true)
     }
 
+    public static func urlLike(url: String, filename: String): PlatformRawSource {
+        PlatformRawSource("url_like", url, filename, 1, true)
+    }
+
+    public static func blob(label: String, filename: String): PlatformRawSource {
+        PlatformRawSource("blob", label, filename, 1, true)
+    }
+
+    public static func response(label: String, filename: String, hasBody: Bool): PlatformRawSource {
+        PlatformRawSource("response", label, filename, 1, true, hasBody)
+    }
+
     public static func stream(label: String, filename: String, chunkCount: Int64): PlatformRawSource {
         PlatformRawSource("stream", label, filename, chunkCount, false)
+    }
+
+    public static func iterable(label: String, filename: String, chunkCount: Int64): PlatformRawSource {
+        PlatformRawSource("iterable", label, filename, chunkCount, false)
+    }
+
+    public static func asyncIterable(label: String, filename: String, chunkCount: Int64): PlatformRawSource {
+        PlatformRawSource("async_iterable", label, filename, chunkCount, false)
     }
 
     public static func supplier(label: String, filename: String): PlatformRawSource {
@@ -130,6 +219,9 @@ public class PlatformRawData {
     public let filename: String
     public let contract: String
     public let stream: ByteStream
+    public let reusableSource: Bool
+    public let requiresFileAdapter: Bool
+    public let requiresFetchAdapter: Bool
 
     public init(runtime: String, sourceKind: String, sourceValue: String, filename: String, contract: String, stream: ByteStream) {
         this.runtime = runtime
@@ -138,10 +230,40 @@ public class PlatformRawData {
         this.filename = filename
         this.contract = contract
         this.stream = stream
+        this.reusableSource = true
+        this.requiresFileAdapter = sourceKind == "path"
+        this.requiresFetchAdapter = sourceKind == "url" || sourceKind == "url_like"
+    }
+
+    public init(
+        runtime: String,
+        sourceKind: String,
+        sourceValue: String,
+        filename: String,
+        contract: String,
+        stream: ByteStream,
+        reusableSource: Bool,
+        requiresFileAdapter: Bool,
+        requiresFetchAdapter: Bool
+    ) {
+        this.runtime = runtime
+        this.sourceKind = sourceKind
+        this.sourceValue = sourceValue
+        this.filename = filename
+        this.contract = contract
+        this.stream = stream
+        this.reusableSource = reusableSource
+        this.requiresFileAdapter = requiresFileAdapter
+        this.requiresFetchAdapter = requiresFetchAdapter
     }
 
     public func summary(): String {
         this.runtime + ":" + this.sourceKind + ":" + this.contract + ":" + this.filename
+    }
+
+    public func consume(): String {
+        this.stream.consume()
+        this.summary()
     }
 }
 
@@ -170,7 +292,7 @@ public class PlatformAdapter {
 
     public init(runtime: String) {
         this.runtime = runtime
-        this.adapter = DEFAULT_WEBHOOK_ADAPTER
+        this.adapter = defaultAdapterForRuntime(runtime)
     }
 
     public init(runtime: String, adapter: String) {
@@ -201,10 +323,62 @@ public class PlatformAdapter {
     public func logger(namespace: String): Logger {
         Logger(namespace)
     }
+
+    public func debug(namespace: String): DebugContract {
+        debugContract(this.runtime, namespace)
+    }
 }
 
 public func defaultAdapter(): String {
     DEFAULT_WEBHOOK_ADAPTER
+}
+
+public func defaultAdapterForRuntime(runtime: String): String {
+    if (runtime == "deno") {
+        return "oak"
+    }
+    if (runtime == "node") {
+        return "express"
+    }
+    if (runtime == "web") {
+        return "cloudflare"
+    }
+    DEFAULT_WEBHOOK_ADAPTER
+}
+
+public func platformRuntimeContracts(): Array<PlatformRuntimeContract> {
+    [
+        PlatformRuntimeContract("deno", "oak", "empty-fetch-config", "ReadableStream.from(asyncIterable)", "debug-skypack-deno-env"),
+        PlatformRuntimeContract("node", "express", "keep-alive-agent", "Readable.from(asyncIterable)", "debug-node"),
+        PlatformRuntimeContract("web", "cloudflare", "empty-fetch-config", "manual-readable-stream", "debug-skypack-web"),
+        PlatformRuntimeContract("cjnative", DEFAULT_WEBHOOK_ADAPTER, "node-compatible-fetch-config", "fake-byte-stream", "logger-sanitizer")
+    ]
+}
+
+public func platformRuntimeContractCount(): Int64 {
+    4
+}
+
+public func platformRuntimeContractFor(runtime: String): PlatformRuntimeContract {
+    for (contract in platformRuntimeContracts()) {
+        if (contract.runtime == runtime) {
+            return contract
+        }
+    }
+    PlatformRuntimeContract(runtime, defaultAdapterForRuntime(runtime), "unknown", "unknown", "unknown")
+}
+
+public func debugContract(runtime: String, namespace: String): DebugContract {
+    if (runtime == "deno") {
+        return DebugContract("deno", namespace, "debug", "DEBUG", true, true)
+    }
+    if (runtime == "node") {
+        return DebugContract("node", namespace, "debug", "DEBUG", false, true)
+    }
+    if (runtime == "web") {
+        return DebugContract("web", namespace, "debug", "DEBUG", false, true)
+    }
+    DebugContract(runtime, namespace, "logger-sanitizer", "DEBUG", false, false)
 }
 
 public func defaultPlatform(): PlatformAdapter {
@@ -243,6 +417,9 @@ private func makeInputFileRaw(runtime: String, source: PlatformRawSource): Platf
     if (!platformSupportsInputFileSource(source.sourceKind, normalizedRuntime)) {
         throw Exception("Platform runtime '" + normalizedRuntime + "' does not support InputFile source kind '" + source.sourceKind + "'")
     }
+    if (!source.hasBody) {
+        throw Exception("No response body!")
+    }
     source.consumeIfSingleUse()
     let contract = platformInputFileRawContract(source.sourceKind, normalizedRuntime)
     PlatformRawData(
@@ -251,74 +428,23 @@ private func makeInputFileRaw(runtime: String, source: PlatformRawSource): Platf
         source.sourceValue,
         source.filename,
         contract,
-        ByteStream(source.sourceKind, source.sourceValue, source.chunkCount, contract)
+        ByteStream(source.sourceKind, source.sourceValue, source.chunkCount, contract),
+        source.reusable,
+        source.sourceKind == "path",
+        source.sourceKind == "url" || source.sourceKind == "url_like"
     )
 }
 
 public func platformSupportsInputFileSource(sourceKind: String, runtime: String): Bool {
-    let normalizedRuntime = normalizeRuntime(runtime)
-    if (sourceKind == "path") {
-        return normalizedRuntime == "deno" || normalizedRuntime == "node"
-    }
-    if (sourceKind == "blob") {
-        return normalizedRuntime == "deno" || normalizedRuntime == "web"
-    }
-    if (sourceKind == "response") {
-        return normalizedRuntime == "deno"
-    }
-    if (sourceKind == "supplier") {
-        return normalizedRuntime == "deno" || normalizedRuntime == "node"
-    }
-    sourceKind == "url" || sourceKind == "url_like" || sourceKind == "bytes" || sourceKind == "stream" ||
-        sourceKind == "iterable" || sourceKind == "async_iterable"
+    contractSupportsInputFileSourceKind(sourceKind, runtime)
 }
 
 public func platformInputFileRawContract(sourceKind: String, runtime: String): String {
-    let normalizedRuntime = normalizeRuntime(runtime)
-    if (sourceKind == "path") {
-        if (normalizedRuntime == "deno") {
-            return "deno-open-file-async-iterator"
-        }
-        return "node-create-read-stream"
-    }
-    if (sourceKind == "url" || sourceKind == "url_like") {
-        return "fetch-body-async-iterable"
-    }
-    if (sourceKind == "bytes") {
-        return "uint8-array-as-is"
-    }
-    if (sourceKind == "blob") {
-        return "blob-stream"
-    }
-    if (sourceKind == "response") {
-        return "response-body"
-    }
-    if (sourceKind == "stream") {
-        if (normalizedRuntime == "node") {
-            return "node-read-stream-as-is"
-        }
-        return "readable-stream-as-is"
-    }
-    if (sourceKind == "iterable") {
-        return "iterator-as-is"
-    }
-    if (sourceKind == "async_iterable") {
-        return "async-iterator-as-is"
-    }
-    if (sourceKind == "supplier") {
-        return "supplier-deferred"
-    }
-    sourceKind + "-raw"
+    contractInputFileRawContractFor(sourceKind, runtime, sourceKind + "-raw")
 }
 
 private func normalizeRuntime(runtime: String): String {
-    if (runtime == "deno" || runtime == "node" || runtime == "web") {
-        return runtime
-    }
-    if (runtime.isEmpty() || runtime == "cjnative") {
-        return "node"
-    }
-    runtime
+    contractNormalizeInputFileRuntime(runtime)
 }
 
 private func boolString(value: Bool): String {

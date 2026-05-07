@@ -2,6 +2,33 @@ package grammy4cj.platform
 
 import std.unittest.*
 
+private class FakePlatformRawAdapter {
+    public var fileReadCount: Int64 = 0
+    public var urlFetchCount: Int64 = 0
+    public var bytesConsumeCount: Int64 = 0
+    public var streamConsumeCount: Int64 = 0
+    public var lastSummary: String = ""
+
+    public init() {}
+
+    public func consume(raw: PlatformRawData): String {
+        if (raw.requiresFileAdapter) {
+            this.fileReadCount += 1
+        }
+        if (raw.requiresFetchAdapter) {
+            this.urlFetchCount += 1
+        }
+        if (raw.sourceKind == "bytes") {
+            this.bytesConsumeCount += 1
+        }
+        if (!raw.reusableSource) {
+            this.streamConsumeCount += 1
+        }
+        this.lastSummary = raw.consume()
+        this.lastSummary
+    }
+}
+
 private func platformRawErrorMessage(platform: PlatformAdapter, source: PlatformRawSource): String {
     var message = ""
     try {
@@ -19,10 +46,19 @@ public class PlatformTest {
         let platform = defaultPlatform()
         let req = PlatformHttpRequest("POST", "https://api.telegram.org/botT/getMe", "", "{}")
         let res = platform.request(req)
+        let deno = PlatformAdapter("deno")
+        let node = PlatformAdapter("node")
+        let web = PlatformAdapter("web")
 
         @Expect(platform.runtime, "cjnative")
         @Expect(platform.adapter, "callback")
         @Expect(defaultAdapter(), "callback")
+        @Expect(defaultAdapterForRuntime("deno"), "oak")
+        @Expect(defaultAdapterForRuntime("node"), "express")
+        @Expect(defaultAdapterForRuntime("web"), "cloudflare")
+        @Expect(deno.adapter, "oak")
+        @Expect(node.adapter, "express")
+        @Expect(web.adapter, "cloudflare")
         @Expect(platform.supportsLongPolling(), true)
         @Expect(res.status, 599)
         @Expect(res.body.contains("POST https://api.telegram.org/botT/getMe"), true)
@@ -49,10 +85,16 @@ public class PlatformTest {
     public func loggerRedactsTokenFromMessage(): Unit {
         let logger = Logger("grammy:core")
         let sanitized = logger.sanitize("token 123:ABC failed", "123:ABC")
+        let denoDebug = debugContract("deno", "grammy:warn")
+        let nodeDebug = PlatformAdapter("node").debug("grammy:warn")
 
         @Expect(logger.namespace, "grammy:core")
         @Expect(sanitized, "token <redacted> failed")
         @Expect(redactToken("unchanged", ""), "unchanged")
+        @Expect(denoDebug.summary(), "deno:debug:DEBUG")
+        @Expect(denoDebug.permissionAware, true)
+        @Expect(nodeDebug.summary(), "node:debug:DEBUG")
+        @Expect(nodeDebug.permissionAware, false)
     }
 
     @TestCase
@@ -85,8 +127,9 @@ public class PlatformTest {
         let web = PlatformAdapter("web", "cloudflare")
         let denoPath = deno.inputFileRaw(PlatformRawSource.path("/tmp/photo.png", "photo.png"))
         let nodePath = node.inputFileRaw(PlatformRawSource.path("/tmp/photo.png", "photo.png"))
-        let webUrl = web.inputFileRaw(PlatformRawSource.url("https://example.test/a.png", "a.png"))
+        let webUrl = web.inputFileRaw(PlatformRawSource.urlLike("https://example.test/a.png", "a.png"))
         let webBytes = web.inputFileRaw(PlatformRawSource.bytes("bytes:3", "a.bin"))
+        let fake = FakePlatformRawAdapter()
 
         @Expect(denoPath.summary(), "deno:path:deno-open-file-async-iterator:photo.png")
         @Expect(denoPath.stream.contract, "deno-open-file-async-iterator")
@@ -94,6 +137,12 @@ public class PlatformTest {
         @Expect(webUrl.contract, "fetch-body-async-iterable")
         @Expect(webBytes.contract, "uint8-array-as-is")
         @Expect(inputFileRaw(PlatformRawSource.bytes("bytes:1", "default.bin")).contract, "uint8-array-as-is")
+        @Expect(fake.consume(denoPath), "deno:path:deno-open-file-async-iterator:photo.png")
+        @Expect(fake.consume(webUrl), "web:url_like:fetch-body-async-iterable:a.png")
+        @Expect(fake.consume(webBytes), "web:bytes:uint8-array-as-is:a.bin")
+        @Expect(fake.fileReadCount, 1)
+        @Expect(fake.urlFetchCount, 1)
+        @Expect(fake.bytesConsumeCount, 1)
     }
 
     @TestCase
@@ -127,5 +176,26 @@ public class PlatformTest {
             platformRawErrorMessage(node, PlatformRawSource("blob", "blob:1", "a.txt", 1, true)),
             "Platform runtime 'node' does not support InputFile source kind 'blob'"
         )
+        @Expect(
+            platformRawErrorMessage(PlatformAdapter("deno"), PlatformRawSource.response("empty", "empty.bin", false)),
+            "No response body!"
+        )
+    }
+
+    @TestCase
+    public func platformRuntimeContractsEnumerateUpstreamDifferences(): Unit {
+        let deno = platformRuntimeContractFor("deno")
+        let node = platformRuntimeContractFor("node")
+        let web = platformRuntimeContractFor("web")
+        let cjnative = platformRuntimeContractFor("cjnative")
+
+        @Expect(platformRuntimeContractCount(), 4)
+        @Expect(platformRuntimeContracts().size, 4)
+        @Expect(deno.summary(), "deno:oak:empty-fetch-config:ReadableStream.from(asyncIterable)")
+        @Expect(node.defaultAdapter, "express")
+        @Expect(node.baseFetchConfigContract, "keep-alive-agent")
+        @Expect(web.defaultAdapter, "cloudflare")
+        @Expect(web.byteStreamContract, "manual-readable-stream")
+        @Expect(cjnative.defaultAdapter, "callback")
     }
 }

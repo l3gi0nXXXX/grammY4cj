@@ -2,6 +2,29 @@ package grammy4cj.types
 
 import std.unittest.*
 
+private class FakeInputFileRawAdapter {
+    public var fileReadCount: Int64 = 0
+    public var urlFetchCount: Int64 = 0
+    public var streamConsumeCount: Int64 = 0
+    public var lastSummary: String = ""
+
+    public init() {}
+
+    public func consume(raw: InputFileRawData): String {
+        if (raw.requiresFileAdapter) {
+            this.fileReadCount += 1
+        }
+        if (raw.requiresFetchAdapter) {
+            this.urlFetchCount += 1
+        }
+        if (raw.singleUseBoundary) {
+            this.streamConsumeCount += 1
+        }
+        this.lastSummary = raw.consume()
+        this.lastSummary
+    }
+}
+
 private func toJsonErrorMessage(file: InputFile): String {
     var message = ""
     try {
@@ -26,6 +49,16 @@ private func toRawErrorMessage(file: InputFile, runtime: String): String {
     var message = ""
     try {
         file.toRaw(runtime)
+    } catch (e: Exception) {
+        message = e.message
+    }
+    message
+}
+
+private func rawConsumeErrorMessage(raw: InputFileRawData): String {
+    var message = ""
+    try {
+        raw.consume()
     } catch (e: Exception) {
         message = e.message
     }
@@ -75,6 +108,37 @@ public class TelegramTypesTest {
         @Expect(aliases[17].exportedFromNode, true)
         @Expect(aliases[17].exportedFromWeb, true)
     }
+
+    @TestCase
+    public func typeSourceMatrixCoversUpstreamFacadesAndGenericAliases(): Unit {
+        let matrix = typeSourceMatrix()
+        let deno = typeSourceMatrixFor("src/types.deno.ts")
+        let node = typeSourceMatrixFor("src/types.node.ts")
+        let web = typeSourceMatrixFor("src/types.web.ts")
+        let root = typeSourceMatrixFor("src/types.ts")
+
+        @Expect(typeSourceMatrixCount(), 4)
+        @Expect(matrix.size, 4)
+        @Expect(deno.coversApiMethods, true)
+        @Expect(deno.coversOpts, true)
+        @Expect(deno.coversInputFileGenericAliases, true)
+        @Expect(deno.inputFileSourceApi.contains("response"), true)
+        @Expect(node.inputFileSourceApi.contains("blob"), false)
+        @Expect(web.inputFileSourceApi.contains("supplier"), false)
+        @Expect(root.coversTelegramObjectSubset, true)
+        @Expect(typeSourceMatrixFor("src/missing.ts").coversApiMethods, false)
+    }
+
+    @TestCase
+    public func telegramObjectSubsetTraceCoversGateOneRuntimeModels(): Unit {
+        let subset = telegramObjectSubsetTrace()
+
+        @Expect(telegramObjectSubsetTraceCount(), 9)
+        @Expect(subset[0].objectName, "ResponseParameters")
+        @Expect(subset[3].objectName, "User")
+        @Expect(subset[8].objectName, "Update")
+        @Expect(subset[8].cangjieType, "Update")
+    }
 }
 
 @Test
@@ -116,10 +180,15 @@ public class InputFileTest {
     @TestCase
     public func inputFileSourceKindsAndRuntimeSupportMirrorUpstreamFacades(): Unit {
         @Expect(inputFileSourceKindCount(), 10)
+        @Expect(inputFileSourceMatrixCount(), 10)
         @Expect(inputFileRuntimeNames().size, 3)
         @Expect(inputFileRuntimeNames()[0], "deno")
         @Expect(inputFileSourceKindNames()[0], "path")
         @Expect(inputFileSourceKindNames()[9], "supplier")
+        @Expect(inputFileSourceMatrixFor("path").upstreamDeno, true)
+        @Expect(inputFileSourceMatrixFor("path").upstreamWeb, false)
+        @Expect(inputFileSourceMatrixFor("stream").singleUse, true)
+        @Expect(inputFileSourceMatrixFor("bytes").filenameInference, "explicit filename")
         @Expect(inputFileSourceSupportedOnRuntime("path", "deno"), true)
         @Expect(inputFileSourceSupportedOnRuntime("path", "node"), true)
         @Expect(inputFileSourceSupportedOnRuntime("path", "web"), false)
@@ -158,6 +227,23 @@ public class InputFileTest {
     }
 
     @TestCase
+    public func inputFileRawDataIsConsumableWithoutRealFileOrNetwork(): Unit {
+        let fake = FakeInputFileRawAdapter()
+        let pathRaw = InputFile.fromPath("/tmp/photo.png").toRaw("deno")
+        let urlRaw = InputFile.fromUrlLike("https://example.test/files/report.pdf").toRaw("web")
+        let streamRaw = InputFile.fromStream("stream:3", "video.mp4").toRaw("node")
+
+        @Expect(fake.consume(pathRaw), "deno:path:deno-open-file-async-iterator:photo.png")
+        @Expect(fake.consume(urlRaw), "web:url_like:fetch-body-async-iterable:report.pdf")
+        @Expect(fake.consume(streamRaw), "node:stream:node-read-stream-as-is:video.mp4")
+        @Expect(fake.fileReadCount, 1)
+        @Expect(fake.urlFetchCount, 1)
+        @Expect(fake.streamConsumeCount, 1)
+        @Expect(pathRaw.rawConsumed(), true)
+        @Expect(rawConsumeErrorMessage(pathRaw), "InputFile raw data has already been consumed.")
+    }
+
+    @TestCase
     public func inputFileToRawUsesPlatformSpecificRawContracts(): Unit {
         let denoPath = InputFile.fromPath("/tmp/photo.png").toRaw("deno")
         let nodePath = InputFile.fromPath("/tmp/photo.png").toRaw("node")
@@ -189,6 +275,7 @@ public class InputFileTest {
         let nodeRaw = supplierBytes.toRaw("node")
         let supplierStream = InputFile.fromSupplier("lazy-stream", InputFileSource.stream("stream:5", "clip.mp4"))
         let streamRaw = supplierStream.toRaw("node")
+        let fake = FakeInputFileRawAdapter()
 
         @Expect(denoRaw.sourceKind, "supplier")
         @Expect(denoRaw.rawSourceKind, "bytes")
@@ -201,6 +288,8 @@ public class InputFileTest {
         @Expect(streamRaw.platformContract, "node-read-stream-as-is")
         @Expect(streamRaw.singleUseBoundary, true)
         @Expect(supplierStream.consumed, false)
+        @Expect(fake.consume(streamRaw), "node:stream:node-read-stream-as-is:clip.mp4")
+        @Expect(fake.streamConsumeCount, 1)
     }
 
     @TestCase
@@ -251,6 +340,11 @@ public class InputFileTest {
 
     @TestCase
     public func inferFilenameMatchesUpstreamUrlAndPathRules(): Unit {
+        let explicit = InputFile(InputFileSource.path("/tmp/photo.png"), "explicit.jpg")
+        let explicitRaw = explicit.toRaw("node")
+
+        @Expect(explicit.filename, "explicit.jpg")
+        @Expect(explicitRaw.filename, "explicit.jpg")
         @Expect(inferFilename("file.txt"), "file.txt")
         @Expect(inferFilename("/tmp/file.txt"), "file.txt")
         @Expect(inferFilename("/tmp/"), "tmp")
