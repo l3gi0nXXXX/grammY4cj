@@ -139,11 +139,13 @@ public class PlatformTest {
 
         @Expect(platform.runtime, "cjnative")
         @Expect(platform.adapter, "cangjie-native")
-        @Expect(defaultAdapter(), "callback")
+        @Expect(defaultAdapter(), "oak")
+        @Expect(callbackAdapter(), "callback")
         @Expect(defaultAdapterForRuntime("cjnative"), "cangjie-native")
         @Expect(defaultAdapterForRuntime("deno"), "oak")
         @Expect(defaultAdapterForRuntime("node"), "express")
         @Expect(defaultAdapterForRuntime("web"), "cloudflare")
+        @Expect(defaultAdapterForRuntime("callback"), "callback")
         @Expect(deno.adapter, "oak")
         @Expect(node.adapter, "express")
         @Expect(web.adapter, "cloudflare")
@@ -167,10 +169,13 @@ public class PlatformTest {
 
     @TestCase
     public func baseFetchConfigMirrorsRuntimeContracts(): Unit {
-        let https = baseFetchConfig("https://api.telegram.org")
-        let http = baseFetchConfig("http://localhost:8081")
-        let custom = baseFetchConfig("unix:/tmp/socket")
+        let deno = denoPlatform().baseFetchConfig("https://api.telegram.org")
+        let https = nodePlatform().baseFetchConfig("https://api.telegram.org")
+        let http = baseFetchConfigForRuntime("node", "http://localhost:8081")
+        let web = webPlatform().baseFetchConfig("https://api.telegram.org")
+        let custom = nodePlatform().baseFetchConfig("unix:/tmp/socket")
 
+        @Expect(deno.isEmpty, true)
         @Expect(https.agentKind, "https")
         @Expect(https.keepAlive, true)
         @Expect(https.compress, true)
@@ -178,7 +183,9 @@ public class PlatformTest {
         @Expect(http.agentKind, "http")
         @Expect(http.keepAlive, true)
         @Expect(http.compress, false)
+        @Expect(web.isEmpty, true)
         @Expect(custom.isEmpty, true)
+        @Expect(baseFetchConfig("https://api.telegram.org").summary(), "empty")
         @Expect(defaultPlatform().baseFetchConfig("ftp://example.test").summary(), "empty")
     }
 
@@ -245,11 +252,31 @@ public class PlatformTest {
         @Expect(stream.sourceKind, "iterator")
         @Expect(stream.sourceValue, "chunks:2")
         @Expect(stream.chunkCount, 2)
-        @Expect(stream.contract, "async-iterable-to-byte-stream")
+        @Expect(stream.contract, "ReadableStream.from(asyncIterable)")
         @Expect(String.fromUtf8(stream.collectBytes()), "chunks:2")
         @Expect(String.fromUtf8(chunked.collectBytes()), "ABCD")
         @Expect(byteStreamCollectErrorMessage(failing), "stream exploded")
         @Expect(defaultPlatform().itrToStream(ByteIterator("chunks:1", 1)).chunkCount, 1)
+    }
+
+    @TestCase
+    public func runtimeIteratorToStreamDrainsByteCasesAcrossFacades(): Unit {
+        let empty = itrToStreamForRuntime("deno", ByteIterator("empty", []))
+        let single = itrToStreamForRuntime("node", ByteIterator("single", ["A".toArray()]))
+        let multi = itrToStreamForRuntime("web", ByteIterator("multi", ["AB".toArray(), "CD".toArray()]))
+        let large = webPlatform().itrToStream(ByteIterator("large", ["0123456789abcdef".toArray()]))
+        let failing = itrToStreamForRuntime("node", ByteIterator("fail", ["x".toArray()], "stream exploded"))
+
+        @Expect(empty.contract, "ReadableStream.from(asyncIterable)")
+        @Expect(empty.chunkCount, 0)
+        @Expect(String.fromUtf8(empty.collectBytes()), "")
+        @Expect(single.contract, "Readable.from(asyncIterable)")
+        @Expect(String.fromUtf8(single.collectBytes()), "A")
+        @Expect(multi.contract, "manual-readable-stream")
+        @Expect(String.fromUtf8(multi.collectBytes()), "ABCD")
+        @Expect(large.chunkCount, 1)
+        @Expect(String.fromUtf8(large.collectBytes()), "0123456789abcdef")
+        @Expect(byteStreamCollectErrorMessage(failing), "stream exploded")
     }
 
     @TestCase
@@ -351,9 +378,9 @@ public class PlatformTest {
 
         @Expect(platformRuntimeContractCount(), 4)
         @Expect(platformRuntimeContracts().size, 4)
-        @Expect(deno.summary(), "deno:oak:empty-fetch-config:ReadableStream.from(asyncIterable)")
+        @Expect(deno.summary(), "deno:oak:empty-object:ReadableStream.from(asyncIterable)")
         @Expect(node.defaultAdapter, "express")
-        @Expect(node.baseFetchConfigContract, "keep-alive-agent")
+        @Expect(node.baseFetchConfigContract, "node-http-https-keepAlive-agent")
         @Expect(web.defaultAdapter, "cloudflare")
         @Expect(web.byteStreamContract, "manual-readable-stream")
         @Expect(cjnative.defaultAdapter, "cangjie-native")

@@ -36,6 +36,11 @@ MultiSessionMiddleware2	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY
 MultiSessionOptions2	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:162	Cangjie explicit equivalent of upstream MultiSessionOptions.
 NextFunction	grammy4cj.composer	public	grammY/src/mod.ts:44	Advanced root NextFunction export.
 PollingOptions	grammy4cj.bot	public	grammY/src/mod.ts:7	Common root PollingOptions export.
+BaseFetchConfig	grammy4cj.platform	public	grammY/src/platform.node.ts:15;grammY/src/platform.deno.ts:21;grammY/src/platform.web.ts:21	Platform base fetch config facade.
+ByteIterator	grammy4cj.platform	public	grammY/src/platform.deno.ts:17;grammY/src/platform.node.ts:10;grammY/src/platform.web.ts:7	Cangjie async iterable byte source substitute for platform itrToStream.
+ByteStream	grammy4cj.platform	public	grammY/src/platform.deno.ts:17;grammY/src/platform.node.ts:10;grammY/src/platform.web.ts:7	Cangjie byte stream bridge result for platform itrToStream.
+PlatformAdapter	grammy4cj.platform	public	grammY/src/platform.deno.ts:27;grammY/src/platform.node.ts:45;grammY/src/platform.web.ts:23	Runtime facade for Deno/Node/Web-equivalent defaults.
+PlatformRuntimeContract	grammy4cj.platform	public	grammY/src/platform.deno.ts:1;grammY/src/platform.node.ts:1;grammY/src/platform.web.ts:1	Source-traced platform profile contract.
 RawApiFacade	grammy4cj.core	expert-public	grammY/src/mod.ts:55	Cangjie value-level equivalent of upstream RawApi type.
 SessionContext	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:19	Cangjie explicit equivalent of upstream SessionFlavor access.
 SessionInitializer	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:109	Cangjie type helper used by public SessionOptions.
@@ -52,10 +57,16 @@ WebhookCallback	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/con
 WebhookCallbackResult	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/convenience/webhook.ts:108	Cangjie concrete webhook callback result type.
 WebhookOptions	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/convenience/webhook.ts:76	Convenience root webhook options export.
 WebhookReplyEnvelope	grammy4cj.core	expert-public	grammY/src/mod.ts:58	Expert public webhook reply envelope type.
+baseFetchConfigForRuntime	grammy4cj.platform	public	grammY/src/platform.deno.ts:21;grammY/src/platform.node.ts:15;grammY/src/platform.web.ts:21	Platform-specific base fetch config facade.
+defaultAdapterForRuntime	grammy4cj.platform	public	grammY/src/platform.deno.ts:27;grammY/src/platform.node.ts:45;grammY/src/platform.web.ts:23	Platform-specific default webhook adapter facade.
+denoPlatform	grammy4cj.platform	public	grammY/src/platform.deno.ts:1	Deno-equivalent platform facade.
 enhanceStorage	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:547	Convenience root enhanceStorage export.
+itrToStreamForRuntime	grammy4cj.platform	public	grammY/src/platform.deno.ts:17;grammY/src/platform.node.ts:10;grammY/src/platform.web.ts:7	Platform-specific byte stream bridge facade.
 lazySession	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:306	Convenience root lazySession export.
 matchFilter	grammy4cj.filter	public	grammY/src/mod.ts:48	Advanced root matchFilter export.
 multiSession	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:162	Cangjie explicit multi-session helper.
+nodePlatform	grammy4cj.platform	public	grammY/src/platform.node.ts:1	Node-equivalent platform facade.
 session	grammy4cj.convenience	public	grammY/src/mod.ts:29;grammY/src/convenience/session.ts:221	Convenience root session export.
 sourceBaselineHead	grammy4cj	internal	grammY4cj/src/mod.cj	Release metadata helper, not an upstream grammY public API.
+webPlatform	grammy4cj.platform	public	grammY/src/platform.web.ts:1	Web-equivalent platform facade.
 webhookCallback	grammy4cj.convenience	public	grammY/src/mod.ts:30;grammY/src/convenience/webhook.ts:108	Convenience root webhook callback export.

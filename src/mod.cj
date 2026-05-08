@@ -51,6 +51,17 @@ public import grammy4cj.composer.NextFunction
 public import grammy4cj.filter.FilterPredicate
 public import grammy4cj.filter.FilterQuery
 public import grammy4cj.filter.matchFilter
+public import grammy4cj.platform.BaseFetchConfig
+public import grammy4cj.platform.ByteIterator
+public import grammy4cj.platform.ByteStream
+public import grammy4cj.platform.PlatformAdapter
+public import grammy4cj.platform.PlatformRuntimeContract
+public import grammy4cj.platform.baseFetchConfigForRuntime
+public import grammy4cj.platform.defaultAdapterForRuntime
+public import grammy4cj.platform.denoPlatform
+public import grammy4cj.platform.itrToStreamForRuntime
+public import grammy4cj.platform.nodePlatform
+public import grammy4cj.platform.webPlatform
 
 // Internal stuff for expert users
 public import grammy4cj.core.Api

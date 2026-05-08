@@ -71,7 +71,11 @@ if [ -f "$MANIFEST" ]; then
       key = $1
       seen[key] += 1
       if (seen[key] == 2) duplicate += 1
-      if (($3 == "public" || $3 == "expert-public") && index($4, "grammY/src/mod.ts:") != 1) bad_anchor += 1
+      if ($3 == "public" || $3 == "expert-public") {
+        root_anchor = index($4, "grammY/src/mod.ts:") == 1
+        platform_anchor = index($4, "grammY/src/platform.") == 1
+        if (!root_anchor && !platform_anchor) bad_anchor += 1
+      }
     }
     END {
       printf "%d %d %d %d\n", bad + 0, bad_category + 0, duplicate + 0, bad_anchor + 0

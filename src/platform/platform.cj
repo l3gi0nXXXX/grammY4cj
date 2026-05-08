@@ -10,7 +10,8 @@ import grammy4cj.platform_contract.platformSupportsInputFileSourceKind as contra
 
 public type BaseFetchConfig = CoreBaseFetchConfig
 
-public let DEFAULT_WEBHOOK_ADAPTER: String = "callback"
+public let DEFAULT_CALLBACK_ADAPTER: String = "callback"
+public let DEFAULT_WEBHOOK_ADAPTER: String = "oak"
 
 public class PlatformRuntimeContract {
     public let runtime: String
@@ -243,11 +244,29 @@ public class PlatformInputFileDataAdapter {
 public class ByteIterator {
     public let label: String
     public let chunkCount: Int64
+    public let chunks: Array<Array<Byte>>
+    public let errorMessage: String
     public var consumed: Bool = false
 
     public init(label: String, chunkCount: Int64) {
         this.label = label
         this.chunkCount = chunkCount
+        this.chunks = [label.toArray()]
+        this.errorMessage = ""
+    }
+
+    public init(label: String, chunks: Array<Array<Byte>>) {
+        this.label = label
+        this.chunkCount = chunks.size
+        this.chunks = chunks
+        this.errorMessage = ""
+    }
+
+    public init(label: String, chunks: Array<Array<Byte>>, errorMessage: String) {
+        this.label = label
+        this.chunkCount = chunks.size
+        this.chunks = chunks
+        this.errorMessage = errorMessage
     }
 
     public func consume(): Unit {
@@ -541,11 +560,11 @@ public class PlatformAdapter {
     }
 
     public func baseFetchConfig(apiRoot: String): BaseFetchConfig {
-        makeBaseFetchConfig(apiRoot)
+        makeBaseFetchConfigForRuntime(this.runtime, apiRoot)
     }
 
     public func itrToStream(iterator: ByteIterator): ByteStream {
-        makeByteStreamFromIterator(iterator)
+        makeByteStreamFromIteratorForRuntime(this.runtime, iterator)
     }
 
     public func inputFileRaw(source: PlatformRawSource): PlatformRawData {
@@ -569,6 +588,10 @@ public func defaultAdapter(): String {
     DEFAULT_WEBHOOK_ADAPTER
 }
 
+public func callbackAdapter(): String {
+    DEFAULT_CALLBACK_ADAPTER
+}
+
 public func defaultAdapterForRuntime(runtime: String): String {
     if (runtime == "deno") {
         return "oak"
@@ -582,14 +605,14 @@ public func defaultAdapterForRuntime(runtime: String): String {
     if (runtime == "cjnative" || runtime.isEmpty()) {
         return "cangjie-native"
     }
-    DEFAULT_WEBHOOK_ADAPTER
+    DEFAULT_CALLBACK_ADAPTER
 }
 
 public func platformRuntimeContracts(): Array<PlatformRuntimeContract> {
     [
-        PlatformRuntimeContract("deno", "oak", "empty-fetch-config", "ReadableStream.from(asyncIterable)", "debug-skypack-deno-env"),
-        PlatformRuntimeContract("node", "express", "keep-alive-agent", "Readable.from(asyncIterable)", "debug-node"),
-        PlatformRuntimeContract("web", "cloudflare", "empty-fetch-config", "manual-readable-stream", "debug-skypack-web"),
+        PlatformRuntimeContract("deno", "oak", "empty-object", "ReadableStream.from(asyncIterable)", "debug-skypack-deno-env"),
+        PlatformRuntimeContract("node", "express", "node-http-https-keepAlive-agent", "Readable.from(asyncIterable)", "debug-node"),
+        PlatformRuntimeContract("web", "cloudflare", "empty-object", "manual-readable-stream", "debug-skypack-web"),
         PlatformRuntimeContract("cjnative", "cangjie-native", "stdx.net.http-client", "byte-source-stream", "logger-sanitizer")
     ]
 }
@@ -645,12 +668,32 @@ public func defaultPlatform(): PlatformAdapter {
     PlatformAdapter("cjnative", defaultAdapterForRuntime("cjnative"))
 }
 
+public func denoPlatform(): PlatformAdapter {
+    PlatformAdapter("deno", defaultAdapterForRuntime("deno"))
+}
+
+public func nodePlatform(): PlatformAdapter {
+    PlatformAdapter("node", defaultAdapterForRuntime("node"))
+}
+
+public func webPlatform(): PlatformAdapter {
+    PlatformAdapter("web", defaultAdapterForRuntime("web"))
+}
+
 public func baseFetchConfig(apiRoot: String): BaseFetchConfig {
-    makeBaseFetchConfig(apiRoot)
+    makeBaseFetchConfigForRuntime("deno", apiRoot)
+}
+
+public func baseFetchConfigForRuntime(runtime: String, apiRoot: String): BaseFetchConfig {
+    makeBaseFetchConfigForRuntime(runtime, apiRoot)
 }
 
 public func itrToStream(iterator: ByteIterator): ByteStream {
-    makeByteStreamFromIterator(iterator)
+    makeByteStreamFromIteratorForRuntime("deno", iterator)
+}
+
+public func itrToStreamForRuntime(runtime: String, iterator: ByteIterator): ByteStream {
+    makeByteStreamFromIteratorForRuntime(runtime, iterator)
 }
 
 public func failingByteStream(sourceKind: String, sourceValue: String, chunkCount: Int64, contract: String, errorMessage: String): ByteStream {
@@ -661,7 +704,11 @@ public func inputFileRaw(source: PlatformRawSource): PlatformRawData {
     makeInputFileRaw("cjnative", source, PlatformInputFileDataAdapter())
 }
 
-private func makeBaseFetchConfig(apiRoot: String): BaseFetchConfig {
+private func makeBaseFetchConfigForRuntime(runtime: String, apiRoot: String): BaseFetchConfig {
+    let normalizedRuntime = normalizeRuntime(runtime)
+    if (normalizedRuntime == "deno" || normalizedRuntime == "web") {
+        return BaseFetchConfig(apiRoot, "", false, false, true)
+    }
     if (apiRoot.startsWith("https:")) {
         return BaseFetchConfig(apiRoot, "https", true, true, false)
     }
@@ -671,9 +718,24 @@ private func makeBaseFetchConfig(apiRoot: String): BaseFetchConfig {
     BaseFetchConfig(apiRoot, "", false, false, true)
 }
 
-private func makeByteStreamFromIterator(iterator: ByteIterator): ByteStream {
+private func makeByteStreamFromIteratorForRuntime(runtime: String, iterator: ByteIterator): ByteStream {
     iterator.consume()
-    ByteStream("iterator", iterator.label, iterator.chunkCount, "async-iterable-to-byte-stream", [iterator.label.toArray()])
+    let contract = byteStreamContractForRuntime(runtime)
+    ByteStream("iterator", iterator.label, iterator.chunkCount, contract, iterator.chunks, iterator.errorMessage)
+}
+
+private func byteStreamContractForRuntime(runtime: String): String {
+    let normalizedRuntime = normalizeRuntime(runtime)
+    if (normalizedRuntime == "deno") {
+        return "ReadableStream.from(asyncIterable)"
+    }
+    if (normalizedRuntime == "node") {
+        return "Readable.from(asyncIterable)"
+    }
+    if (normalizedRuntime == "web") {
+        return "manual-readable-stream"
+    }
+    "byte-source-stream"
 }
 
 private func makeInputFileRaw(runtime: String, source: PlatformRawSource, dataAdapter: PlatformInputFileDataAdapter): PlatformRawData {

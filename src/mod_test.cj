@@ -55,13 +55,29 @@ public class Grammy4cjRootTest {
     }
 
     @TestCase
+    public func rootPackageReExportsPlatformSurface(): Unit {
+        let node = nodePlatform()
+        let webStream = itrToStreamForRuntime("web", ByteIterator("root", ["OK".toArray()]))
+        let config = baseFetchConfigForRuntime("node", "https://api.telegram.org")
+
+        @Expect(denoPlatform().adapter, "oak")
+        @Expect(node.adapter, "express")
+        @Expect(webPlatform().adapter, "cloudflare")
+        @Expect(defaultAdapterForRuntime("callback"), "callback")
+        @Expect(config.keepAlive, true)
+        @Expect(config.compress, true)
+        @Expect(webStream.contract, "manual-readable-stream")
+        @Expect(String.fromUtf8(webStream.collectBytes()), "OK")
+    }
+
+    @TestCase
     public func rootPackageReExportsIntegratedGateSurface(): Unit {
         let sessionMiddleware = multiSession<String, String>(
             MultiSessionOptions2<String, String>(SessionOptions<String>(), SessionOptions<String>()),
         )
 
-        @Expect(rootPublicExportManifestEntryCount(), 60)
-        @Expect(rootPublicExportManifestPublicCount(), 46)
+        @Expect(rootPublicExportManifestEntryCount(), 71)
+        @Expect(rootPublicExportManifestPublicCount(), 57)
         @Expect(rootPublicExportManifestExpertPublicCount(), 10)
         @Expect(rootPublicExportManifestInternalCount(), 4)
         @Expect(rootPublicExportManifestTestOnlyCount(), 0)
