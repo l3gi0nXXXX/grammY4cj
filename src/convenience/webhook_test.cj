@@ -224,6 +224,46 @@ public class WebhookCallbackTest {
     }
 
     @TestCase
+    public func objectAndLegacyWebhookCallbackOverloadsAreEquivalent(): Unit {
+        let objectHandler = FakeWebhookUpdateHandler()
+        objectHandler.webhookReplyJson = "{\"method\":\"sendMessage\"}"
+        let objectCallback = webhookCallback(
+            objectHandler,
+            "fastify",
+            WebhookOptions(WEBHOOK_TIMEOUT_RETURN, 100, "shared-secret")
+        )
+        let objectResult = objectCallback.handle(WebhookRequest(
+            Update(244),
+            WebhookHeaders().set(SECRET_HEADER_LOWERCASE, "shared-secret"),
+            "fastify"
+        ))
+
+        let legacyHandler = FakeWebhookUpdateHandler()
+        legacyHandler.webhookReplyJson = "{\"method\":\"sendMessage\"}"
+        let legacyCallback = webhookCallback(
+            legacyHandler,
+            "fastify",
+            WEBHOOK_TIMEOUT_RETURN,
+            100,
+            "shared-secret"
+        )
+        let legacyResult = legacyCallback.handle(WebhookRequest(
+            Update(245),
+            WebhookHeaders().set(SECRET_HEADER_LOWERCASE, "shared-secret"),
+            "fastify"
+        ))
+
+        @Expect(objectResult.unauthorized, legacyResult.unauthorized)
+        @Expect(objectResult.timedOut, legacyResult.timedOut)
+        @Expect(objectResult.usedWebhookReply, legacyResult.usedWebhookReply)
+        @Expect(objectResult.response.respondProtocol, legacyResult.response.respondProtocol)
+        @Expect(objectResult.response.contentType, legacyResult.response.contentType)
+        @Expect(objectResult.response.body, legacyResult.response.body)
+        @Expect(objectHandler.handleUpdateCount, 1)
+        @Expect(legacyHandler.handleUpdateCount, 1)
+    }
+
+    @TestCase
     public func webhookReplyRespondsWithJsonInsteadOfEnd(): Unit {
         let handler = FakeWebhookUpdateHandler()
         handler.webhookReplyJson = "{\"method\":\"sendMessage\"}"
