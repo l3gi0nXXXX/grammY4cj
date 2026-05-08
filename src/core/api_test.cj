@@ -301,6 +301,8 @@ public class ApiWrapperTest {
         @Expect(apiWrapperMinimalPayloadGoldenRows().size, 180)
         @Expect(apiWrapperPublicOutputGoldenRows().size, 180)
         @Expect(apiWrapperTypedResultRows().size, 180)
+        @Expect(apiWrapperOtherPayloadSchemaTraceCount(), 180)
+        @Expect(apiWrapperOtherPayloadSchemaRows().size, 180)
         @Expect(apiWrapperMissingReturnTypeCount(), 0)
         @Expect(apiRawZeroArgMethodNames().size, 8)
         @Expect(apiWrapperMethodNames()[0], "getUpdates")
@@ -399,6 +401,31 @@ public class ApiWrapperTest {
         @Expect(goldenRowFor(rows, "editMessageTextInline").contains("editMessageTextInline~editMessageText~inline_message_id,text~~"), true)
         @Expect(goldenRowFor(rows, "kickChatMember").contains("kickChatMember~banChatMember~chat_id,user_id~~until_date,revoke_messages"), true)
         @Expect(goldenRowFor(rows, "getGameHighScoresInline").contains("getGameHighScoresInline~getGameHighScores~inline_message_id,user_id~~"), true)
+    }
+
+    @TestCase
+    public func otherPayloadSchemaSubstitutesTypescriptOtherContract(): Unit {
+        let rows = apiWrapperOtherPayloadSchemaRows()
+        @Expect(rows.size, 180)
+
+        let sendMessage = apiWrapperOtherPayloadSchemaTraceFor("sendMessage")
+        @Expect(sendMessage.rawMethodName, "sendMessage")
+        @Expect(sendMessage.pulledParameterTrace, "chat_id,text")
+        @Expect(sendMessage.excludesPulledParameter("chat_id"), true)
+        @Expect(sendMessage.excludesPulledParameter("text"), true)
+        @Expect(sendMessage.allowsPayloadField("reply_markup"), true)
+        @Expect(sendMessage.allowsOtherPayload, true)
+
+        let getMe = apiWrapperOtherPayloadSchemaTraceFor("getMe")
+        @Expect(getMe.allowsOtherPayload, false)
+        @Expect(getMe.excludedOtherFieldTrace, "")
+
+        let inlineEdit = apiWrapperOtherPayloadSchemaTraceFor("editMessageTextInline")
+        @Expect(inlineEdit.rawMethodName, "editMessageText")
+        @Expect(inlineEdit.excludesPulledParameter("inline_message_id"), true)
+        @Expect(inlineEdit.excludesPulledParameter("text"), true)
+        @Expect(inlineEdit.allowsPayloadField("chat_id"), true)
+        @Expect(inlineEdit.allowsPayloadField("reply_markup"), true)
     }
 
     @TestCase
@@ -532,6 +559,24 @@ public class ApiWrapperTest {
     }
 
     @TestCase
+    public func zeroArgPublicWrappersAndCallPublicMapToRawMethods(): Unit {
+        let api = Api.trace("token")
+
+        @Expect(methodName(api.getWebhookInfo()), "getWebhookInfo")
+        @Expect(payloadBody(api.getWebhookInfo()), "{}")
+        @Expect(methodName(api.logOut()), "logOut")
+        @Expect(methodName(api.close()), "close")
+        @Expect(methodName(api.getForumTopicIconStickers()), "getForumTopicIconStickers")
+        @Expect(methodName(api.getAvailableGifts()), "getAvailableGifts")
+        @Expect(methodName(api.getMyStarBalance()), "getMyStarBalance")
+        @Expect(methodName(api.removeMyProfilePhoto()), "removeMyProfilePhoto")
+
+        let publicAlias = api.callPublic("kickChatMember", Payload("").addInt("chat_id", 42).addInt("user_id", 7))
+        @Expect(methodName(publicAlias), "banChatMember")
+        @Expect(payloadBody(publicAlias), "{\"chat_id\":42,\"user_id\":7}")
+    }
+
+    @TestCase
     public func apiWrapperUsesRawApiAndReturnsTelegramResultWhenFetcherInjected(): Unit {
         let fake = ApiTestFakeFetch("{\"message_id\":1,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"hi\"}")
         let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
@@ -593,6 +638,18 @@ public class ApiWrapperTest {
         @Expect(api.config.installedTransformers().size, 1)
         @Expect(api.config.installedTransformers()[0], "annotate")
         @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\",\"via_transformer\":\"yes\"}")
+    }
+
+    @TestCase
+    public func typedWrapperOtherPayloadAndCancelSignalOverloadDispatches(): Unit {
+        let fake = ApiTestFakeFetch("{\"message_id\":2,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"hi\"}")
+        let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        let signal = CancelSignal()
+
+        let result = api.sendMessage(42, "hi", Payload("").addValue("parse_mode", "HTML"), signal)
+
+        @Expect(result.value.messageId, 2)
+        @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\",\"parse_mode\":\"HTML\"}")
     }
 
     @TestCase

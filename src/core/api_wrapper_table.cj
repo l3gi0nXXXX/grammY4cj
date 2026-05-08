@@ -369,6 +369,35 @@ public class ApiWrapperSignatureTrace {
     }
 }
 
+public class ApiWrapperOtherPayloadSchemaTrace {
+    public let publicMethodName: String
+    public let rawMethodName: String
+    public let pulledParameterTrace: String
+    public let otherPayloadFieldTrace: String
+    public let excludedOtherFieldTrace: String
+    public let allowsOtherPayload: Bool
+
+    public init(signature: ApiWrapperSignatureTrace) {
+        this.publicMethodName = signature.publicMethodName
+        this.rawMethodName = signature.rawMethodName
+        this.pulledParameterTrace = concatTraceFields(
+            signature.requiredParameterTrace,
+            signature.optionalParameterTrace
+        )
+        this.otherPayloadFieldTrace = signature.otherPayloadFieldTrace
+        this.excludedOtherFieldTrace = this.pulledParameterTrace
+        this.allowsOtherPayload = signature.otherPayloadFieldTrace != ""
+    }
+
+    public func excludesPulledParameter(field: String): Bool {
+        containsTraceField(this.excludedOtherFieldTrace, field)
+    }
+
+    public func allowsPayloadField(field: String): Bool {
+        containsTraceField(this.otherPayloadFieldTrace, field)
+    }
+}
+
 public func apiWrapperSchemaTraceRows(): Array<String> {
     [
         "getUpdates~getUpdates~~~offset,limit,timeout,allowed_updates~Update[]~~",
@@ -646,6 +675,41 @@ public func apiWrapperMissingReturnTypeCount(): Int64 {
         }
     }
     missing
+}
+
+public func apiWrapperOtherPayloadSchemaTraces(): ArrayList<ApiWrapperOtherPayloadSchemaTrace> {
+    let traces = ArrayList<ApiWrapperOtherPayloadSchemaTrace>()
+    for (signature in apiWrapperSignatureTraces()) {
+        traces.add(ApiWrapperOtherPayloadSchemaTrace(signature))
+    }
+    traces
+}
+
+public func apiWrapperOtherPayloadSchemaTraceCount(): Int64 {
+    apiWrapperOtherPayloadSchemaTraces().size
+}
+
+public func apiWrapperOtherPayloadSchemaTraceFor(publicMethodName: String): ApiWrapperOtherPayloadSchemaTrace {
+    for (trace in apiWrapperOtherPayloadSchemaTraces()) {
+        if (trace.publicMethodName == publicMethodName) {
+            return trace
+        }
+    }
+    throw Exception("Unknown API wrapper other payload schema trace: " + publicMethodName)
+}
+
+public func apiWrapperOtherPayloadSchemaRows(): ArrayList<String> {
+    let rows = ArrayList<String>()
+    for (trace in apiWrapperOtherPayloadSchemaTraces()) {
+        rows.add(
+            trace.publicMethodName + "~" +
+            trace.rawMethodName + "~" +
+            trace.pulledParameterTrace + "~" +
+            trace.otherPayloadFieldTrace + "~" +
+            trace.excludedOtherFieldTrace
+        )
+    }
+    rows
 }
 
 public func apiWrapperTypedResultRows(): ArrayList<String> {

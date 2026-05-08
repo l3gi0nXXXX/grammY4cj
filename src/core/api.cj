@@ -178,6 +178,18 @@ private func tracedApiResult<T>(trace: Payload, value: T, typeTrace: String): Ap
     ApiResult<T>(trace.body, value, typeTrace, trace)
 }
 
+private func apiParseRawBody(body: String): String {
+    let result = apiJsonFieldValue(body, "result")
+    if (result == "") {
+        return body
+    }
+    let trimmed = apiTrimJson(result)
+    if (trimmed.size >= 2 && trimmed[0..1] == "\"" && trimmed[trimmed.size - 1..trimmed.size] == "\"") {
+        return apiParseJsonString(trimmed)
+    }
+    trimmed
+}
+
 private func apiJsonFieldValue(json: String, key: String): String {
     let pattern = "\"" + key + "\""
     let keyIndex = apiIndexOfFrom(json, pattern, 0)
@@ -729,6 +741,31 @@ public class Api {
         this.raw.call(method, payload, signal)
     }
 
+    public func callPublic(publicMethodName: String, payload: Payload): Payload {
+        this.call(apiWrapperSchemaTraceFor(publicMethodName).rawMethodName, payload)
+    }
+
+    public func callPublic(publicMethodName: String, payload: Payload, signal: CancelSignal): Payload {
+        this.call(apiWrapperSchemaTraceFor(publicMethodName).rawMethodName, payload, signal)
+    }
+
+    private func zeroArgResult(method: String, typeTrace: String): ApiResult<String> {
+        if (this.traceCompatibilityMode) {
+            return tracedApiResult<String>(tracePayload(method, Payload("{}")), "", typeTrace)
+        }
+        let body = this.raw.call(method, Payload("{}"))
+        ApiResult<String>(body, apiParseRawBody(body), typeTrace)
+    }
+
+    private func zeroArgResult(method: String, typeTrace: String, signal: CancelSignal): ApiResult<String> {
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracedApiResult<String>(tracePayload(method, Payload("{}")), "", typeTrace)
+        }
+        let body = this.raw.call(method, Payload("{}"), signal)
+        ApiResult<String>(body, apiParseRawBody(body), typeTrace)
+    }
+
     public func getUpdates(): ApiResult<ArrayList<Update>> {
         if (this.traceCompatibilityMode) {
             return tracedApiResult<ArrayList<Update>>(tracePayload("getUpdates", Payload("{}")), ArrayList<Update>(), "Update[]")
@@ -761,6 +798,62 @@ public class Api {
         }
         let body = this.raw.call("getMe", Payload("{}"), signal)
         ApiResult<User>(body, apiParseUser(body), "User")
+    }
+
+    public func getWebhookInfo(): ApiResult<String> {
+        this.zeroArgResult("getWebhookInfo", "WebhookInfo")
+    }
+
+    public func getWebhookInfo(signal: CancelSignal): ApiResult<String> {
+        this.zeroArgResult("getWebhookInfo", "WebhookInfo", signal)
+    }
+
+    public func logOut(): ApiResult<String> {
+        this.zeroArgResult("logOut", "true")
+    }
+
+    public func logOut(signal: CancelSignal): ApiResult<String> {
+        this.zeroArgResult("logOut", "true", signal)
+    }
+
+    public func close(): ApiResult<String> {
+        this.zeroArgResult("close", "true")
+    }
+
+    public func close(signal: CancelSignal): ApiResult<String> {
+        this.zeroArgResult("close", "true", signal)
+    }
+
+    public func getForumTopicIconStickers(): ApiResult<String> {
+        this.zeroArgResult("getForumTopicIconStickers", "Sticker[]")
+    }
+
+    public func getForumTopicIconStickers(signal: CancelSignal): ApiResult<String> {
+        this.zeroArgResult("getForumTopicIconStickers", "Sticker[]", signal)
+    }
+
+    public func getAvailableGifts(): ApiResult<String> {
+        this.zeroArgResult("getAvailableGifts", "Gifts")
+    }
+
+    public func getAvailableGifts(signal: CancelSignal): ApiResult<String> {
+        this.zeroArgResult("getAvailableGifts", "Gifts", signal)
+    }
+
+    public func getMyStarBalance(): ApiResult<String> {
+        this.zeroArgResult("getMyStarBalance", "StarAmount")
+    }
+
+    public func getMyStarBalance(signal: CancelSignal): ApiResult<String> {
+        this.zeroArgResult("getMyStarBalance", "StarAmount", signal)
+    }
+
+    public func removeMyProfilePhoto(): ApiResult<String> {
+        this.zeroArgResult("removeMyProfilePhoto", "true")
+    }
+
+    public func removeMyProfilePhoto(signal: CancelSignal): ApiResult<String> {
+        this.zeroArgResult("removeMyProfilePhoto", "true", signal)
     }
 
     public func sendMessage(chatId: Int64, text: String): ApiResult<Message> {
@@ -796,6 +889,26 @@ public class Api {
             return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
         }
         let body = this.raw.call("sendMessage", payload)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
+    }
+
+    public func sendMessage(chatId: Int64, text: String, other: Payload, signal: CancelSignal): ApiResult<Message> {
+        let payload = mergeOtherPayload(requiredTextPayload(chatId, text), other)
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload, signal)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
+    }
+
+    public func sendMessage(chatId: String, text: String, other: Payload, signal: CancelSignal): ApiResult<Message> {
+        let payload = mergeOtherPayload(requiredTextPayload(chatId, text), other)
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload, signal)
         ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
     }
 
