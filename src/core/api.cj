@@ -284,9 +284,59 @@ public func apiWrapperMinimalPayloadGoldenRows(): ArrayList<String> {
     rows
 }
 
+public class ApiConfig {
+    public let options: ApiClientOptions
+    private let client: ApiClient
+
+    public init(client: ApiClient, options: ApiClientOptions) {
+        this.client = client
+        this.options = options
+    }
+
+    public func use(transformerName: String): ApiConfig {
+        this.client.use(transformerName)
+        this
+    }
+
+    public func use(transformer: Transformer): ApiConfig {
+        this.client.use(transformer)
+        this
+    }
+
+    public func use(transformerName: String, transformer: Transformer): ApiConfig {
+        this.client.use(transformerName, transformer)
+        this
+    }
+
+    public func installedTransformers(): Array<String> {
+        this.client.installedTransformers.toArray()
+    }
+
+    public func installedTransformerFunctions(): Array<Transformer> {
+        this.client.installedTransformerFunctions.toArray()
+    }
+
+    public func buildUrl(token: String, method: String): String {
+        this.options.buildUrl(token, method)
+    }
+
+    public func canUseWebhookReplyFor(method: String): Bool {
+        this.options.canUseWebhookReplyFor(method)
+    }
+
+    public func baseFetchConfigSummary(): String {
+        this.options.baseFetchConfigSummary()
+    }
+
+    public func copyTransformersTo(target: ApiClient): Unit {
+        let _ = this.client.copyInstalledTransformersTo(target)
+    }
+}
+
 public class Api {
     public let token: String
-    public let config: ApiClientOptions
+    public let options: ApiClientOptions
+    public let config: ApiConfig
     public let raw: RawApiFacade
     public let installedTransformers: ArrayList<String>
     private let client: ApiClient
@@ -294,37 +344,63 @@ public class Api {
 
     public init(token: String) {
         this.token = token
-        this.config = ApiClientOptions()
-        this.client = ApiClient(this.config)
+        this.options = ApiClientOptions()
+        this.client = ApiClient(this.options)
         this.raw = RawApiFacade(token, this.client)
         this.installedTransformers = this.client.installedTransformers
+        this.config = ApiConfig(this.client, this.options)
         this.traceCompatibilityMode = false
     }
 
-    public init(token: String, config: ApiClientOptions) {
+    public init(token: String, options: ApiClientOptions) {
         this.token = token
-        this.config = config
-        this.client = ApiClient(config)
+        this.options = options
+        this.client = ApiClient(options)
         this.raw = RawApiFacade(token, this.client)
         this.installedTransformers = this.client.installedTransformers
+        this.config = ApiConfig(this.client, this.options)
         this.traceCompatibilityMode = false
     }
 
-    public init(token: String, config: ApiClientOptions, fetcher: CoreFetch) {
+    public init(token: String, config: ApiConfig) {
         this.token = token
-        this.config = config
-        this.client = ApiClient(config, fetcher)
+        this.options = config.options
+        this.client = ApiClient(this.options)
+        config.copyTransformersTo(this.client)
         this.raw = RawApiFacade(token, this.client)
         this.installedTransformers = this.client.installedTransformers
+        this.config = ApiConfig(this.client, this.options)
         this.traceCompatibilityMode = false
     }
 
-    public init(token: String, config: ApiClientOptions, traceCompatibilityMode: Bool) {
+    public init(token: String, config: ApiConfig, fetcher: CoreFetch) {
         this.token = token
-        this.config = config
-        this.client = ApiClient(config)
+        this.options = config.options
+        this.client = ApiClient(this.options, fetcher)
+        config.copyTransformersTo(this.client)
         this.raw = RawApiFacade(token, this.client)
         this.installedTransformers = this.client.installedTransformers
+        this.config = ApiConfig(this.client, this.options)
+        this.traceCompatibilityMode = false
+    }
+
+    public init(token: String, options: ApiClientOptions, fetcher: CoreFetch) {
+        this.token = token
+        this.options = options
+        this.client = ApiClient(options, fetcher)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+        this.config = ApiConfig(this.client, this.options)
+        this.traceCompatibilityMode = false
+    }
+
+    public init(token: String, options: ApiClientOptions, traceCompatibilityMode: Bool) {
+        this.token = token
+        this.options = options
+        this.client = ApiClient(options)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+        this.config = ApiConfig(this.client, this.options)
         this.traceCompatibilityMode = traceCompatibilityMode
     }
 
@@ -337,7 +413,7 @@ public class Api {
     }
 
     public func endpointFor(method: String): String {
-        this.config.buildUrl(this.token, method)
+        this.options.buildUrl(this.token, method)
     }
 
     public func use(transformerName: String): Api {
