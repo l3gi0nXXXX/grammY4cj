@@ -214,6 +214,8 @@ public class MultipartChunk {
     public let bytes: Array<Byte>
     public let sourceKind: String
     public let raw: Option<InputFileRawData>
+    public let inputFile: Option<InputFile>
+    public let rawAdapter: Option<InputFileRawAdapter>
 
     public init(kind: String, data: String, sourceKind: String) {
         this.kind = kind
@@ -221,6 +223,8 @@ public class MultipartChunk {
         this.bytes = data.toArray()
         this.sourceKind = sourceKind
         this.raw = None<InputFileRawData>
+        this.inputFile = None<InputFile>
+        this.rawAdapter = None<InputFileRawAdapter>
     }
 
     public init(kind: String, bytes: Array<Byte>, sourceKind: String) {
@@ -229,6 +233,8 @@ public class MultipartChunk {
         this.bytes = bytes
         this.sourceKind = sourceKind
         this.raw = None<InputFileRawData>
+        this.inputFile = None<InputFile>
+        this.rawAdapter = None<InputFileRawAdapter>
     }
 
     public init(kind: String, raw: InputFileRawData) {
@@ -237,6 +243,22 @@ public class MultipartChunk {
         this.bytes = []
         this.sourceKind = raw.rawSourceKind
         this.raw = Some(raw)
+        this.inputFile = None<InputFile>
+        this.rawAdapter = None<InputFileRawAdapter>
+    }
+
+    public init(kind: String, file: InputFile, adapter: InputFileRawAdapter) {
+        this.kind = kind
+        this.data = if (file.source.reusable && !file.source.requiresFileAdapter && !file.source.requiresFetchAdapter) {
+            file.sourceValue
+        } else {
+            ""
+        }
+        this.bytes = []
+        this.sourceKind = file.sourceKind
+        this.raw = None<InputFileRawData>
+        this.inputFile = Some(file)
+        this.rawAdapter = Some(adapter)
     }
 }
 
@@ -272,6 +294,11 @@ public class MultipartByteStream {
 
     public func addRaw(raw: InputFileRawData): MultipartByteStream {
         this.chunks.add(MultipartChunk("file", raw))
+        this
+    }
+
+    public func addInputFile(file: InputFile, adapter: InputFileRawAdapter): MultipartByteStream {
+        this.chunks.add(MultipartChunk("file", file, adapter))
         this
     }
 
@@ -333,7 +360,18 @@ public class MultipartByteStream {
                             chunks.add(rawChunk)
                         }
                     case None =>
-                        chunks.add(chunk.bytes)
+                        match (chunk.inputFile) {
+                            case Some(file) =>
+                                match (chunk.rawAdapter) {
+                                    case Some(adapter) =>
+                                        let raw = file.toRaw(adapter)
+                                        for (rawChunk in raw.collectChunks()) {
+                                            chunks.add(rawChunk)
+                                        }
+                                    case None => throw Exception("Multipart InputFile raw adapter missing")
+                                }
+                            case None => chunks.add(chunk.bytes)
+                        }
                 }
             }
         } catch (err: Exception) {
@@ -753,7 +791,7 @@ private func appendFilePart(stream: MultipartByteStream, part: CollectedFile, ad
 private func appendInputFileBytes(stream: MultipartByteStream, field: PayloadField, adapter: InputFileRawAdapter): Unit {
     match (field.inputFile) {
         case Some(file) =>
-            stream.addRaw(file.toRaw(adapter))
+            stream.addInputFile(file, adapter)
         case None => stream.addFile(field.sourceKind, field.value)
     }
 }

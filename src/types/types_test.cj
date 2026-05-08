@@ -423,6 +423,21 @@ public class InputFileTest {
     }
 
     @TestCase
+    public func inputFileToRawDefaultUsesDenoFacadeAndInjectedAdapter(): Unit {
+        let fileAdapter = FakeFileAdapter()
+        let adapter = InputFileRawAdapter(fileAdapter, FakeFetchAdapter())
+
+        let raw = InputFile.fromPath("/tmp/default.txt").toRaw(adapter)
+
+        @Expect(raw.runtime, "deno")
+        @Expect(raw.platformContract, "deno-open-file-async-iterator")
+        @Expect(raw.requiresFileAdapter, true)
+        @Expect(raw.collectString(), "file:/tmp/default.txt")
+        @Expect(fileAdapter.readCount, 1)
+        @Expect(fileAdapter.lastPath, "/tmp/default.txt")
+    }
+
+    @TestCase
     public func inputFileRawCollectsBytesThroughInjectedAdapters(): Unit {
         let fileAdapter = FakeFileAdapter()
         let fetchAdapter = FakeFetchAdapter()
