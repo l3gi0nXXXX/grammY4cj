@@ -330,6 +330,29 @@ public class PayloadTest {
     }
 
     @TestCase
+    public func multipartStructuredPayloadSkipsObjectNullishAndKeepsArrayNullish(): Unit {
+        let payload = Payload("")
+        payload.addNull("drop_top")
+        let options = payload.addObject("options")
+        options.addValue("type", "photo")
+        options.addNull("drop_nested")
+        options.addUndefined("drop_undefined")
+        let flags = options.addArray("flags")
+        flags.addBoolItem(false).addNullItem().addUndefinedItem()
+        options.addFile("thumbnail", InputFile.fromBytes("thumb", ""))
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
+
+        @Expect(body.contains("drop_top"), false)
+        @Expect(body.contains("drop_nested"), false)
+        @Expect(body.contains("drop_undefined"), false)
+        @Expect(body.contains("\"flags\":[false,null,null]"), true)
+        @Expect(body.contains("\"thumbnail\":\"attach://attach0\""), true)
+        @Expect(body.contains("name=\"attach0\";filename=thumbnail.jpg"), true)
+    }
+
+    @TestCase
     public func multipartRequestPayloadExposesNativeStreamDrainShape(): Unit {
         let payload = Payload("")
         payload.addFile("document", InputFile.fromBytes("abc", "a.txt"))
@@ -339,6 +362,23 @@ public class PayloadTest {
         @Expect(req.bodyKind, "stream")
         @Expect(req.body, "")
         @Expect(req.drainBody().contains("name=\"attach0\";filename=a.txt"), true)
+    }
+
+    @TestCase
+    public func multipartRequestPayloadDrainsNativeBytesWithoutTextBodyFallback(): Unit {
+        let payload = Payload("")
+        payload.addInt("chat_id", 42)
+        payload.addFile("document", InputFile.fromBytes("abc", "a.txt"))
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+        let bytes = req.drainBodyBytes()
+        let body = String.fromUtf8(bytes)
+
+        @Expect(req.bodyKind, "stream")
+        @Expect(req.body, "")
+        @Expect(body.startsWith("--boundary\r\ncontent-disposition:form-data;name=\"chat_id\""), true)
+        @Expect(body.contains("name=\"attach0\";filename=a.txt\r\ncontent-type:application/octet-stream\r\n\r\nabc"), true)
+        @Expect(body.endsWith("\r\n--boundary--\r\n"), true)
     }
 
     @TestCase
@@ -402,6 +442,27 @@ public class PayloadTest {
             @Expect(err.message, "stream exploded")
             @Expect(errors.size, 1)
             @Expect(errors[0], "stream exploded")
+        }
+    }
+
+    @TestCase
+    public func multipartStreamInvokesErrorCallbackForDeferredToRawFailure(): Unit {
+        let errors = ArrayList<String>()
+        let payload = Payload("")
+        payload.addFile("document", InputFile.fromSupplierFailure("lazy", "a.txt", "supplier exploded"))
+
+        let req = createFormDataPayload(payload, "boundary", "attach", { err: Exception =>
+            errors.add(err.message)
+        })
+
+        @Expect(req.body, "")
+        try {
+            req.stream.drain()
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message, "supplier exploded")
+            @Expect(errors.size, 1)
+            @Expect(errors[0], "supplier exploded")
         }
     }
 }
