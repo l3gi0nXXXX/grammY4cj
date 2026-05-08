@@ -248,18 +248,42 @@ private func queryArrayPredicate(queries: Array<String>): MaybePredicate {
 }
 
 private func routeMiddleware(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): MaybeMiddlewareFactory {
+    routeMaybeMiddleware(router, liftSyncRouteHandlers(routeHandlers), liftSyncMiddleware(fallback))
+}
+
+private func routeFutureMiddleware(router: MaybeRouter, routeHandlers: HashMap<String, AsyncMiddlewareFn>, fallback: AsyncMiddlewareFn): MaybeMiddlewareFactory {
+    routeMaybeMiddleware(router, liftFutureRouteHandlers(routeHandlers), liftFutureMiddleware(fallback))
+}
+
+private func routeMaybeMiddleware(router: MaybeRouter, routeHandlers: HashMap<String, MaybeMiddlewareFn>, fallback: MaybeMiddlewareFn): MaybeMiddlewareFactory {
     { ctx: Context =>
         MaybeTask<MaybeMiddlewareFn>({ =>
             match (router(ctx).get()) {
                 case Some(route) =>
                     match (routeHandlers.get(route)) {
-                        case Some(mw) => liftSyncMiddleware(mw)
-                        case None => liftSyncMiddleware(fallback)
+                        case Some(mw) => mw
+                        case None => fallback
                     }
-                case None => liftSyncMiddleware(fallback)
+                case None => fallback
             }
         })
     }
+}
+
+private func liftSyncRouteHandlers(routeHandlers: HashMap<String, MiddlewareFn>): HashMap<String, MaybeMiddlewareFn> {
+    let lifted = HashMap<String, MaybeMiddlewareFn>()
+    for ((route, mw) in routeHandlers) {
+        lifted[route] = liftSyncMiddleware(mw)
+    }
+    lifted
+}
+
+private func liftFutureRouteHandlers(routeHandlers: HashMap<String, AsyncMiddlewareFn>): HashMap<String, MaybeMiddlewareFn> {
+    let lifted = HashMap<String, MaybeMiddlewareFn>()
+    for ((route, mw) in routeHandlers) {
+        lifted[route] = liftFutureMiddleware(mw)
+    }
+    lifted
 }
 
 private class PromiseAllState {
@@ -1121,15 +1145,47 @@ public class Composer {
         this.route(liftSyncRouter(router), routeHandlers, pass)
     }
 
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, AsyncMiddlewareFn>): Composer {
+        this.route(liftSyncRouter(router), routeHandlers, asyncPass)
+    }
+
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, MaybeMiddlewareFn>): Composer {
+        this.route(liftSyncRouter(router), routeHandlers, maybePass)
+    }
+
     public func route(router: Router, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
         this.route(liftFutureRouter(router), routeHandlers, pass)
+    }
+
+    public func route(router: Router, routeHandlers: HashMap<String, AsyncMiddlewareFn>): Composer {
+        this.route(liftFutureRouter(router), routeHandlers, asyncPass)
+    }
+
+    public func route(router: Router, routeHandlers: HashMap<String, MaybeMiddlewareFn>): Composer {
+        this.route(liftFutureRouter(router), routeHandlers, maybePass)
     }
 
     public func route(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
         this.route(router, routeHandlers, pass)
     }
 
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, AsyncMiddlewareFn>): Composer {
+        this.route(router, routeHandlers, asyncPass)
+    }
+
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, MaybeMiddlewareFn>): Composer {
+        this.route(router, routeHandlers, maybePass)
+    }
+
     public func route(router: SyncRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
+        this.route(liftSyncRouter(router), routeHandlers, fallback)
+    }
+
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, AsyncMiddlewareFn>, fallback: AsyncMiddlewareFn): Composer {
+        this.route(liftSyncRouter(router), routeHandlers, fallback)
+    }
+
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, MaybeMiddlewareFn>, fallback: MaybeMiddlewareFn): Composer {
         this.route(liftSyncRouter(router), routeHandlers, fallback)
     }
 
@@ -1137,8 +1193,24 @@ public class Composer {
         this.route(liftFutureRouter(router), routeHandlers, fallback)
     }
 
+    public func route(router: Router, routeHandlers: HashMap<String, AsyncMiddlewareFn>, fallback: AsyncMiddlewareFn): Composer {
+        this.route(liftFutureRouter(router), routeHandlers, fallback)
+    }
+
+    public func route(router: Router, routeHandlers: HashMap<String, MaybeMiddlewareFn>, fallback: MaybeMiddlewareFn): Composer {
+        this.route(liftFutureRouter(router), routeHandlers, fallback)
+    }
+
     public func route(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
         this.lazyMaybe(routeMiddleware(router, routeHandlers, fallback))
+    }
+
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, AsyncMiddlewareFn>, fallback: AsyncMiddlewareFn): Composer {
+        this.lazyMaybe(routeFutureMiddleware(router, routeHandlers, fallback))
+    }
+
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, MaybeMiddlewareFn>, fallback: MaybeMiddlewareFn): Composer {
+        this.lazyMaybe(routeMaybeMiddleware(router, routeHandlers, fallback))
     }
 
     public func branch(predicate: SyncPredicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {

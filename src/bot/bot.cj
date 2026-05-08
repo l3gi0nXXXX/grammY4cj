@@ -1,13 +1,33 @@
 package grammy4cj.bot
 
 import std.collection.ArrayList
+import std.collection.HashMap
+import std.regex.Regex
 import std.sync.Mutex
 
+import grammy4cj.composer.AsyncComposerFactory
+import grammy4cj.composer.AsyncErrorHandler
+import grammy4cj.composer.AsyncMiddlewareArrayFactory
 import grammy4cj.composer.AsyncMiddlewareFn
+import grammy4cj.composer.AsyncMiddlewareFactory
+import grammy4cj.composer.ComposerFactory
+import grammy4cj.composer.ErrorHandler
+import grammy4cj.composer.MaybeComposerFactory
+import grammy4cj.composer.MaybeErrorHandler
+import grammy4cj.composer.MaybeMiddlewareArrayFactory
 import grammy4cj.composer.BotError
 import grammy4cj.composer.Composer
+import grammy4cj.composer.MaybeMiddlewareFactory
 import grammy4cj.composer.MaybeMiddlewareFn
+import grammy4cj.composer.MaybePredicate
+import grammy4cj.composer.MaybeRouter
 import grammy4cj.composer.MiddlewareFn
+import grammy4cj.composer.MiddlewareArrayFactory
+import grammy4cj.composer.MiddlewareFactory
+import grammy4cj.composer.Predicate
+import grammy4cj.composer.Router
+import grammy4cj.composer.SyncPredicate
+import grammy4cj.composer.SyncRouter
 import grammy4cj.composer.run
 import grammy4cj.context.Context
 import grammy4cj.core.Api
@@ -18,6 +38,7 @@ import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
 import grammy4cj.core.WebhookReplyEnvelope
 import grammy4cj.filter.expandedFilterQueries
+import grammy4cj.types.ReactionType
 import grammy4cj.types.Update
 import grammy4cj.types.UserFromGetMe
 
@@ -268,6 +289,18 @@ public class Bot {
         this.composer.middleware()
     }
 
+    public func asyncMiddleware(): AsyncMiddlewareFn {
+        this.composer.asyncMiddleware()
+    }
+
+    public func maybeMiddleware(): MaybeMiddlewareFn {
+        this.composer.maybeMiddleware()
+    }
+
+    public func run(ctx: Context): Unit {
+        this.composer.run(ctx)
+    }
+
     public func use(middleware: MiddlewareFn): Composer {
         this.assertMiddlewareRegistrationAllowed()
         this.composer.use(middleware)
@@ -343,6 +376,910 @@ public class Bot {
         this.assertMiddlewareRegistrationAllowed()
         this.observeUpdateType("message_reaction")
         this.composer.reaction(reaction, middleware)
+    }
+
+    public func reaction(reaction: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reaction)
+    }
+
+    public func reaction(reaction: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reaction, middleware)
+    }
+
+    public func reaction(reactions: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reactions)
+    }
+
+    public func reaction(reactions: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reactions, middleware)
+    }
+
+    public func reaction(reactions: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reactions, middleware)
+    }
+
+    public func reaction(reaction: ReactionType): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reaction)
+    }
+
+    public func reaction(reaction: ReactionType, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reaction, middleware)
+    }
+
+    public func reaction(reaction: ReactionType, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reaction, middleware)
+    }
+
+    public func reaction(reactions: Array<ReactionType>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reactions)
+    }
+
+    public func reaction(reactions: Array<ReactionType>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reactions, middleware)
+    }
+
+    public func reaction(reactions: Array<ReactionType>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeUpdateType("message_reaction")
+        this.composer.reaction(reactions, middleware)
+    }
+
+    public func hears(trigger: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(trigger)
+    }
+
+    public func hears(trigger: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(trigger, middleware)
+    }
+
+    public func hears(trigger: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(trigger, middleware)
+    }
+
+    public func hears(triggers: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(triggers)
+    }
+
+    public func hears(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(triggers, middleware)
+    }
+
+    public func hears(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(triggers, middleware)
+    }
+
+    public func hears(trigger: Regex): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(trigger)
+    }
+
+    public func hears(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(trigger, middleware)
+    }
+
+    public func hears(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(trigger, middleware)
+    }
+
+    public func hears(triggers: Array<Regex>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(triggers)
+    }
+
+    public func hears(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(triggers, middleware)
+    }
+
+    public func hears(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.hears(triggers, middleware)
+    }
+
+    public func command(command: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.command(command)
+    }
+
+    public func command(command: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.command(command, middleware)
+    }
+
+    public func command(command: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.command(command, middleware)
+    }
+
+    public func command(commands: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.command(commands)
+    }
+
+    public func command(commands: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.command(commands, middleware)
+    }
+
+    public func command(commands: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.command(commands, middleware)
+    }
+
+    public func chatType(chatType: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chatType(chatType)
+    }
+
+    public func chatType(chatType: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chatType(chatType, middleware)
+    }
+
+    public func chatType(chatType: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chatType(chatType, middleware)
+    }
+
+    public func chatType(chatTypes: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chatType(chatTypes)
+    }
+
+    public func chatType(chatTypes: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chatType(chatTypes, middleware)
+    }
+
+    public func chatType(chatTypes: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chatType(chatTypes, middleware)
+    }
+
+    public func callbackQuery(trigger: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(trigger)
+    }
+
+    public func callbackQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(trigger, middleware)
+    }
+
+    public func callbackQuery(trigger: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(trigger, middleware)
+    }
+
+    public func callbackQuery(triggers: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(triggers)
+    }
+
+    public func callbackQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(triggers, middleware)
+    }
+
+    public func callbackQuery(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(triggers, middleware)
+    }
+
+    public func callbackQuery(trigger: Regex): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(trigger)
+    }
+
+    public func callbackQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(trigger, middleware)
+    }
+
+    public func callbackQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(trigger, middleware)
+    }
+
+    public func callbackQuery(triggers: Array<Regex>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(triggers)
+    }
+
+    public func callbackQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(triggers, middleware)
+    }
+
+    public func callbackQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.callbackQuery(triggers, middleware)
+    }
+
+    public func gameQuery(trigger: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(trigger)
+    }
+
+    public func gameQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(trigger, middleware)
+    }
+
+    public func gameQuery(trigger: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(trigger, middleware)
+    }
+
+    public func gameQuery(triggers: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(triggers)
+    }
+
+    public func gameQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(triggers, middleware)
+    }
+
+    public func gameQuery(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(triggers, middleware)
+    }
+
+    public func gameQuery(trigger: Regex): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(trigger)
+    }
+
+    public func gameQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(trigger, middleware)
+    }
+
+    public func gameQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(trigger, middleware)
+    }
+
+    public func gameQuery(triggers: Array<Regex>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(triggers)
+    }
+
+    public func gameQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(triggers, middleware)
+    }
+
+    public func gameQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.gameQuery(triggers, middleware)
+    }
+
+    public func inlineQuery(trigger: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(trigger)
+    }
+
+    public func inlineQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(trigger, middleware)
+    }
+
+    public func inlineQuery(trigger: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(trigger, middleware)
+    }
+
+    public func inlineQuery(triggers: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(triggers)
+    }
+
+    public func inlineQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(triggers, middleware)
+    }
+
+    public func inlineQuery(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(triggers, middleware)
+    }
+
+    public func inlineQuery(trigger: Regex): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(trigger)
+    }
+
+    public func inlineQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(trigger, middleware)
+    }
+
+    public func inlineQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(trigger, middleware)
+    }
+
+    public func inlineQuery(triggers: Array<Regex>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(triggers)
+    }
+
+    public func inlineQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(triggers, middleware)
+    }
+
+    public func inlineQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.inlineQuery(triggers, middleware)
+    }
+
+    public func chosenInlineResult(trigger: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(trigger)
+    }
+
+    public func chosenInlineResult(trigger: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(trigger, middleware)
+    }
+
+    public func chosenInlineResult(trigger: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(trigger, middleware)
+    }
+
+    public func chosenInlineResult(triggers: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(triggers)
+    }
+
+    public func chosenInlineResult(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(triggers, middleware)
+    }
+
+    public func chosenInlineResult(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(triggers, middleware)
+    }
+
+    public func chosenInlineResult(trigger: Regex): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(trigger)
+    }
+
+    public func chosenInlineResult(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(trigger, middleware)
+    }
+
+    public func chosenInlineResult(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(trigger, middleware)
+    }
+
+    public func chosenInlineResult(triggers: Array<Regex>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(triggers)
+    }
+
+    public func chosenInlineResult(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(triggers, middleware)
+    }
+
+    public func chosenInlineResult(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.chosenInlineResult(triggers, middleware)
+    }
+
+    public func preCheckoutQuery(trigger: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(trigger)
+    }
+
+    public func preCheckoutQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(trigger, middleware)
+    }
+
+    public func preCheckoutQuery(trigger: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(trigger, middleware)
+    }
+
+    public func preCheckoutQuery(triggers: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(triggers)
+    }
+
+    public func preCheckoutQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(triggers, middleware)
+    }
+
+    public func preCheckoutQuery(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(triggers, middleware)
+    }
+
+    public func preCheckoutQuery(trigger: Regex): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(trigger)
+    }
+
+    public func preCheckoutQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(trigger, middleware)
+    }
+
+    public func preCheckoutQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(trigger, middleware)
+    }
+
+    public func preCheckoutQuery(triggers: Array<Regex>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(triggers)
+    }
+
+    public func preCheckoutQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(triggers, middleware)
+    }
+
+    public func preCheckoutQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.preCheckoutQuery(triggers, middleware)
+    }
+
+    public func shippingQuery(trigger: String): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(trigger)
+    }
+
+    public func shippingQuery(trigger: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(trigger, middleware)
+    }
+
+    public func shippingQuery(trigger: String, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(trigger, middleware)
+    }
+
+    public func shippingQuery(triggers: Array<String>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(triggers)
+    }
+
+    public func shippingQuery(triggers: Array<String>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(triggers, middleware)
+    }
+
+    public func shippingQuery(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(triggers, middleware)
+    }
+
+    public func shippingQuery(trigger: Regex): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(trigger)
+    }
+
+    public func shippingQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(trigger, middleware)
+    }
+
+    public func shippingQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(trigger, middleware)
+    }
+
+    public func shippingQuery(triggers: Array<Regex>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(triggers)
+    }
+
+    public func shippingQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(triggers, middleware)
+    }
+
+    public func shippingQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.shippingQuery(triggers, middleware)
+    }
+
+    public func filter(predicate: Predicate): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate)
+    }
+
+    public func filter(predicate: SyncPredicate): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate)
+    }
+
+    public func filter(predicate: MaybePredicate): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate)
+    }
+
+    public func filter(predicate: Predicate, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: SyncPredicate, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: MaybePredicate, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: Predicate, middleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: MaybePredicate, middleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: Predicate, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: SyncPredicate, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: MaybePredicate, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: Predicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func filter(predicate: MaybePredicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.filter(predicate, middleware)
+    }
+
+    public func drop(predicate: Predicate): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate)
+    }
+
+    public func drop(predicate: SyncPredicate): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate)
+    }
+
+    public func drop(predicate: MaybePredicate): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate)
+    }
+
+    public func drop(predicate: Predicate, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: SyncPredicate, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: MaybePredicate, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: Predicate, middleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: MaybePredicate, middleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: Predicate, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: SyncPredicate, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: MaybePredicate, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: Predicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func drop(predicate: MaybePredicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.drop(predicate, middleware)
+    }
+
+    public func fork(): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.fork()
+    }
+
+    public func fork(middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.fork(middleware)
+    }
+
+    public func fork(middleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.fork(middleware)
+    }
+
+    public func fork(middleware: MaybeMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.fork(middleware)
+    }
+
+    public func fork(middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.fork(middleware)
+    }
+
+    public func fork(middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.fork(middleware)
+    }
+
+    public func fork(middleware: Array<MaybeMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.fork(middleware)
+    }
+
+    public func lazy(factory: MiddlewareFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazy(factory)
+    }
+
+    public func lazy(factory: AsyncMiddlewareFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazy(factory)
+    }
+
+    public func lazyAsync(factory: (Context) -> Future<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazyAsync(factory)
+    }
+
+    public func lazyMaybe(factory: MaybeMiddlewareFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazyMaybe(factory)
+    }
+
+    public func lazy(factory: MiddlewareArrayFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazy(factory)
+    }
+
+    public func lazy(factory: AsyncMiddlewareArrayFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazy(factory)
+    }
+
+    public func lazyMaybeArray(factory: MaybeMiddlewareArrayFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazyMaybeArray(factory)
+    }
+
+    public func lazy(factory: ComposerFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazy(factory)
+    }
+
+    public func lazy(factory: AsyncComposerFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazy(factory)
+    }
+
+    public func lazyMaybeComposer(factory: MaybeComposerFactory): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.lazyMaybeComposer(factory)
+    }
+
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.route(router, routeHandlers)
+    }
+
+    public func route(router: Router, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.route(router, routeHandlers)
+    }
+
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.route(router, routeHandlers)
+    }
+
+    public func route(router: SyncRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.route(router, routeHandlers, fallback)
+    }
+
+    public func route(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.route(router, routeHandlers, fallback)
+    }
+
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.route(router, routeHandlers, fallback)
+    }
+
+    public func branch(predicate: SyncPredicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: Predicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: Predicate, trueMiddleware: AsyncMiddlewareFn, falseMiddleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: AsyncMiddlewareFn, falseMiddleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: MaybeMiddlewareFn, falseMiddleware: MaybeMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: SyncPredicate, trueMiddleware: Array<MiddlewareFn>, falseMiddleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: Predicate, trueMiddleware: Array<MiddlewareFn>, falseMiddleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: Array<MiddlewareFn>, falseMiddleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: Predicate, trueMiddleware: Array<AsyncMiddlewareFn>, falseMiddleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: Array<AsyncMiddlewareFn>, falseMiddleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: Array<MaybeMiddlewareFn>, falseMiddleware: Array<MaybeMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.branch(predicate, trueMiddleware, falseMiddleware)
+    }
+
+    public func errorBoundary(errorHandler: ErrorHandler): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler)
+    }
+
+    public func errorBoundary(errorHandler: AsyncErrorHandler): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler)
+    }
+
+    public func errorBoundary(errorHandler: MaybeErrorHandler): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler)
+    }
+
+    public func errorBoundary(errorHandler: ErrorHandler, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler, middleware)
+    }
+
+    public func errorBoundary(errorHandler: AsyncErrorHandler, middleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler, middleware)
+    }
+
+    public func errorBoundary(errorHandler: MaybeErrorHandler, middleware: MaybeMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler, middleware)
+    }
+
+    public func errorBoundary(errorHandler: ErrorHandler, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler, middleware)
+    }
+
+    public func errorBoundary(errorHandler: AsyncErrorHandler, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler, middleware)
+    }
+
+    public func errorBoundary(errorHandler: MaybeErrorHandler, middleware: Array<MaybeMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.errorBoundary(errorHandler, middleware)
+    }
+
+    public func layerName(): String {
+        "Bot"
+    }
+
+    public func middlewareName(): String {
+        "grammy4cj.bot.Bot"
     }
 
     public func observeUpdateType(updateType: String): Unit {

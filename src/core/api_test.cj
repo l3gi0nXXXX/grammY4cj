@@ -424,8 +424,23 @@ public class ApiWrapperTest {
         @Expect(inlineEdit.rawMethodName, "editMessageText")
         @Expect(inlineEdit.excludesPulledParameter("inline_message_id"), true)
         @Expect(inlineEdit.excludesPulledParameter("text"), true)
-        @Expect(inlineEdit.allowsPayloadField("chat_id"), true)
+        @Expect(inlineEdit.excludesPulledParameter("chat_id"), true)
+        @Expect(inlineEdit.excludesPulledParameter("message_id"), true)
+        @Expect(inlineEdit.allowsPayloadField("chat_id"), false)
+        @Expect(inlineEdit.allowsPayloadField("inline_message_id"), false)
         @Expect(inlineEdit.allowsPayloadField("reply_markup"), true)
+
+        let dice = apiWrapperOtherPayloadSchemaTraceFor("sendDice")
+        @Expect(dice.excludesPulledParameter("emoji"), true)
+        @Expect(dice.allowsPayloadField("emoji"), false)
+        @Expect(dice.allowsPayloadField("reply_markup"), true)
+
+        let scores = apiWrapperOtherPayloadSchemaTraceFor("getGameHighScoresInline")
+        @Expect(scores.excludesPulledParameter("chat_id"), true)
+        @Expect(scores.excludesPulledParameter("message_id"), true)
+        @Expect(scores.excludesPulledParameter("inline_message_id"), true)
+        @Expect(scores.excludesPulledParameter("user_id"), true)
+        @Expect(scores.allowsOtherPayload, false)
     }
 
     @TestCase

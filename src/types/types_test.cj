@@ -312,6 +312,34 @@ public class TelegramTypesTest {
     }
 
     @TestCase
+    public func telegramTypeFacadeAliasUniversePinsInputFileBindingsPerRuntimeFacade(): Unit {
+        let deno = telegramTypeFacadeAliasBindingFor("src/types.deno.ts")
+        let node = telegramTypeFacadeAliasBindingFor("src/types.node.ts")
+        let web = telegramTypeFacadeAliasBindingFor("src/types.web.ts")
+        let missing = telegramTypeFacadeAliasBindingFor("src/types.missing.ts")
+
+        @Expect(telegramTypeFacadeAliasBindingCount(), 3)
+        @Expect(telegramTypeFacadeAliasUniverseGate(), true)
+        @Expect(deno.upstreamSpecifier, "https://deno.land/x/grammy_types@v3.26.0/mod.ts")
+        @Expect(node.upstreamSpecifier, "@grammyjs/types")
+        @Expect(web.upstreamSpecifier, "https://deno.land/x/grammy_types@v3.26.0/mod.ts")
+        @Expect(deno.inputFileClassSource, "src/types.deno.ts InputFile")
+        @Expect(node.inputFileClassSource, "src/types.node.ts InputFile")
+        @Expect(web.inputFileClassSource, "src/types.web.ts InputFile")
+        @Expect(deno.aliasCount(), 18)
+        @Expect(node.aliasNames, deno.aliasNames)
+        @Expect(web.aliasNames, deno.aliasNames)
+        @Expect(deno.bindings()[0], "ApiMethodsF<InputFile>")
+        @Expect(deno.bindings()[1], "OptsF<InputFile>[M]")
+        @Expect(deno.bindings()[13], "InputProfilePhotoF<InputFile>")
+        @Expect(deno.bindings()[14], "InputProfilePhotoF<InputFile>")
+        @Expect(web.bindsAllToInputFile(), true)
+        @Expect(typeSourceMatrixFor("src/types.ts").inputFileSourceApi, "deno facade selected by upstream types.ts")
+        @Expect(missing.aliasCount(), 0)
+        @Expect(missing.bindsAllToInputFile(), false)
+    }
+
+    @TestCase
     public func telegramTypeBusExposesApiAndContextIntegrationTrace(): Unit {
         let sendPhoto = telegramTypeModelDescriptorFor("Message")
         let updateFields = telegramTypeContextGetterTrace()

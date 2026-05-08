@@ -558,6 +558,10 @@ public class RawApiFacade {
         this.client.callApi(this.token, method, payload, signal)
     }
 
+    public func toJSON(): String {
+        "__internal"
+    }
+
     public func getMe(): String {
         this.call("getMe", Payload("{}"))
     }

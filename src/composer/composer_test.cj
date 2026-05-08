@@ -1372,6 +1372,84 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func routeAwaitsAsyncHandlersAndAsyncFallback(): Unit {
+        let events = ArrayList<String>()
+        let routes = HashMap<String, AsyncMiddlewareFn>()
+        routes["hit"] = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "async-route:" + ctx.updateId().toString())
+                next().get()
+            }
+        }
+        let fallback: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                addEvent(events, "async-fallback:" + ctx.updateId().toString())
+                next().get()
+            }
+        }
+        let router: Router = { ctx: Context =>
+            spawn { =>
+                if (ctx.updateId() == 106) {
+                    Some("hit")
+                } else {
+                    Some("missing")
+                }
+            }
+        }
+        let composer = Composer()
+        composer.route(router, routes, fallback)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(106, "message"))
+        run(composer, testCtx(107, "message"))
+
+        @Expect(events.size, 4)
+        @Expect(events[0], "async-route:106")
+        @Expect(events[1], "after")
+        @Expect(events[2], "async-fallback:107")
+        @Expect(events[3], "after")
+    }
+
+    @TestCase
+    public func routeRunsMaybeHandlersAndNoneFallbackThroughMaybeTask(): Unit {
+        let events = ArrayList<String>()
+        let routes = HashMap<String, MaybeMiddlewareFn>()
+        routes["hit"] = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                addEvent(events, "maybe-route:" + ctx.updateId().toString())
+                next().get()
+            })
+        }
+        let fallback: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>(spawn { =>
+                addEvent(events, "maybe-fallback:" + ctx.updateId().toString())
+                next().get()
+            })
+        }
+        let router: MaybeRouter = { ctx: Context =>
+            MaybeTask<Option<String>>({ =>
+                if (ctx.updateId() == 108) {
+                    Some("hit")
+                } else {
+                    None<String>
+                }
+            })
+        }
+        let composer = Composer()
+        composer.route(router, routes, fallback)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(108, "message"))
+        run(composer, testCtx(109, "message"))
+
+        @Expect(events.size, 4)
+        @Expect(events[0], "maybe-route:108")
+        @Expect(events[1], "after")
+        @Expect(events[2], "maybe-fallback:109")
+        @Expect(events[3], "after")
+    }
+
+    @TestCase
     public func routePropagatesRouterErrorsBeforeFallbackOrDownstream(): Unit {
         let events = ArrayList<String>()
         let routes = HashMap<String, MiddlewareFn>()

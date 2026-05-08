@@ -373,19 +373,40 @@ public class ContextHasTest {
     }
 
     @TestCase
-    public func emptyStringAndEmptyRegexTriggersMirrorUpstreamMatchTruthiness(): Unit {
+    public func textTriggerPredicatesUseFilterQueryGateBeforeWritingMatch(): Unit {
         let chat = Chat(134, "private")
         let user = User(465, false, "Hedy", "hedy")
 
-        let emptyTextCtx = testContext(Update.withMessage(173, Message(473, chat, "", user)))
-        @Expect(emptyTextCtx.hasText(""), false)
-        @Expect(optionPresent(emptyTextCtx.`match`), false)
+        let absentText = Message()
+        absentText.messageId = 473
+        absentText.chat = chat
+        absentText.user = user
+        absentText.isPresent = true
+        let absentTextCtx = testContext(Update.withMessage(173, absentText))
+        @Expect(absentTextCtx.hasText(""), false)
+        @Expect(optionPresent(absentTextCtx.`match`), false)
+        @Expect(Context.has.text(Regex("^")).matches(absentTextCtx), false)
+        @Expect(optionPresent(absentTextCtx.`match`), false)
+
+        let emptyTextCtx = testContext(Update.withMessage(176, Message(476, chat, "", user)))
         @Expect(emptyTextCtx.hasText(Regex("^")), true)
         let emptyRegexMatch = orThrow(emptyTextCtx.`match`, "test")
         @Expect(emptyRegexMatch.isRegex, true)
         @Expect(emptyRegexMatch.text, "")
 
-        let callbackCtx = testContext(Update.withCallbackQuery(174, CallbackQuery(user, "", Message(474, chat, "button", user))))
+        let caption = Message()
+        caption.messageId = 474
+        caption.chat = chat
+        caption.caption = "caption payload"
+        caption.captionPresent = true
+        caption.isPresent = true
+        let captionCtx = testContext(Update.withMessage(175, caption))
+        @Expect(Context.has.text(Regex("^caption")).matches(captionCtx), true)
+        let captionRegexMatch = orThrow(captionCtx.`match`, "test")
+        @Expect(captionRegexMatch.isRegex, true)
+        @Expect(captionRegexMatch.text, "caption")
+
+        let callbackCtx = testContext(Update.withCallbackQuery(174, CallbackQuery(user, "", Message(475, chat, "button", user))))
         @Expect(callbackCtx.hasCallbackQuery(""), false)
         @Expect(callbackCtx.hasCallbackQuery(Regex("^")), false)
         @Expect(optionPresent(callbackCtx.`match`), false)

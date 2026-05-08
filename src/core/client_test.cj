@@ -619,6 +619,13 @@ public class ApiClientTest {
     }
 
     @TestCase
+    public func rawFacadeToJsonMatchesUpstreamProxySentinel(): Unit {
+        let api = createRawApi("token", ApiClientOptions("https://api.telegram.org", "prod"))
+
+        @Expect(api.raw.toJSON(), "__internal")
+    }
+
+    @TestCase
     public func installedTransformersCanBeCopiedWithoutSharingNameList(): Unit {
         let source = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"))
         source.use("source-name", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>

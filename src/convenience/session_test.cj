@@ -378,6 +378,21 @@ private func containsCounterEntry(entries: Array<StorageEntry<CounterSession>>, 
     false
 }
 
+private func expectSessionPropertyFacade(descriptor: SessionPropertyFacadeDescriptor, typedOwner: String): Unit {
+    @Expect(descriptor.propertyName, "session")
+    @Expect(descriptor.upstreamInstaller, "Object.defineProperty")
+    @Expect(descriptor.typedOwner, typedOwner)
+    @Expect(descriptor.enumerable, true)
+    @Expect(descriptor.hasGetter, true)
+    @Expect(descriptor.hasSetter, true)
+    @Expect(descriptor.nullishAssignmentDeletes, true)
+    @Expect(descriptor.strictInitLoads, true)
+    @Expect(descriptor.lazyAccessLoads, true)
+    @Expect(descriptor.writeCancelsPendingRead, true)
+    @Expect(descriptor.finishPersistsAfterReadOrWrite, true)
+    @Expect(descriptor.missingKeyThrowsOnReadWrite, true)
+}
+
 @Test
 public class MemorySessionStorageTest {
     @TestCase
@@ -471,6 +486,10 @@ public class SessionMiddlewareTest {
     public func defaultKeyUsesChatIdAndSkipsNoChatUpdates(): Unit {
         let contract = sessionPropertyContract()
         @Expect(contract.upstreamProperty, "ctx.session")
+        @Expect(contract.upstreamInstaller, "Object.defineProperty")
+        @Expect(contract.upstreamEnumerable, true)
+        @Expect(contract.upstreamGetter, "get: access ctx.session")
+        @Expect(contract.upstreamSetter, "set: assign ctx.session")
         @Expect(contract.strictRead, "SessionFlavorContext<T>.session")
         @Expect(contract.strictWrite, "SessionFlavorContext<T>.session = value")
         @Expect(contract.strictDelete, "SessionFlavorContext<T>.deleteSession() or setOptionalSession(None)")
@@ -478,6 +497,7 @@ public class SessionMiddlewareTest {
         @Expect(contract.storageMaybePromise, "StorageAdapter<T> plus AsyncStorageAdapter<T>/SessionTask<T> shims")
         @Expect(contract.multiDelete, "MultiSessionFlavorContext<T>.session named slots or deleteSession()")
         @Expect(contract.contextIntegration, "typed session flavor context exposes ctx.session property")
+        expectSessionPropertyFacade(sessionPropertyFacadeDescriptor(), "SessionFlavorContext<T>")
         @Expect(stringValue(defaultGetSessionKey(testCtx(7))), "7")
         @Expect(stringValue(defaultGetSessionKey(noChatCtx(8))), "")
     }
@@ -488,6 +508,7 @@ public class SessionMiddlewareTest {
         let middleware = session<CounterSession>(SessionOptions<CounterSession>({ => CounterSession(1) }, storage))
 
         middleware.handle(testCtx(70), { ctx: SessionFlavorContext<CounterSession> =>
+            expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "SessionFlavorContext<T>")
             @Expect(intValue(ctx.chatId), 70)
             @Expect(ctx.updateId(), 70)
             ctx.session.count += 1
@@ -517,6 +538,7 @@ public class SessionMiddlewareTest {
         let middleware = session<CounterSession>(options)
 
         middleware.handle(testCtx(7), { ctx: SessionContext<CounterSession> =>
+            expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "SessionContext<T>")
             let current = ctx.session
             current.count += 1
         })
@@ -828,6 +850,7 @@ public class MultiSessionMiddlewareTest {
         options.add("profile", SessionOptions<CounterSession>({ => CounterSession(1) }, storage))
 
         multiSession<CounterSession>(options).handle(testCtx(91), { ctx: MultiSessionContext<CounterSession> =>
+            expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "MultiSessionContext<T>")
             @Expect(ctx.size(), 1)
             ctx.session("profile").count += 4
         })
@@ -848,6 +871,8 @@ public class MultiSessionMiddlewareTest {
         options.add("three", SessionOptions<CounterSession>({ => CounterSession(3) }, third))
 
         multiSession<CounterSession>(options).handle(testCtx(92), { ctx: MultiSessionFlavorContext<CounterSession> =>
+            expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "MultiSessionFlavorContext<T>")
+            expectSessionPropertyFacade(ctx.session.sessionPropertyFacadeDescriptor(), "MultiSessionData<T>")
             @Expect(intValue(ctx.chatId), 92)
             ctx.session.get("one").count += 10
             ctx.session.set("two", CounterSession(20))
@@ -935,6 +960,7 @@ public class MultiSessionMiddlewareTest {
         )
 
         middleware.handle(testCtx(31), { ctx: MultiSessionContext2<CounterSession, CounterSession> =>
+            expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "MultiSessionContext2<A, B>")
             ctx.first.session.count += 1
             ctx.second.session.count += 2
         })
@@ -986,6 +1012,8 @@ public class MultiSessionMiddlewareTest {
         )
 
         middleware.handle(testCtx(36), { ctx: MultiSessionFlavorContext2<CounterSession, CounterSession> =>
+            expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "MultiSessionFlavorContext2<A, B>")
+            expectSessionPropertyFacade(ctx.session.sessionPropertyFacadeDescriptor(), "MultiSessionData2<A, B>")
             @Expect(intValue(ctx.chatId), 36)
             ctx.session.first.count += 3
             ctx.session.second = CounterSession(11)
@@ -1180,6 +1208,7 @@ public class LazySessionMiddlewareTest {
         lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
             testCtx(6),
             { ctx: SessionContext<CounterSession> =>
+                expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "SessionContext<T>")
                 @Expect(ctx.isLoaded(), false)
                 ctx.session.count += 1
                 @Expect(ctx.isLoaded(), true)
@@ -1416,6 +1445,7 @@ public class LazySessionMiddlewareTest {
         lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
             testCtx(48),
             { ctx: SessionFlavorContext<CounterSession> =>
+                expectSessionPropertyFacade(ctx.sessionPropertyFacadeDescriptor(), "SessionFlavorContext<T>")
                 ctx.setSessionTask(SessionTask<CounterSession>({ => CounterSession(15) }))
             },
         )

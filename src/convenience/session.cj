@@ -14,6 +14,10 @@ private let SESSION_TTL_DISABLED: Int64 = -1
 
 public class SessionPropertyContract {
     public let upstreamProperty: String
+    public let upstreamInstaller: String
+    public let upstreamEnumerable: Bool
+    public let upstreamGetter: String
+    public let upstreamSetter: String
     public let strictRead: String
     public let strictWrite: String
     public let strictDelete: String
@@ -24,6 +28,10 @@ public class SessionPropertyContract {
 
     public init() {
         this.upstreamProperty = "ctx.session"
+        this.upstreamInstaller = "Object.defineProperty"
+        this.upstreamEnumerable = true
+        this.upstreamGetter = "get: access ctx.session"
+        this.upstreamSetter = "set: assign ctx.session"
         this.strictRead = "SessionFlavorContext<T>.session"
         this.strictWrite = "SessionFlavorContext<T>.session = value"
         this.strictDelete = "SessionFlavorContext<T>.deleteSession() or setOptionalSession(None)"
@@ -36,6 +44,40 @@ public class SessionPropertyContract {
 
 public func sessionPropertyContract(): SessionPropertyContract {
     SessionPropertyContract()
+}
+
+public class SessionPropertyFacadeDescriptor {
+    public let propertyName: String
+    public let upstreamInstaller: String
+    public let typedOwner: String
+    public let enumerable: Bool
+    public let hasGetter: Bool
+    public let hasSetter: Bool
+    public let nullishAssignmentDeletes: Bool
+    public let strictInitLoads: Bool
+    public let lazyAccessLoads: Bool
+    public let writeCancelsPendingRead: Bool
+    public let finishPersistsAfterReadOrWrite: Bool
+    public let missingKeyThrowsOnReadWrite: Bool
+
+    public init(typedOwner: String) {
+        this.propertyName = "session"
+        this.upstreamInstaller = "Object.defineProperty"
+        this.typedOwner = typedOwner
+        this.enumerable = true
+        this.hasGetter = true
+        this.hasSetter = true
+        this.nullishAssignmentDeletes = true
+        this.strictInitLoads = true
+        this.lazyAccessLoads = true
+        this.writeCancelsPendingRead = true
+        this.finishPersistsAfterReadOrWrite = true
+        this.missingKeyThrowsOnReadWrite = true
+    }
+}
+
+public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+    SessionPropertyFacadeDescriptor("SessionFlavorContext<T>")
 }
 
 public class StorageEntry<T> {
@@ -630,6 +672,10 @@ public class SessionContext<T> {
         this.property.isFetching()
     }
 
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("SessionContext<T>")
+    }
+
     public func finish(): Unit {
         this.property.finish()
     }
@@ -707,6 +753,10 @@ public class SessionFlavorContext<T> {
 
     public func isFetching(): Bool {
         this.sessionContext.isFetching()
+    }
+
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("SessionFlavorContext<T>")
     }
 }
 
@@ -914,6 +964,10 @@ public class MultiSessionContext<T> {
     public func size(): Int64 {
         this.slots.size
     }
+
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("MultiSessionContext<T>")
+    }
 }
 
 public class MultiSessionData<T> {
@@ -937,6 +991,10 @@ public class MultiSessionData<T> {
 
     public func delete(name: String): Unit {
         this.sessionContext.deleteSession(name)
+    }
+
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("MultiSessionData<T>")
     }
 }
 
@@ -968,6 +1026,10 @@ public class MultiSessionFlavorContext<T> {
             case Some(_) => ()
             case None => this.deleteSession()
         }
+    }
+
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("MultiSessionFlavorContext<T>")
     }
 }
 
@@ -1036,6 +1098,10 @@ public class MultiSessionContext2<A, B> {
         this.first.finish()
         this.second.finish()
     }
+
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("MultiSessionContext2<A, B>")
+    }
 }
 
 public class MultiSessionData2<A, B> {
@@ -1080,6 +1146,10 @@ public class MultiSessionData2<A, B> {
     public func setOptionalSecond(value: Option<B>): Unit {
         this.secondContext.setOptionalSession(value)
     }
+
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("MultiSessionData2<A, B>")
+    }
 }
 
 public class MultiSessionFlavorContext2<A, B> {
@@ -1110,6 +1180,10 @@ public class MultiSessionFlavorContext2<A, B> {
             case Some(_) => ()
             case None => this.deleteSession()
         }
+    }
+
+    public func sessionPropertyFacadeDescriptor(): SessionPropertyFacadeDescriptor {
+        SessionPropertyFacadeDescriptor("MultiSessionFlavorContext2<A, B>")
     }
 }
 

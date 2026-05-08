@@ -1,6 +1,8 @@
 package grammy4cj.bot
 
 import std.collection.ArrayList
+import std.collection.HashMap
+import std.regex.Regex
 import std.sync.Mutex
 import std.unittest.*
 
@@ -8,7 +10,12 @@ import grammy4cj.composer.AsyncMiddlewareFn
 import grammy4cj.composer.AsyncNextFunction
 import grammy4cj.composer.BotError
 import grammy4cj.composer.Composer
+import grammy4cj.composer.ErrorHandler
+import grammy4cj.composer.MiddlewareFactory
+import grammy4cj.composer.MiddlewareFn
 import grammy4cj.composer.NextFunction
+import grammy4cj.composer.SyncPredicate
+import grammy4cj.composer.SyncRouter
 import grammy4cj.context.Context
 import grammy4cj.core.Api
 import grammy4cj.core.ApiCallFn
@@ -23,6 +30,7 @@ import grammy4cj.types.ApiResponse
 import grammy4cj.types.ResponseParameters
 import grammy4cj.types.Chat
 import grammy4cj.types.Message
+import grammy4cj.types.MessageEntity
 import grammy4cj.types.Update
 import grammy4cj.types.User
 import grammy4cj.types.UserFromGetMe
@@ -36,6 +44,21 @@ private func messageUpdate(updateId: Int64): Update {
     message.isPresent = true
     update.message = message
     update
+}
+
+private func commandMessageUpdate(updateId: Int64, text: String, commandLength: Int64): Update {
+    let message = Message(updateId, Chat(updateId, "private"), text, User(7, false, "User", "user"))
+    message.entities.add(MessageEntity("bot_command", 0, commandLength))
+    Update.withMessage(updateId, message)
+}
+
+private func stringListContains(values: ArrayList<String>, needle: String): Bool {
+    for (value in values) {
+        if (value == needle) {
+            return true
+        }
+    }
+    false
 }
 
 private class StartProbe {
@@ -605,6 +628,106 @@ public class BotTest {
         @Expect(events[0], "async:pre")
         @Expect(events[1], "child")
         @Expect(events[2], "async:post")
+    }
+
+    @TestCase
+    public func botDelegatesExpandedComposerControlSurface(): Unit {
+        let events = ArrayList<String>()
+        let me = UserFromGetMe(203, true, "Facade", "facade_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
+        let always: SyncPredicate = { _ctx: Context => true }
+        let never: SyncPredicate = { _ctx: Context => false }
+        let routeToKey: SyncRouter = { _ctx: Context => Some("key") }
+        let lazyFactory: MiddlewareFactory = { ctx: Context =>
+            { _inner: Context, next: NextFunction =>
+                events.add("lazy:" + ctx.update.kind)
+                next()
+            }
+        }
+        let catcher: ErrorHandler = { err: BotError, next: NextFunction =>
+            events.add("caught:" + err.ctx.update.updateId.toString())
+            next()
+        }
+        let routes = HashMap<String, MiddlewareFn>()
+        routes["key"] = { _ctx: Context, next: NextFunction =>
+            events.add("route")
+            next()
+        }
+
+        bot.hears(Regex("^hello"), { _ctx: Context, next: NextFunction =>
+            events.add("hears")
+            next()
+        })
+        bot.command("start", { _ctx: Context, next: NextFunction =>
+            events.add("command")
+            next()
+        })
+        bot.filter(always, { _ctx: Context, next: NextFunction =>
+            events.add("filter")
+            next()
+        })
+        bot.drop(never, { _ctx: Context, next: NextFunction =>
+            events.add("drop")
+            next()
+        })
+        bot.fork({ _ctx: Context, next: NextFunction =>
+            events.add("fork")
+            next()
+        })
+        bot.lazy(lazyFactory)
+        bot.route(routeToKey, routes)
+        bot.branch(
+            always,
+            { _ctx: Context, next: NextFunction =>
+                events.add("branch:true")
+                next()
+            },
+            { _ctx: Context, next: NextFunction =>
+                events.add("branch:false")
+                next()
+            },
+        )
+        bot.errorBoundary(catcher, { _ctx: Context, _next: NextFunction =>
+            throw Exception("bound failure")
+        })
+
+        bot.handleUpdate(commandMessageUpdate(1006, "/start hello", 6))
+
+        @Expect(stringListContains(events, "command"), true)
+        @Expect(stringListContains(events, "filter"), true)
+        @Expect(stringListContains(events, "drop"), true)
+        @Expect(stringListContains(events, "fork"), true)
+        @Expect(stringListContains(events, "lazy:message"), true)
+        @Expect(stringListContains(events, "route"), true)
+        @Expect(stringListContains(events, "branch:true"), true)
+        @Expect(stringListContains(events, "caught:1006"), true)
+    }
+
+    @TestCase
+    public func botFacadeCompileSurfaceIncludesTriggerAndControlVariants(): Unit {
+        let me = UserFromGetMe(204, true, "CompileFacade", "compile_facade_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
+        let noop: MiddlewareFn = { _ctx: Context, next: NextFunction => next() }
+        let always: SyncPredicate = { _ctx: Context => true }
+        let routes = HashMap<String, MiddlewareFn>()
+        routes["x"] = noop
+
+        bot.hears(["a", "b"], noop)
+        bot.callbackQuery(Regex("^cb"), noop)
+        bot.gameQuery([Regex("^game")], [noop])
+        bot.inlineQuery("inline", noop)
+        bot.chosenInlineResult([Regex("^chosen")], noop)
+        bot.preCheckoutQuery("payload", [noop])
+        bot.shippingQuery([Regex("^ship")])
+        bot.chatType(["private", "group"], noop)
+        bot.reaction(["👍", "👀"], [noop])
+        bot.filter(always)
+        bot.route({ _ctx: Context => Some("x") }, routes, noop)
+
+        @Expect(bot.layerName(), "Bot")
+        @Expect(bot.middlewareName(), "grammy4cj.bot.Bot")
+        @Expect(bot.observedUpdateTypes().size, 1)
+        @Expect(bot.observedUpdateTypes()[0], "message_reaction")
     }
 
     @TestCase

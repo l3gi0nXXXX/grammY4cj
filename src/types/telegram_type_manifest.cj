@@ -78,6 +78,58 @@ public class TelegramTypeAliasModel {
     }
 }
 
+public class TelegramTypeFacadeAliasBinding {
+    public let facadeFile: String
+    public let upstreamSpecifier: String
+    public let inputFileClassSource: String
+    public let aliasNames: String
+    public let genericBindings: String
+
+    public init(
+        facadeFile: String,
+        upstreamSpecifier: String,
+        inputFileClassSource: String,
+        aliasNames: String,
+        genericBindings: String
+    ) {
+        this.facadeFile = facadeFile
+        this.upstreamSpecifier = upstreamSpecifier
+        this.inputFileClassSource = inputFileClassSource
+        this.aliasNames = aliasNames
+        this.genericBindings = genericBindings
+    }
+
+    public func names(): Array<String> {
+        if (this.aliasNames.isEmpty()) {
+            return []
+        }
+        this.aliasNames.split("|")
+    }
+
+    public func bindings(): Array<String> {
+        if (this.genericBindings.isEmpty()) {
+            return []
+        }
+        this.genericBindings.split("|")
+    }
+
+    public func aliasCount(): Int64 {
+        this.names().size
+    }
+
+    public func bindsAllToInputFile(): Bool {
+        if (this.aliasCount() != telegramInputFileBoundAliasManifestCount()) {
+            return false
+        }
+        for (binding in this.bindings()) {
+            if (!binding.contains("InputFile")) {
+                return false
+            }
+        }
+        true
+    }
+}
+
 public class TelegramApiMethodModel {
     public let name: String
     public let hasPayload: Bool
@@ -701,6 +753,69 @@ public func telegramInputFileBoundAliasFor(name: String): TelegramTypeAliasModel
         }
     }
     TelegramTypeAliasModel(name, "", "", "", false)
+}
+
+public func telegramInputFileBoundAliasNamesPipe(): String {
+    "ApiMethods|Opts|InputSticker|InputMedia|InputMediaPhoto|InputMediaVideo|InputMediaAnimation|InputMediaAudio|InputMediaDocument|InputPaidMedia|InputPaidMediaPhoto|InputPaidMediaVideo|InputProfilePhoto|InputProfilePhotoStatic|InputProfilePhotoAnimated|InputStoryContent|InputStoryContentPhoto|InputStoryContentVideo"
+}
+
+public func telegramInputFileBoundAliasGenericsPipe(): String {
+    "ApiMethodsF<InputFile>|OptsF<InputFile>[M]|InputStickerF<InputFile>|InputMediaF<InputFile>|InputMediaPhotoF<InputFile>|InputMediaVideoF<InputFile>|InputMediaAnimationF<InputFile>|InputMediaAudioF<InputFile>|InputMediaDocumentF<InputFile>|InputPaidMediaF<InputFile>|InputPaidMediaPhotoF<InputFile>|InputPaidMediaVideoF<InputFile>|InputProfilePhotoF<InputFile>|InputProfilePhotoF<InputFile>|InputProfilePhotoF<InputFile>|InputStoryContentF<InputFile>|InputStoryContentPhotoF<InputFile>|InputStoryContentVideoF<InputFile>"
+}
+
+public func telegramTypeFacadeAliasBindings(): Array<TelegramTypeFacadeAliasBinding> {
+    let baseline = telegramTypePackageBaseline()
+    [
+        TelegramTypeFacadeAliasBinding(
+            "src/types.deno.ts",
+            baseline.denoSpecifier,
+            "src/types.deno.ts InputFile",
+            telegramInputFileBoundAliasNamesPipe(),
+            telegramInputFileBoundAliasGenericsPipe()
+        ),
+        TelegramTypeFacadeAliasBinding(
+            "src/types.node.ts",
+            baseline.nodeSpecifier,
+            "src/types.node.ts InputFile",
+            telegramInputFileBoundAliasNamesPipe(),
+            telegramInputFileBoundAliasGenericsPipe()
+        ),
+        TelegramTypeFacadeAliasBinding(
+            "src/types.web.ts",
+            baseline.webSpecifier,
+            "src/types.web.ts InputFile",
+            telegramInputFileBoundAliasNamesPipe(),
+            telegramInputFileBoundAliasGenericsPipe()
+        )
+    ]
+}
+
+public func telegramTypeFacadeAliasBindingCount(): Int64 {
+    telegramTypeFacadeAliasBindings().size
+}
+
+public func telegramTypeFacadeAliasBindingFor(facadeFile: String): TelegramTypeFacadeAliasBinding {
+    for (binding in telegramTypeFacadeAliasBindings()) {
+        if (binding.facadeFile == facadeFile) {
+            return binding
+        }
+    }
+    TelegramTypeFacadeAliasBinding(facadeFile, "", "", "", "")
+}
+
+public func telegramTypeFacadeAliasUniverseGate(): Bool {
+    if (telegramTypeFacadeAliasBindingCount() != 3) {
+        return false
+    }
+    for (binding in telegramTypeFacadeAliasBindings()) {
+        if (!binding.bindsAllToInputFile()) {
+            return false
+        }
+        if (!telegramTypeFacadeAliasDriftCheck(binding.names())) {
+            return false
+        }
+    }
+    true
 }
 
 public func telegramTypeModelManifest(): Array<TelegramTypeModelDescriptor> {

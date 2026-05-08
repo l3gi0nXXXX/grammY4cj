@@ -70,6 +70,10 @@ public class FrameworkAdaptersTest {
             @Expect(shape.cangjieSignature.isEmpty(), false)
             @Expect(shape.requestShape.isEmpty(), false)
             @Expect(shape.responseShape.isEmpty(), false)
+            @Expect(shape.reqResHandlerShape.contains("update"), true)
+            @Expect(shape.reqResHandlerShape.contains("header"), true)
+            @Expect(shape.reqResHandlerShape.contains("respond"), true)
+            @Expect(shape.reqResHandlerShape.contains("unauthorized"), true)
             @Expect(shape.fakeProtocolEntry.isEmpty(), false)
             @Expect(shape.usesWebhookRequestAsPublicShape(), false)
         }
@@ -77,9 +81,11 @@ public class FrameworkAdaptersTest {
         @Expect(frameworkAdapterPublicShape("aws-lambda").upstreamSignature, "(event, context, callback) -> ReqResHandler")
         @Expect(frameworkAdapterPublicShape("azure").requestShape, "request.body plus request.headers")
         @Expect(frameworkAdapterPublicShape("bun").responseShape, "handlerReturn Response")
+        @Expect(frameworkAdapterPublicShape("bun").reqResHandlerShape, "update/header/end/respond/unauthorized/handlerReturn")
         @Expect(frameworkAdapterPublicShape("http").requestShape, "Node raw JSON stream plus lowercase headers")
         @Expect(frameworkAdapterPublicShape("std/http").cangjieSignature, "StdHttpAdapter(req)")
         @Expect(frameworkAdapterPublicShape("unknown").cangjieSignature, "unsupported")
+        @Expect(frameworkAdapterPublicShape("unknown").reqResHandlerShape, "")
     }
 
     @TestCase
@@ -99,10 +105,32 @@ public class FrameworkAdaptersTest {
             @Expect(request.headerReads, 1)
             @Expect(handler.response.updateSource, contract.updateSource)
             @Expect(handler.response.headerSource, contract.headerSource)
+            @Expect(handler.response.handlerReturnAvailable, contract.handlerReturnAvailable)
+            @Expect(handler.response.handlerReturnKind, contract.handlerReturnKind)
+            @Expect(handler.endAvailable, contract.endAvailable)
+            @Expect(contract.reqResHandlerShape, frameworkAdapterPublicShape(contract.name).reqResHandlerShape)
+            @Expect(contract.reqResHandlerShape, adapterReqResHandlerShape(contract.name))
             assertBodySourceWasRead(contract.name, request)
 
             updateId += 1
         }
+    }
+
+    @TestCase
+    public func reqResHandlerFacadeExposesOnlyUpstreamFieldsPerAdapter(): Unit {
+        for (contract in frameworkAdapterContracts()) {
+            @Expect(contract.endAvailable, true)
+            @Expect(contract.reqResHandlerShape.contains("update"), true)
+            @Expect(contract.reqResHandlerShape.contains("header"), true)
+            @Expect(contract.reqResHandlerShape.contains("end"), true)
+            @Expect(contract.reqResHandlerShape.contains("respond"), true)
+            @Expect(contract.reqResHandlerShape.contains("unauthorized"), true)
+            @Expect(contract.reqResHandlerShape.contains("handlerReturn"), contract.handlerReturnAvailable)
+        }
+
+        @Expect(adapterEndAvailable("callback"), false)
+        @Expect(adapterReqResHandlerShape("express"), "update/header/end/respond/unauthorized")
+        @Expect(adapterReqResHandlerShape("std/http"), "update/header/end/respond/unauthorized/handlerReturn")
     }
 
     @TestCase

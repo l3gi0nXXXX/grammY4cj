@@ -590,6 +590,7 @@ public class FrameworkAdapterPublicShape {
     public let cangjieSignature: String
     public let requestShape: String
     public let responseShape: String
+    public let reqResHandlerShape: String
     public let fakeProtocolEntry: String
 
     public init(
@@ -598,6 +599,7 @@ public class FrameworkAdapterPublicShape {
         cangjieSignature: String,
         requestShape: String,
         responseShape: String,
+        reqResHandlerShape: String,
         fakeProtocolEntry: String
     ) {
         this.name = name
@@ -605,6 +607,7 @@ public class FrameworkAdapterPublicShape {
         this.cangjieSignature = cangjieSignature
         this.requestShape = requestShape
         this.responseShape = responseShape
+        this.reqResHandlerShape = reqResHandlerShape
         this.fakeProtocolEntry = fakeProtocolEntry
     }
 
@@ -623,6 +626,8 @@ public class FrameworkAdapterContract {
     public let responseDelivery: String
     public let handlerReturnAvailable: Bool
     public let handlerReturnKind: String
+    public let reqResHandlerShape: String
+    public let endAvailable: Bool
     public let endStatusCode: Int64
     public let endBody: String
     public let unauthorizedStatusText: String
@@ -640,6 +645,8 @@ public class FrameworkAdapterContract {
         this.responseDelivery = adapterResponseDelivery(name)
         this.handlerReturnAvailable = adapterHasHandlerReturn(name)
         this.handlerReturnKind = adapterHandlerReturnKind(name)
+        this.reqResHandlerShape = adapterReqResHandlerShape(name)
+        this.endAvailable = adapterEndAvailable(name)
         this.endStatusCode = adapterEndStatusCode(name)
         this.endBody = adapterEndBody(name)
         this.unauthorizedStatusText = adapterUnauthorizedStatusText(name)
@@ -753,33 +760,44 @@ public func frameworkAdapterPublicShape(name: String): FrameworkAdapterPublicSha
             return shape
         }
     }
-    FrameworkAdapterPublicShape(name, "", "unsupported", "", "", "")
+    FrameworkAdapterPublicShape(name, "", "unsupported", "", "", "", "")
 }
 
 public func frameworkAdapterPublicShapes(): Array<FrameworkAdapterPublicShape> {
     [
-        FrameworkAdapterPublicShape("aws-lambda", "(event, context, callback) -> ReqResHandler", "AwsLambdaAdapter(event, context, callback)", "event.body JSON plus event.headers", "callback(statusCode/body/headers)", "awsLambdaAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("aws-lambda-async", "(event, context) -> ReqResHandler with handlerReturn", "AwsLambdaAsyncAdapter(event, context)", "event.body JSON plus event.headers", "handlerReturn promise-like lambda result", "awsLambdaAsyncAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("azure", "(context, request) -> ReqResHandler", "AzureAdapter(context, request)", "request.body plus request.headers", "context.res mutation", "azureAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("azure-v4", "(request) -> ReqResHandler with handlerReturn", "AzureV4Adapter(request)", "request.json() plus request.headers.get", "handlerReturn status/body or jsonBody", "azureV4Adapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("bun", "(request) -> ReqResHandler<Response>", "BunAdapter(request)", "request.json() plus Headers.get", "handlerReturn Response", "bunAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("cloudflare", "(event) -> ReqResHandler", "CloudflareAdapter(event)", "event.request.json() plus Headers.get", "event.respondWith(Response)", "cloudflareAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("cloudflare-mod", "(request) -> ReqResHandler<Response>", "CloudflareModuleAdapter(request)", "request.json() plus Headers.get", "handlerReturn Response", "cloudflareModuleAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("elysia", "(ctx) -> ReqResHandler<string>", "ElysiaAdapter(ctx)", "ctx.body plus lowercase ctx.headers", "handlerReturn string and ctx.set", "elysiaAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("express", "(req, res) -> ReqResHandler", "ExpressAdapter(req, res)", "req.body plus req.header", "res.end/set/send/status", "expressAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("fastify", "(request, reply) -> ReqResHandler", "FastifyAdapter(request, reply)", "request.body plus lowercase headers", "reply.headers/code/send", "fastifyAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("hono", "(c) -> ReqResHandler<Response>", "HonoAdapter(c)", "c.req.json() plus c.req.header", "handlerReturn Response", "honoAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("http", "(req, res) -> ReqResHandler", "HttpAdapter(req, res)", "Node raw JSON stream plus lowercase headers", "res.writeHead/end", "nodeHttpAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("https", "(req, res) -> ReqResHandler", "HttpsAdapter(req, res)", "Node raw JSON stream plus lowercase headers", "res.writeHead/end", "httpsAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("koa", "(ctx) -> ReqResHandler", "KoaAdapter(ctx)", "ctx.request.body plus ctx.get", "ctx.status/body/response mutation", "koaAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("next-js", "(req, res) -> ReqResHandler", "NextAdapter(req, res)", "req.body plus lowercase headers", "res.end/status/json/send", "nextJsAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("nhttp", "(rev) -> ReqResHandler", "NHttpAdapter(rev)", "rev.body plus rev.headers.get", "rev.response sendStatus/status/send", "nhttpAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("oak", "(ctx) -> ReqResHandler", "OakAdapter(ctx)", "ctx.request.body.json plus headers.get", "ctx.response status/type/body", "oakAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("serveHttp", "(requestEvent) -> ReqResHandler", "ServeHttpAdapter(requestEvent)", "requestEvent.request.json plus headers.get", "requestEvent.respondWith(Response)", "serveHttpAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("std/http", "(req) -> ReqResHandler<Response>", "StdHttpAdapter(req)", "req.json plus headers.get", "handlerReturn Response", "stdHttpAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("sveltekit", "({ request }) -> ReqResHandler<Response>", "SveltekitAdapter(event)", "event.request.json plus headers.get", "handlerReturn Response", "sveltekitAdapter(WebhookRequest)"),
-        FrameworkAdapterPublicShape("worktop", "(req, res) -> ReqResHandler", "WorktopAdapter(req, res)", "req.json plus req.headers.get", "res.end/send", "worktopAdapter(WebhookRequest)")
+        FrameworkAdapterPublicShape("aws-lambda", "(event, context, callback) -> ReqResHandler", "AwsLambdaAdapter(event, context, callback)", "event.body JSON plus event.headers", "callback(statusCode/body/headers)", adapterReqResHandlerShape("aws-lambda"), "awsLambdaAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("aws-lambda-async", "(event, context) -> ReqResHandler with handlerReturn", "AwsLambdaAsyncAdapter(event, context)", "event.body JSON plus event.headers", "handlerReturn promise-like lambda result", adapterReqResHandlerShape("aws-lambda-async"), "awsLambdaAsyncAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("azure", "(context, request) -> ReqResHandler", "AzureAdapter(context, request)", "request.body plus request.headers", "context.res mutation", adapterReqResHandlerShape("azure"), "azureAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("azure-v4", "(request) -> ReqResHandler with handlerReturn", "AzureV4Adapter(request)", "request.json() plus request.headers.get", "handlerReturn status/body or jsonBody", adapterReqResHandlerShape("azure-v4"), "azureV4Adapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("bun", "(request) -> ReqResHandler<Response>", "BunAdapter(request)", "request.json() plus Headers.get", "handlerReturn Response", adapterReqResHandlerShape("bun"), "bunAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("cloudflare", "(event) -> ReqResHandler", "CloudflareAdapter(event)", "event.request.json() plus Headers.get", "event.respondWith(Response)", adapterReqResHandlerShape("cloudflare"), "cloudflareAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("cloudflare-mod", "(request) -> ReqResHandler<Response>", "CloudflareModuleAdapter(request)", "request.json() plus Headers.get", "handlerReturn Response", adapterReqResHandlerShape("cloudflare-mod"), "cloudflareModuleAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("elysia", "(ctx) -> ReqResHandler<string>", "ElysiaAdapter(ctx)", "ctx.body plus lowercase ctx.headers", "handlerReturn string and ctx.set", adapterReqResHandlerShape("elysia"), "elysiaAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("express", "(req, res) -> ReqResHandler", "ExpressAdapter(req, res)", "req.body plus req.header", "res.end/set/send/status", adapterReqResHandlerShape("express"), "expressAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("fastify", "(request, reply) -> ReqResHandler", "FastifyAdapter(request, reply)", "request.body plus lowercase headers", "reply.headers/code/send", adapterReqResHandlerShape("fastify"), "fastifyAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("hono", "(c) -> ReqResHandler<Response>", "HonoAdapter(c)", "c.req.json() plus c.req.header", "handlerReturn Response", adapterReqResHandlerShape("hono"), "honoAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("http", "(req, res) -> ReqResHandler", "HttpAdapter(req, res)", "Node raw JSON stream plus lowercase headers", "res.writeHead/end", adapterReqResHandlerShape("http"), "nodeHttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("https", "(req, res) -> ReqResHandler", "HttpsAdapter(req, res)", "Node raw JSON stream plus lowercase headers", "res.writeHead/end", adapterReqResHandlerShape("https"), "httpsAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("koa", "(ctx) -> ReqResHandler", "KoaAdapter(ctx)", "ctx.request.body plus ctx.get", "ctx.status/body/response mutation", adapterReqResHandlerShape("koa"), "koaAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("next-js", "(req, res) -> ReqResHandler", "NextAdapter(req, res)", "req.body plus lowercase headers", "res.end/status/json/send", adapterReqResHandlerShape("next-js"), "nextJsAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("nhttp", "(rev) -> ReqResHandler", "NHttpAdapter(rev)", "rev.body plus rev.headers.get", "rev.response sendStatus/status/send", adapterReqResHandlerShape("nhttp"), "nhttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("oak", "(ctx) -> ReqResHandler", "OakAdapter(ctx)", "ctx.request.body.json plus headers.get", "ctx.response status/type/body", adapterReqResHandlerShape("oak"), "oakAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("serveHttp", "(requestEvent) -> ReqResHandler", "ServeHttpAdapter(requestEvent)", "requestEvent.request.json plus headers.get", "requestEvent.respondWith(Response)", adapterReqResHandlerShape("serveHttp"), "serveHttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("std/http", "(req) -> ReqResHandler<Response>", "StdHttpAdapter(req)", "req.json plus headers.get", "handlerReturn Response", adapterReqResHandlerShape("std/http"), "stdHttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("sveltekit", "({ request }) -> ReqResHandler<Response>", "SveltekitAdapter(event)", "event.request.json plus headers.get", "handlerReturn Response", adapterReqResHandlerShape("sveltekit"), "sveltekitAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("worktop", "(req, res) -> ReqResHandler", "WorktopAdapter(req, res)", "req.json plus req.headers.get", "res.end/send", adapterReqResHandlerShape("worktop"), "worktopAdapter(WebhookRequest)")
     ]
+}
+
+public func adapterReqResHandlerShape(name: String): String {
+    if (adapterHasHandlerReturn(name)) {
+        return "update/header/end/respond/unauthorized/handlerReturn"
+    }
+    "update/header/end/respond/unauthorized"
+}
+
+public func adapterEndAvailable(name: String): Bool {
+    adapterIsSupported(name)
 }
 
 public func adapterHasHandlerReturn(name: String): Bool {

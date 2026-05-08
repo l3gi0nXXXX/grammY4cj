@@ -445,36 +445,54 @@ public class ContextPredicate {
             }
         }
         if (this.kind == "callbackQuery") {
+            if (!matchFilter("callback_query:data", ctx)) {
+                return false
+            }
             match (ctx.callbackQuery) {
-                case Some(callbackQuery) => return !callbackQuery.data.isEmpty() && matchAndStore(ctx, callbackQuery.data, this.trigger)
+                case Some(callbackQuery) => return matchAndStore(ctx, callbackQuery.data, this.trigger)
                 case None => return false
             }
         }
         if (this.kind == "gameQuery") {
+            if (!matchFilter("callback_query:game_short_name", ctx)) {
+                return false
+            }
             match (ctx.callbackQuery) {
-                case Some(callbackQuery) => return !callbackQuery.gameShortName.isEmpty() && matchAndStore(ctx, callbackQuery.gameShortName, this.trigger)
+                case Some(callbackQuery) => return matchAndStore(ctx, callbackQuery.gameShortName, this.trigger)
                 case None => return false
             }
         }
         if (this.kind == "inlineQuery") {
+            if (!matchFilter("inline_query", ctx)) {
+                return false
+            }
             match (ctx.inlineQuery) {
                 case Some(inlineQuery) => return matchAndStore(ctx, inlineQuery.query, this.trigger)
                 case None => return false
             }
         }
         if (this.kind == "chosenInlineResult") {
+            if (!matchFilter("chosen_inline_result", ctx)) {
+                return false
+            }
             match (ctx.chosenInlineResult) {
                 case Some(chosenInlineResult) => return matchAndStore(ctx, chosenInlineResult.resultId, this.trigger)
                 case None => return false
             }
         }
         if (this.kind == "preCheckoutQuery") {
+            if (!matchFilter("pre_checkout_query", ctx)) {
+                return false
+            }
             match (ctx.preCheckoutQuery) {
                 case Some(preCheckoutQuery) => return matchAndStore(ctx, preCheckoutQuery.invoicePayload, this.trigger)
                 case None => return false
             }
         }
         if (this.kind == "shippingQuery") {
+            if (!matchFilter("shipping_query", ctx)) {
+                return false
+            }
             match (ctx.shippingQuery) {
                 case Some(shippingQuery) => return matchAndStore(ctx, shippingQuery.invoicePayload, this.trigger)
                 case None => return false
@@ -2992,6 +3010,9 @@ private func matchesFilterQuery(ctx: Context, query: String): Bool {
 }
 
 private func matchesText(ctx: Context, trigger: TextTrigger): Bool {
+    if (!matchFilter([":text", ":caption"], ctx)) {
+        return false
+    }
     let message = triggerMessage(ctx)
     match (message) {
         case Some(value) => return matchAndStore(ctx, messageContent(value), trigger)

@@ -276,6 +276,55 @@ private func removeOptionalArguments(pulledPayloadFieldTrace: String, optionalAr
     joinTraceFields(fields)
 }
 
+private func addTraceField(fields: ArrayList<String>, field: String): Unit {
+    if (field == "") {
+        return
+    }
+    for (existing in fields) {
+        if (existing == field) {
+            return
+        }
+    }
+    fields.add(field)
+}
+
+private func removeTraceFields(sourceTrace: String, excludedTrace: String): String {
+    if (sourceTrace == "" || excludedTrace == "") {
+        return sourceTrace
+    }
+    let fields = ArrayList<String>()
+    for (field in sourceTrace.split(",")) {
+        if (field != "" && !containsTraceField(excludedTrace, field)) {
+            fields.add(field)
+        }
+    }
+    joinTraceFields(fields)
+}
+
+private func otherExcludedFieldTrace(payloadFieldTrace: String, pulledParameterTrace: String): String {
+    let fields = ArrayList<String>()
+    if (pulledParameterTrace != "") {
+        for (field in pulledParameterTrace.split(",")) {
+            addTraceField(fields, field)
+        }
+    }
+    if (
+        containsTraceField(payloadFieldTrace, "chat_id") &&
+        containsTraceField(payloadFieldTrace, "message_id") &&
+        containsTraceField(payloadFieldTrace, "inline_message_id") &&
+        (
+            containsTraceField(pulledParameterTrace, "chat_id") ||
+            containsTraceField(pulledParameterTrace, "message_id") ||
+            containsTraceField(pulledParameterTrace, "inline_message_id")
+        )
+    ) {
+        addTraceField(fields, "chat_id")
+        addTraceField(fields, "message_id")
+        addTraceField(fields, "inline_message_id")
+    }
+    joinTraceFields(fields)
+}
+
 public class ApiWrapperSchemaTrace {
     public let publicMethodName: String
     public let rawMethodName: String
@@ -339,19 +388,25 @@ public class ApiWrapperSignatureTrace {
     public let flags: String
 
     public init(schema: ApiWrapperSchemaTrace) {
+        let optionalParameters = optionalArgumentTraceFor(schema.publicMethodName)
+        let requiredParameters = removeOptionalArguments(
+            schema.pulledPayloadFieldTrace,
+            optionalParameters
+        )
+        let pulledParameters = concatTraceFields(requiredParameters, optionalParameters)
+        let payloadFields = schema.payloadFieldTrace()
+        let otherExcludedFields = otherExcludedFieldTrace(payloadFields, pulledParameters)
+
         this.publicMethodName = schema.publicMethodName
         this.rawMethodName = schema.rawMethodName
-        this.optionalParameterTrace = optionalArgumentTraceFor(schema.publicMethodName)
-        this.requiredParameterTrace = removeOptionalArguments(
-            schema.pulledPayloadFieldTrace,
-            this.optionalParameterTrace
-        )
-        this.otherPayloadFieldTrace = schema.optionalPayloadFieldTrace
+        this.optionalParameterTrace = optionalParameters
+        this.requiredParameterTrace = requiredParameters
+        this.otherPayloadFieldTrace = removeTraceFields(payloadFields, otherExcludedFields)
         this.signalTrace = "AbortSignal"
         this.cancelTrace = "CancelSignal"
         this.requiredPayloadFieldTrace = schema.requiredPayloadFieldTrace
         this.optionalPayloadFieldTrace = schema.optionalPayloadFieldTrace
-        this.payloadFieldTrace = schema.payloadFieldTrace()
+        this.payloadFieldTrace = payloadFields
         this.returnTypeTrace = schema.returnTypeTrace
         this.flags = schema.flags
     }
@@ -380,12 +435,9 @@ public class ApiWrapperOtherPayloadSchemaTrace {
     public init(signature: ApiWrapperSignatureTrace) {
         this.publicMethodName = signature.publicMethodName
         this.rawMethodName = signature.rawMethodName
-        this.pulledParameterTrace = concatTraceFields(
-            signature.requiredParameterTrace,
-            signature.optionalParameterTrace
-        )
+        this.pulledParameterTrace = concatTraceFields(signature.requiredParameterTrace, signature.optionalParameterTrace)
         this.otherPayloadFieldTrace = signature.otherPayloadFieldTrace
-        this.excludedOtherFieldTrace = this.pulledParameterTrace
+        this.excludedOtherFieldTrace = otherExcludedFieldTrace(signature.payloadFieldTrace, this.pulledParameterTrace)
         this.allowsOtherPayload = signature.otherPayloadFieldTrace != ""
     }
 
