@@ -10,6 +10,7 @@ public class InputMedia {
     public let sourceValue: String
     public let filename: String
     public let options: TelegramObject
+    private let mediaFile: Option<InputFile>
 
     public init(kind: String, media: String, options: TelegramObject) {
         this.kind = kind
@@ -19,30 +20,38 @@ public class InputMedia {
         this.sourceValue = ""
         this.filename = ""
         this.options = options.copy()
+        this.mediaFile = None<InputFile>
     }
 
     public init(kind: String, file: InputFile, options: TelegramObject) {
         this.kind = kind
-        this.media = ""
+        this.media = "attach://media"
         this.isInputFile = true
         this.sourceKind = file.sourceKind
         this.sourceValue = file.sourceValue
         this.filename = file.filename
         this.options = options.copy()
+        this.mediaFile = Some(file)
+    }
+
+    public func hasMediaFile(): Bool {
+        match (this.mediaFile) {
+            case Some(_) => true
+            case None => false
+        }
+    }
+
+    public func inputFile(): InputFile {
+        match (this.mediaFile) {
+            case Some(file) => file
+            case None => throw Exception("input media does not contain an InputFile")
+        }
     }
 
     public func toTelegramObject(): TelegramObject {
         let object = TelegramObject()
         object.addString("type", this.kind)
-        if (this.isInputFile) {
-            let file = TelegramObject()
-            file.addString("source_kind", this.sourceKind)
-            file.addString("source_value", this.sourceValue)
-            file.addString("filename", this.filename)
-            object.addObject("media", file)
-        } else {
-            object.addString("media", this.media)
-        }
+        object.addString("media", this.media)
         object.addAll(this.options)
         object
     }
