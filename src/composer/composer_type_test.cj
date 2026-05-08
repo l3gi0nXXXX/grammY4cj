@@ -97,9 +97,21 @@ public class ComposerTypeSurfaceTest {
         composer.drop(predicate, { _ctx: Context, next: NextFunction => next() })
         let decision = composerMaybePromiseDecision()
 
-        @Expect(decision.callbackContract, "MaybePromise via sync and Future middleware adapters")
-        @Expect(decision.futureBoundary.contains("AsyncNextFunction returns Future<Unit>"), true)
+        @Expect(decision.callbackContract, "MaybeTask<T> facade backs sync values and Future<T> callbacks")
+        @Expect(decision.futureBoundary.contains("MaybeTask<Unit>"), true)
         @Expect(decision.routeFallbackContract, "None<String> route values select fallback")
+        @Expect(composer.layerName(), "Composer")
+    }
+
+    @TestCase
+    public func maybeTaskFacadeAliasesCompileAcrossMiddlewareAndPredicate(): Unit {
+        let middleware: MaybeMiddlewareFn = { _ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ => next().get() })
+        }
+        let predicate: MaybePredicate = { _ctx: Context => MaybeTask<Bool>(true) }
+        let composer: Composer = Composer().filter(predicate)
+        composer.use(middleware)
+
         @Expect(composer.layerName(), "Composer")
     }
 

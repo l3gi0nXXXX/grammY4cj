@@ -189,6 +189,38 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func maybeTaskFacadeComposesSyncImmediateAndFutureMiddleware(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let immediate: MaybeMiddlewareFn = { _ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                addEvent(events, "maybe:pre")
+                next().get()
+                addEvent(events, "maybe:post")
+            })
+        }
+        let futureBacked: MaybeMiddlewareFn = { _ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>(spawn { =>
+                addEvent(events, "future:pre")
+                next().get()
+                addEvent(events, "future:post")
+            })
+        }
+        composer.use(immediate)
+        composer.use(futureBacked)
+        composer.use(eventMiddleware(events, "leaf"))
+
+        run(composer, testCtx(99, "message"))
+
+        @Expect(events.size, 5)
+        @Expect(events[0], "maybe:pre")
+        @Expect(events[1], "future:pre")
+        @Expect(events[2], "leaf")
+        @Expect(events[3], "future:post")
+        @Expect(events[4], "maybe:post")
+    }
+
+    @TestCase
     public func runUsesOnionExecutionOrder(): Unit {
         let events = ArrayList<String>()
         let composer = Composer()
@@ -224,6 +256,21 @@ public class ComposerMiddlewareTest {
 
         @Expect(thrown, true)
         @Expect(events.size, 1)
+    }
+
+    @TestCase
+    public func concatDoesNotRunDownstreamWhenNextIsNotCalled(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        composer.use({ _ctx: Context, _next: NextFunction =>
+            addEvent(events, "stop")
+        })
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(100, "message"))
+
+        @Expect(events.size, 1)
+        @Expect(events[0], "stop")
     }
 
     @TestCase
@@ -1101,6 +1148,54 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func lazyFactoryRunsOnceForEachUpdate(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        composer.lazy({ ctx: Context =>
+            addEvent(events, "factory")
+            { _ctx: Context, next: NextFunction =>
+                addEvent(events, "lazy:" + ctx.updateId().toString())
+                next()
+            }
+        })
+
+        run(composer, testCtx(101, "message"))
+        run(composer, testCtx(102, "message"))
+
+        @Expect(countEvents(events, "factory"), 2)
+        @Expect(events.size, 4)
+        @Expect(events[0], "factory")
+        @Expect(events[1], "lazy:101")
+        @Expect(events[2], "factory")
+        @Expect(events[3], "lazy:102")
+    }
+
+    @TestCase
+    public func maybeLazyFactoryReturnsMiddlewareArrays(): Unit {
+        let events = ArrayList<String>()
+        let factory: MaybeMiddlewareArrayFactory = { ctx: Context =>
+            MaybeTask<Array<MaybeMiddlewareFn>>({ =>
+                let first: MaybeMiddlewareFn = { _ctx: Context, next: MaybeNextFunction =>
+                    MaybeTask<Unit>({ =>
+                        addEvent(events, "maybe-array:" + ctx.updateId().toString())
+                        next().get()
+                    })
+                }
+                [first]
+            })
+        }
+        let composer = Composer()
+        composer.lazyMaybeArray(factory)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(103, "message"))
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "maybe-array:103")
+        @Expect(events[1], "after")
+    }
+
+    @TestCase
     public func lazyRunsCreatedMiddlewareArrays(): Unit {
         let events = ArrayList<String>()
         let composer = Composer()
@@ -1277,6 +1372,33 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func routePropagatesRouterErrorsBeforeFallbackOrDownstream(): Unit {
+        let events = ArrayList<String>()
+        let routes = HashMap<String, MiddlewareFn>()
+        routes["hit"] = eventMiddleware(events, "route")
+        let router: Router = { _ctx: Context =>
+            spawn { =>
+                throw Exception("router boom")
+                None<String>
+            }
+        }
+        let composer = Composer()
+        composer.route(router, routes, eventMiddleware(events, "fallback"))
+        composer.use(eventMiddleware(events, "after"))
+
+        var thrown = false
+        try {
+            run(composer, testCtx(104, "message"))
+        } catch (err: Exception) {
+            thrown = true
+            @Expect(err.message, "router boom")
+        }
+
+        @Expect(thrown, true)
+        @Expect(events.size, 0)
+    }
+
+    @TestCase
     public func errorBoundaryRethrowsHandlerErrors(): Unit {
         let composer = Composer()
         let handler: ErrorHandler = { _err: BotError, _next: NextFunction => throw Exception("handler boom") }
@@ -1291,6 +1413,29 @@ public class ComposerMiddlewareTest {
             @Expect(err.message, "handler boom")
         }
         @Expect(thrown, true)
+    }
+
+    @TestCase
+    public func errorBoundaryMaybeHandlerReceivesBotErrorAndCanContinue(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        let handler: MaybeErrorHandler = { err: BotError, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                addEvent(events, "caught:" + err.error.message + ":" + err.ctx.updateId().toString())
+                next().get()
+            })
+        }
+        let child: MaybeMiddlewareFn = { _ctx: Context, _next: MaybeNextFunction =>
+            MaybeTask<Unit>({ => throw Exception("maybe child boom") })
+        }
+        composer.errorBoundary(handler, child)
+        composer.use(eventMiddleware(events, "after"))
+
+        run(composer, testCtx(105, "message"))
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "caught:maybe child boom:105")
+        @Expect(events[1], "after")
     }
 
     @TestCase

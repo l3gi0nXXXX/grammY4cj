@@ -24,6 +24,39 @@ public type Router = (Context) -> Future<Option<String>>
 public type ErrorHandler = (BotError, NextFunction) -> Unit
 public type AsyncErrorHandler = (BotError, AsyncNextFunction) -> Future<Unit>
 
+public class MaybeTask<T> {
+    private let wait: () -> T
+
+    public init(value: T) {
+        this.wait = { => value }
+    }
+
+    public init(future: Future<T>) {
+        this.wait = { => future.get() }
+    }
+
+    public init(wait: () -> T) {
+        this.wait = wait
+    }
+
+    public func get(): T {
+        this.wait()
+    }
+
+    public func future(): Future<T> {
+        spawn { => this.get() }
+    }
+}
+
+public type MaybeNextFunction = () -> MaybeTask<Unit>
+public type MaybeMiddlewareFn = (Context, MaybeNextFunction) -> MaybeTask<Unit>
+public type MaybePredicate = (Context) -> MaybeTask<Bool>
+public type MaybeRouter = (Context) -> MaybeTask<Option<String>>
+public type MaybeMiddlewareFactory = (Context) -> MaybeTask<MaybeMiddlewareFn>
+public type MaybeMiddlewareArrayFactory = (Context) -> MaybeTask<Array<MaybeMiddlewareFn>>
+public type MaybeComposerFactory = (Context) -> MaybeTask<Composer>
+public type MaybeErrorHandler = (BotError, MaybeNextFunction) -> MaybeTask<Unit>
+
 public class ComposerMaybePromiseDecision {
     public let callbackContract: String
     public let futureBoundary: String
@@ -40,9 +73,9 @@ public class ComposerMaybePromiseDecision {
 
 public func composerMaybePromiseDecision(): ComposerMaybePromiseDecision {
     ComposerMaybePromiseDecision(
-        "MaybePromise via sync and Future middleware adapters",
-        "AsyncNextFunction returns Future<Unit>; async middleware, predicate, factory, router, and error handler are joined at control boundaries",
-        "fork starts downstream and forked middleware together and resolves on first failure or both successes",
+        "MaybeTask<T> facade backs sync values and Future<T> callbacks",
+        "Middleware, next, predicate, router, factory, and error handler normalize to MaybeTask<Unit> at Composer boundaries",
+        "fork starts downstream and forked middleware together and resolves like Promise.all: first failure or both successes",
         "None<String> route values select fallback",
     )
 }
@@ -70,46 +103,72 @@ private class NextCallState {
     public init() {}
 }
 
-private func resolvedUnitFuture(): Future<Unit> {
-    spawn { => () }
+private func resolvedUnitTask(): MaybeTask<Unit> {
+    MaybeTask<Unit>(())
 }
 
-private func resolvedBoolFuture(value: Bool): Future<Bool> {
-    spawn { => value }
+private func resolvedBoolTask(value: Bool): MaybeTask<Bool> {
+    MaybeTask<Bool>(value)
 }
 
-private func resolvedRouteFuture(value: Option<String>): Future<Option<String>> {
-    spawn { => value }
+private func resolvedRouteTask(value: Option<String>): MaybeTask<Option<String>> {
+    MaybeTask<Option<String>>(value)
 }
 
-private func blockingNext(next: AsyncNextFunction): NextFunction {
+private func blockingNext(next: MaybeNextFunction): NextFunction {
     { =>
         next().get()
     }
 }
 
-private func liftSyncMiddleware(middleware: MiddlewareFn): AsyncMiddlewareFn {
-    { ctx: Context, next: AsyncNextFunction =>
-        spawn { =>
+private func liftSyncMiddleware(middleware: MiddlewareFn): MaybeMiddlewareFn {
+    { ctx: Context, next: MaybeNextFunction =>
+        MaybeTask<Unit>({ =>
             middleware(ctx, blockingNext(next))
-        }
+        })
     }
 }
 
-private func liftSyncMiddlewareArray(middleware: Array<MiddlewareFn>): Array<AsyncMiddlewareFn> {
-    let lifted = ArrayList<AsyncMiddlewareFn>()
+private func liftFutureMiddleware(middleware: AsyncMiddlewareFn): MaybeMiddlewareFn {
+    { ctx: Context, next: MaybeNextFunction =>
+        MaybeTask<Unit>(middleware(ctx, { => next().future() }))
+    }
+}
+
+private func liftSyncMiddlewareArray(middleware: Array<MiddlewareFn>): Array<MaybeMiddlewareFn> {
+    let lifted = ArrayList<MaybeMiddlewareFn>()
     for (mw in middleware) {
         lifted.add(liftSyncMiddleware(mw))
     }
     lifted.toArray()
 }
 
-private func liftSyncPredicate(predicate: SyncPredicate): Predicate {
-    { ctx: Context => resolvedBoolFuture(predicate(ctx)) }
+private func liftFutureMiddlewareArray(middleware: Array<AsyncMiddlewareFn>): Array<MaybeMiddlewareFn> {
+    let lifted = ArrayList<MaybeMiddlewareFn>()
+    for (mw in middleware) {
+        lifted.add(liftFutureMiddleware(mw))
+    }
+    lifted.toArray()
 }
 
-private func liftSyncRouter(router: SyncRouter): Router {
-    { ctx: Context => resolvedRouteFuture(router(ctx)) }
+private func liftSyncPredicate(predicate: SyncPredicate): MaybePredicate {
+    { ctx: Context => resolvedBoolTask(predicate(ctx)) }
+}
+
+private func liftFuturePredicate(predicate: Predicate): MaybePredicate {
+    { ctx: Context => MaybeTask<Bool>(predicate(ctx)) }
+}
+
+private func liftSyncRouter(router: SyncRouter): MaybeRouter {
+    { ctx: Context => resolvedRouteTask(router(ctx)) }
+}
+
+private func liftFutureRouter(router: Router): MaybeRouter {
+    { ctx: Context => MaybeTask<Option<String>>(router(ctx)) }
+}
+
+private func maybePass(_ctx: Context, next: MaybeNextFunction): MaybeTask<Unit> {
+    next()
 }
 
 private func asyncPass(_ctx: Context, next: AsyncNextFunction): Future<Unit> {
@@ -120,9 +179,9 @@ public func pass(_ctx: Context, next: NextFunction): Unit {
     next()
 }
 
-private func concatAsync(first: AsyncMiddlewareFn, andThen: AsyncMiddlewareFn): AsyncMiddlewareFn {
-    { ctx: Context, next: AsyncNextFunction =>
-        spawn { =>
+private func concatMaybe(first: MaybeMiddlewareFn, andThen: MaybeMiddlewareFn): MaybeMiddlewareFn {
+    { ctx: Context, next: MaybeNextFunction =>
+        MaybeTask<Unit>({ =>
             let nextCalled = NextCallState()
             first(ctx, { =>
                 if (nextCalled.called) {
@@ -131,71 +190,75 @@ private func concatAsync(first: AsyncMiddlewareFn, andThen: AsyncMiddlewareFn): 
                 nextCalled.called = true
                 andThen(ctx, next)
             }).get()
-        }
+        })
     }
 }
 
 public func concat(first: MiddlewareFn, andThen: MiddlewareFn): MiddlewareFn {
     { ctx: Context, next: NextFunction =>
-        concatAsync(liftSyncMiddleware(first), liftSyncMiddleware(andThen))(
+        concatMaybe(liftSyncMiddleware(first), liftSyncMiddleware(andThen))(
             ctx,
-            { => spawn { => next() } },
+            { => MaybeTask<Unit>({ => next() }) },
         ).get()
     }
 }
 
-private func compose(middleware: Array<AsyncMiddlewareFn>): AsyncMiddlewareFn {
-    var handler: AsyncMiddlewareFn = asyncPass
+private func compose(middleware: Array<MaybeMiddlewareFn>): MaybeMiddlewareFn {
+    var handler: MaybeMiddlewareFn = maybePass
     for (mw in middleware) {
-        handler = concatAsync(handler, mw)
+        handler = concatMaybe(handler, mw)
     }
     handler
 }
 
 public func run(middleware: MiddlewareFn, ctx: Context): Unit {
-    liftSyncMiddleware(middleware)(ctx, { => resolvedUnitFuture() }).get()
+    liftSyncMiddleware(middleware)(ctx, { => resolvedUnitTask() }).get()
 }
 
 public func run(middleware: AsyncMiddlewareFn, ctx: Context): Unit {
-    middleware(ctx, { => resolvedUnitFuture() }).get()
+    liftFutureMiddleware(middleware)(ctx, { => resolvedUnitTask() }).get()
+}
+
+public func run(middleware: MaybeMiddlewareFn, ctx: Context): Unit {
+    middleware(ctx, { => resolvedUnitTask() }).get()
 }
 
 public func run(composer: Composer, ctx: Context): Unit {
     composer.run(ctx)
 }
 
-private func notPredicate(predicate: Predicate): Predicate {
+private func notPredicate(predicate: MaybePredicate): MaybePredicate {
     { ctx: Context =>
-        spawn { =>
+        MaybeTask<Bool>({ =>
             !predicate(ctx).get()
-        }
+        })
     }
 }
 
-private func hasPredicate(predicate: SyncPredicate): Predicate {
+private func hasPredicate(predicate: SyncPredicate): MaybePredicate {
     liftSyncPredicate(predicate)
 }
 
-private func queryPredicate(query: String): Predicate {
-    { ctx: Context => resolvedBoolFuture(matchFilter(query, ctx)) }
+private func queryPredicate(query: String): MaybePredicate {
+    { ctx: Context => resolvedBoolTask(matchFilter(query, ctx)) }
 }
 
-private func queryArrayPredicate(queries: Array<String>): Predicate {
-    { ctx: Context => resolvedBoolFuture(matchFilter(queries, ctx)) }
+private func queryArrayPredicate(queries: Array<String>): MaybePredicate {
+    { ctx: Context => resolvedBoolTask(matchFilter(queries, ctx)) }
 }
 
-private func routeMiddleware(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): AsyncMiddlewareFactory {
+private func routeMiddleware(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): MaybeMiddlewareFactory {
     { ctx: Context =>
-        spawn { =>
+        MaybeTask<MaybeMiddlewareFn>({ =>
             match (router(ctx).get()) {
                 case Some(route) =>
                     match (routeHandlers.get(route)) {
-                        case Some(mw) => mw
-                        case None => fallback
+                        case Some(mw) => liftSyncMiddleware(mw)
+                        case None => liftSyncMiddleware(fallback)
                     }
-                case None => fallback
+                case None => liftSyncMiddleware(fallback)
             }
-        }
+        })
     }
 }
 
@@ -261,12 +324,12 @@ private func promiseAll(first: () -> Unit, second: () -> Unit): Future<Unit> {
 }
 
 public class Composer {
-    private var handler: AsyncMiddlewareFn = asyncPass
+    private var handler: MaybeMiddlewareFn = maybePass
 
     public init() {}
 
     public init(composer: Composer) {
-        this.handler = composer.asyncMiddleware()
+        this.handler = composer.maybeMiddleware()
     }
 
     public init(middleware: MiddlewareFn) {
@@ -274,7 +337,7 @@ public class Composer {
     }
 
     public init(middleware: AsyncMiddlewareFn) {
-        this.handler = middleware
+        this.handler = liftFutureMiddleware(middleware)
     }
 
     public init(middleware: Array<MiddlewareFn>) {
@@ -282,23 +345,37 @@ public class Composer {
     }
 
     public init(middleware: Array<AsyncMiddlewareFn>) {
+        this.handler = compose(liftFutureMiddlewareArray(middleware))
+    }
+
+    public init(middleware: MaybeMiddlewareFn) {
+        this.handler = middleware
+    }
+
+    public init(middleware: Array<MaybeMiddlewareFn>) {
         this.handler = compose(middleware)
     }
 
     public func middleware(): MiddlewareFn {
         { ctx: Context, next: NextFunction =>
-            this.handler(ctx, { => spawn { => next() } }).get()
+            this.handler(ctx, { => MaybeTask<Unit>({ => next() }) }).get()
         }
     }
 
     public func asyncMiddleware(): AsyncMiddlewareFn {
         { ctx: Context, next: AsyncNextFunction =>
+            this.handler(ctx, { => MaybeTask<Unit>(next()) }).future()
+        }
+    }
+
+    public func maybeMiddleware(): MaybeMiddlewareFn {
+        { ctx: Context, next: MaybeNextFunction =>
             this.handler(ctx, next)
         }
     }
 
     public func run(ctx: Context): Unit {
-        this.handler(ctx, { => resolvedUnitFuture() }).get()
+        this.handler(ctx, { => resolvedUnitTask() }).get()
     }
 
     public func use(middleware: MiddlewareFn): Composer {
@@ -310,19 +387,29 @@ public class Composer {
     }
 
     public func use(composer: Composer): Composer {
-        this.handler = concatAsync(this.handler, composer.asyncMiddleware())
+        this.handler = concatMaybe(this.handler, composer.maybeMiddleware())
         composer
     }
 
     public func use(middleware: Array<MiddlewareFn>): Composer {
         let composer = Composer(middleware)
-        this.handler = concatAsync(this.handler, composer.asyncMiddleware())
+        this.handler = concatMaybe(this.handler, composer.maybeMiddleware())
         composer
     }
 
     public func use(middleware: Array<AsyncMiddlewareFn>): Composer {
         let composer = Composer(middleware)
-        this.handler = concatAsync(this.handler, composer.asyncMiddleware())
+        this.handler = concatMaybe(this.handler, composer.maybeMiddleware())
+        composer
+    }
+
+    public func use(middleware: MaybeMiddlewareFn): Composer {
+        this.use([middleware])
+    }
+
+    public func use(middleware: Array<MaybeMiddlewareFn>): Composer {
+        let composer = Composer(middleware)
+        this.handler = concatMaybe(this.handler, composer.maybeMiddleware())
         composer
     }
 
@@ -783,76 +870,116 @@ public class Composer {
     }
 
     public func filter(predicate: Predicate): Composer {
-        let composer = Composer()
-        this.branch(predicate, composer.asyncMiddleware(), asyncPass)
-        composer
+        this.filter(liftFuturePredicate(predicate))
     }
 
     public func filter(predicate: SyncPredicate): Composer {
         this.filter(liftSyncPredicate(predicate))
     }
 
-    public func filter(predicate: Predicate, middleware: MiddlewareFn): Composer {
-        let composer = this.filter(predicate)
-        composer.use(middleware)
+    public func filter(predicate: MaybePredicate): Composer {
+        let composer = Composer()
+        this.branch(predicate, composer.maybeMiddleware(), maybePass)
         composer
+    }
+
+    public func filter(predicate: Predicate, middleware: MiddlewareFn): Composer {
+        this.filter(liftFuturePredicate(predicate), middleware)
     }
 
     public func filter(predicate: SyncPredicate, middleware: MiddlewareFn): Composer {
         this.filter(liftSyncPredicate(predicate), middleware)
     }
 
+    public func filter(predicate: MaybePredicate, middleware: MiddlewareFn): Composer {
+        let composer = this.filter(predicate)
+        composer.use(middleware)
+        composer
+    }
+
     public func filter(predicate: Predicate, middleware: AsyncMiddlewareFn): Composer {
+        this.filter(liftFuturePredicate(predicate), middleware)
+    }
+
+    public func filter(predicate: MaybePredicate, middleware: AsyncMiddlewareFn): Composer {
         let composer = this.filter(predicate)
         composer.use(middleware)
         composer
     }
 
     public func filter(predicate: Predicate, middleware: Array<MiddlewareFn>): Composer {
-        let composer = this.filter(predicate)
-        composer.use(middleware)
-        composer
+        this.filter(liftFuturePredicate(predicate), middleware)
     }
 
     public func filter(predicate: SyncPredicate, middleware: Array<MiddlewareFn>): Composer {
         this.filter(liftSyncPredicate(predicate), middleware)
     }
 
+    public func filter(predicate: MaybePredicate, middleware: Array<MiddlewareFn>): Composer {
+        let composer = this.filter(predicate)
+        composer.use(middleware)
+        composer
+    }
+
     public func filter(predicate: Predicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.filter(liftFuturePredicate(predicate), middleware)
+    }
+
+    public func filter(predicate: MaybePredicate, middleware: Array<AsyncMiddlewareFn>): Composer {
         let composer = this.filter(predicate)
         composer.use(middleware)
         composer
     }
 
     public func drop(predicate: Predicate): Composer {
-        this.filter(notPredicate(predicate))
+        this.filter(notPredicate(liftFuturePredicate(predicate)))
     }
 
     public func drop(predicate: SyncPredicate): Composer {
         this.drop(liftSyncPredicate(predicate))
     }
 
+    public func drop(predicate: MaybePredicate): Composer {
+        this.filter(notPredicate(predicate))
+    }
+
     public func drop(predicate: Predicate, middleware: MiddlewareFn): Composer {
-        this.filter(notPredicate(predicate), middleware)
+        this.filter(notPredicate(liftFuturePredicate(predicate)), middleware)
     }
 
     public func drop(predicate: SyncPredicate, middleware: MiddlewareFn): Composer {
         this.drop(liftSyncPredicate(predicate), middleware)
     }
 
+    public func drop(predicate: MaybePredicate, middleware: MiddlewareFn): Composer {
+        this.filter(notPredicate(predicate), middleware)
+    }
+
     public func drop(predicate: Predicate, middleware: AsyncMiddlewareFn): Composer {
+        this.filter(notPredicate(liftFuturePredicate(predicate)), middleware)
+    }
+
+    public func drop(predicate: MaybePredicate, middleware: AsyncMiddlewareFn): Composer {
         this.filter(notPredicate(predicate), middleware)
     }
 
     public func drop(predicate: Predicate, middleware: Array<MiddlewareFn>): Composer {
-        this.filter(notPredicate(predicate), middleware)
+        this.filter(notPredicate(liftFuturePredicate(predicate)), middleware)
     }
 
     public func drop(predicate: SyncPredicate, middleware: Array<MiddlewareFn>): Composer {
         this.drop(liftSyncPredicate(predicate), middleware)
     }
 
+    public func drop(predicate: MaybePredicate, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(notPredicate(predicate), middleware)
+    }
+
     public func drop(predicate: Predicate, middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.filter(notPredicate(liftFuturePredicate(predicate)), middleware)
+    }
+
+    public func drop(predicate: MaybePredicate, middleware: Array<AsyncMiddlewareFn>): Composer {
         this.filter(notPredicate(predicate), middleware)
     }
 
@@ -868,87 +995,124 @@ public class Composer {
         this.fork([middleware])
     }
 
+    public func fork(middleware: MaybeMiddlewareFn): Composer {
+        this.fork([middleware])
+    }
+
     public func fork(middleware: Array<MiddlewareFn>): Composer {
         this.fork(liftSyncMiddlewareArray(middleware))
     }
 
     public func fork(middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.fork(liftFutureMiddlewareArray(middleware))
+    }
+
+    public func fork(middleware: Array<MaybeMiddlewareFn>): Composer {
         let composer = Composer(middleware)
-        let forked = composer.asyncMiddleware()
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            promiseAll(
+        let forked = composer.maybeMiddleware()
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>(promiseAll(
                 { => next().get() },
                 { => run(forked, ctx) },
-            )
+            ))
         }
         this.use(runner)
         composer
     }
 
     public func lazy(factory: MiddlewareFactory): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 let middleware = factory(ctx)
                 liftSyncMiddleware(middleware)(ctx, next).get()
-            }
+            })
         }
         this.use(runner)
     }
 
     public func lazy(factory: AsyncMiddlewareFactory): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 let middleware = factory(ctx).get()
                 liftSyncMiddleware(middleware)(ctx, next).get()
-            }
+            })
         }
         this.use(runner)
     }
 
     public func lazyAsync(factory: (Context) -> Future<AsyncMiddlewareFn>): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                let middleware = factory(ctx).get()
+                liftFutureMiddleware(middleware)(ctx, next).get()
+            })
+        }
+        this.use(runner)
+    }
+
+    public func lazyMaybe(factory: MaybeMiddlewareFactory): Composer {
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 let middleware = factory(ctx).get()
                 middleware(ctx, next).get()
-            }
+            })
         }
         this.use(runner)
     }
 
     public func lazy(factory: MiddlewareArrayFactory): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 let middleware = factory(ctx)
-                Composer(middleware).asyncMiddleware()(ctx, next).get()
-            }
+                Composer(middleware).maybeMiddleware()(ctx, next).get()
+            })
         }
         this.use(runner)
     }
 
     public func lazy(factory: AsyncMiddlewareArrayFactory): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 let middleware = factory(ctx).get()
-                Composer(middleware).asyncMiddleware()(ctx, next).get()
-            }
+                Composer(middleware).maybeMiddleware()(ctx, next).get()
+            })
+        }
+        this.use(runner)
+    }
+
+    public func lazyMaybeArray(factory: MaybeMiddlewareArrayFactory): Composer {
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                let middleware = factory(ctx).get()
+                Composer(middleware).maybeMiddleware()(ctx, next).get()
+            })
         }
         this.use(runner)
     }
 
     public func lazy(factory: ComposerFactory): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
-                factory(ctx).asyncMiddleware()(ctx, next).get()
-            }
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                factory(ctx).maybeMiddleware()(ctx, next).get()
+            })
         }
         this.use(runner)
     }
 
     public func lazy(factory: AsyncComposerFactory): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
-                factory(ctx).get().asyncMiddleware()(ctx, next).get()
-            }
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                factory(ctx).get().maybeMiddleware()(ctx, next).get()
+            })
+        }
+        this.use(runner)
+    }
+
+    public func lazyMaybeComposer(factory: MaybeComposerFactory): Composer {
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
+                factory(ctx).get().maybeMiddleware()(ctx, next).get()
+            })
         }
         this.use(runner)
     }
@@ -958,6 +1122,10 @@ public class Composer {
     }
 
     public func route(router: Router, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
+        this.route(liftFutureRouter(router), routeHandlers, pass)
+    }
+
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>): Composer {
         this.route(router, routeHandlers, pass)
     }
 
@@ -966,7 +1134,11 @@ public class Composer {
     }
 
     public func route(router: Router, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
-        this.lazy(routeMiddleware(router, routeHandlers, fallback))
+        this.route(liftFutureRouter(router), routeHandlers, fallback)
+    }
+
+    public func route(router: MaybeRouter, routeHandlers: HashMap<String, MiddlewareFn>, fallback: MiddlewareFn): Composer {
+        this.lazyMaybe(routeMiddleware(router, routeHandlers, fallback))
     }
 
     public func branch(predicate: SyncPredicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
@@ -974,18 +1146,30 @@ public class Composer {
     }
 
     public func branch(predicate: Predicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
+        this.branch(liftFuturePredicate(predicate), liftSyncMiddleware(trueMiddleware), liftSyncMiddleware(falseMiddleware))
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: MiddlewareFn, falseMiddleware: MiddlewareFn): Composer {
         this.branch(predicate, liftSyncMiddleware(trueMiddleware), liftSyncMiddleware(falseMiddleware))
     }
 
     public func branch(predicate: Predicate, trueMiddleware: AsyncMiddlewareFn, falseMiddleware: AsyncMiddlewareFn): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        this.branch(liftFuturePredicate(predicate), liftFutureMiddleware(trueMiddleware), liftFutureMiddleware(falseMiddleware))
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: AsyncMiddlewareFn, falseMiddleware: AsyncMiddlewareFn): Composer {
+        this.branch(predicate, liftFutureMiddleware(trueMiddleware), liftFutureMiddleware(falseMiddleware))
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: MaybeMiddlewareFn, falseMiddleware: MaybeMiddlewareFn): Composer {
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 if (predicate(ctx).get()) {
                     trueMiddleware(ctx, next).get()
                 } else {
                     falseMiddleware(ctx, next).get()
                 }
-            }
+            })
         }
         this.use(runner)
     }
@@ -995,18 +1179,30 @@ public class Composer {
     }
 
     public func branch(predicate: Predicate, trueMiddleware: Array<MiddlewareFn>, falseMiddleware: Array<MiddlewareFn>): Composer {
+        this.branch(liftFuturePredicate(predicate), liftSyncMiddlewareArray(trueMiddleware), liftSyncMiddlewareArray(falseMiddleware))
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: Array<MiddlewareFn>, falseMiddleware: Array<MiddlewareFn>): Composer {
         this.branch(predicate, liftSyncMiddlewareArray(trueMiddleware), liftSyncMiddlewareArray(falseMiddleware))
     }
 
     public func branch(predicate: Predicate, trueMiddleware: Array<AsyncMiddlewareFn>, falseMiddleware: Array<AsyncMiddlewareFn>): Composer {
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        this.branch(liftFuturePredicate(predicate), liftFutureMiddlewareArray(trueMiddleware), liftFutureMiddlewareArray(falseMiddleware))
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: Array<AsyncMiddlewareFn>, falseMiddleware: Array<AsyncMiddlewareFn>): Composer {
+        this.branch(predicate, liftFutureMiddlewareArray(trueMiddleware), liftFutureMiddlewareArray(falseMiddleware))
+    }
+
+    public func branch(predicate: MaybePredicate, trueMiddleware: Array<MaybeMiddlewareFn>, falseMiddleware: Array<MaybeMiddlewareFn>): Composer {
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 if (predicate(ctx).get()) {
-                    Composer(trueMiddleware).asyncMiddleware()(ctx, next).get()
+                    Composer(trueMiddleware).maybeMiddleware()(ctx, next).get()
                 } else {
-                    Composer(falseMiddleware).asyncMiddleware()(ctx, next).get()
+                    Composer(falseMiddleware).maybeMiddleware()(ctx, next).get()
                 }
-            }
+            })
         }
         this.use(runner)
     }
@@ -1019,6 +1215,10 @@ public class Composer {
         this.errorBoundary(errorHandler, asyncPass)
     }
 
+    public func errorBoundary(errorHandler: MaybeErrorHandler): Composer {
+        this.errorBoundary(errorHandler, maybePass)
+    }
+
     public func errorBoundary(errorHandler: ErrorHandler, middleware: MiddlewareFn): Composer {
         this.errorBoundary(errorHandler, [middleware])
     }
@@ -1027,24 +1227,35 @@ public class Composer {
         this.errorBoundary(errorHandler, [middleware])
     }
 
+    public func errorBoundary(errorHandler: MaybeErrorHandler, middleware: MaybeMiddlewareFn): Composer {
+        this.errorBoundary(errorHandler, [middleware])
+    }
+
     public func errorBoundary(errorHandler: ErrorHandler, middleware: Array<MiddlewareFn>): Composer {
-        let asyncHandler: AsyncErrorHandler = { err: BotError, next: AsyncNextFunction =>
-            spawn { =>
+        let maybeHandler: MaybeErrorHandler = { err: BotError, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 errorHandler(err, blockingNext(next))
-            }
+            })
         }
-        this.errorBoundary(asyncHandler, liftSyncMiddlewareArray(middleware))
+        this.errorBoundary(maybeHandler, liftSyncMiddlewareArray(middleware))
     }
 
     public func errorBoundary(errorHandler: AsyncErrorHandler, middleware: Array<AsyncMiddlewareFn>): Composer {
+        let maybeHandler: MaybeErrorHandler = { err: BotError, next: MaybeNextFunction =>
+            MaybeTask<Unit>(errorHandler(err, { => next().future() }))
+        }
+        this.errorBoundary(maybeHandler, liftFutureMiddlewareArray(middleware))
+    }
+
+    public func errorBoundary(errorHandler: MaybeErrorHandler, middleware: Array<MaybeMiddlewareFn>): Composer {
         let composer = Composer(middleware)
-        let bound = composer.asyncMiddleware()
-        let runner: AsyncMiddlewareFn = { ctx: Context, next: AsyncNextFunction =>
-            spawn { =>
+        let bound = composer.maybeMiddleware()
+        let runner: MaybeMiddlewareFn = { ctx: Context, next: MaybeNextFunction =>
+            MaybeTask<Unit>({ =>
                 let nextCalled = NextCallState()
-                let cont: AsyncNextFunction = { =>
+                let cont: MaybeNextFunction = { =>
                     nextCalled.called = true
-                    resolvedUnitFuture()
+                    resolvedUnitTask()
                 }
                 try {
                     bound(ctx, cont).get()
@@ -1055,7 +1266,7 @@ public class Composer {
                 if (nextCalled.called) {
                     next().get()
                 }
-            }
+            })
         }
         this.use(runner)
         composer
