@@ -9,14 +9,16 @@ public class InputMediaBuilderTest {
     public func upstream001BuildsPhotosGolden(): Unit {
         let options = TelegramObject()
         options.addString("caption", "photo caption")
+        let photo = InputMediaBuilder.photo(InputFile.fromBytes("ABC", "photo.jpg"), options)
 
-        @Expect(
-            InputMediaBuilder.photo(InputFile.fromBytes("ABC", "photo.jpg"), options).toJSON(),
-            "{\"type\":\"photo\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"photo.jpg\"},\"caption\":\"photo caption\"}"
-        )
+        @Expect(photo.toJSON(), "{\"type\":\"photo\",\"media\":\"attach://media\",\"caption\":\"photo caption\"}")
+        @Expect(photo.hasMediaFile(), true)
+        @Expect(photo.inputFile().filename, "photo.jpg")
+        @Expect(photo.toJSON().contains("source_kind"), false)
         let fromFileId = InputMediaBuilder.photo("file-id", options)
         @Expect(fromFileId.schemaIsValid(), true)
         @Expect(fromFileId.toTelegramObject().stringField("caption"), "photo caption")
+        @Expect(fromFileId.hasMediaFile(), false)
     }
 
     @TestCase
@@ -26,7 +28,7 @@ public class InputMediaBuilderTest {
 
         @Expect(
             InputMediaBuilder.video(InputFile.fromBytes("ABC", "video.mp4"), options).toJSON(),
-            "{\"type\":\"video\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"video.mp4\"},\"caption\":\"video caption\"}"
+            "{\"type\":\"video\",\"media\":\"attach://media\",\"caption\":\"video caption\"}"
         )
         let thumbnailOptions = TelegramObject()
         thumbnailOptions.addString("thumbnail", "attach://thumb")
@@ -42,7 +44,7 @@ public class InputMediaBuilderTest {
 
         @Expect(
             InputMediaBuilder.animation(InputFile.fromBytes("ABC", "animation.gif"), options).toJSON(),
-            "{\"type\":\"animation\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"animation.gif\"},\"caption\":\"animation caption\"}"
+            "{\"type\":\"animation\",\"media\":\"attach://media\",\"caption\":\"animation caption\"}"
         )
         @Expect(InputMediaBuilder.animation("animation-file-id", options).schemaIsValid(), true)
     }
@@ -54,7 +56,7 @@ public class InputMediaBuilderTest {
 
         @Expect(
             InputMediaBuilder.audio(InputFile.fromBytes("ABC", "audio.ogg"), options).toJSON(),
-            "{\"type\":\"audio\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"audio.ogg\"},\"caption\":\"audio caption\"}"
+            "{\"type\":\"audio\",\"media\":\"attach://media\",\"caption\":\"audio caption\"}"
         )
         let audioOptions = TelegramObject()
         audioOptions.addString("performer", "grammY")
@@ -69,7 +71,7 @@ public class InputMediaBuilderTest {
 
         @Expect(
             InputMediaBuilder.document(InputFile.fromBytes("ABC", "document.pdf"), options).toJSON(),
-            "{\"type\":\"document\",\"media\":{\"source_kind\":\"bytes\",\"source_value\":\"ABC\",\"filename\":\"document.pdf\"},\"caption\":\"document caption\"}"
+            "{\"type\":\"document\",\"media\":\"attach://media\",\"caption\":\"document caption\"}"
         )
         let documentOptions = TelegramObject()
         documentOptions.addBool("disable_content_type_detection", true)

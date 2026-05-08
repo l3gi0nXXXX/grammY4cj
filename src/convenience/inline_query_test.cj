@@ -64,7 +64,9 @@ private func horizontalAccuracy(): TelegramObject {
 public class InlineQueryResultBuilderTest {
     @TestCase
     public func upstream001ArticleFromStringGolden(): Unit {
+        let missingContent = InlineQueryResultBuilder.article("id", "title")
         let result = InlineQueryResultBuilder.article("id", "title", optionString("description", "description")).text("text")
+        @Expect(missingContent.schemaIsValid(), false)
         @Expect(
             result.toJSON(),
             "{\"type\":\"article\",\"id\":\"id\",\"title\":\"title\",\"description\":\"description\",\"input_message_content\":{\"message_text\":\"text\"}}"
@@ -676,7 +678,9 @@ public class InlineQueryResultBuilderTest {
 
     @TestCase
     public func upstream076VideoHtmlFromStringsGolden(): Unit {
+        let missingContent = InlineQueryResultBuilder.videoHtml("id", "title", "https://grammy.dev/", "https://grammy.dev/thumb", caption("cap"))
         let result = InlineQueryResultBuilder.videoHtml("id", "title", "https://grammy.dev/", "https://grammy.dev/thumb", caption("cap")).text("#Text", markdown())
+        @Expect(missingContent.schemaIsValid(), false)
         @Expect(
             result.toJSON(),
             "{\"type\":\"video\",\"mime_type\":\"text/html\",\"id\":\"id\",\"title\":\"title\",\"video_url\":\"https://grammy.dev/\",\"thumbnail_url\":\"https://grammy.dev/thumb\",\"caption\":\"cap\",\"input_message_content\":{\"message_text\":\"#Text\",\"parse_mode\":\"Markdown\"}}"

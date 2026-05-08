@@ -110,7 +110,7 @@ public class InlineQueryResult {
     }
 
     public func schema(): TelegramObjectSchema {
-        inlineQueryResultTelegramObjectSchema(this.template.stringField("type"))
+        inlineQueryResultTelegramObjectSchema(this.template.stringField("type"), this.template.stringField("mime_type"))
     }
 
     public func schemaIsValid(): Bool {
@@ -494,6 +494,10 @@ private func typed(kind: String, id: String): TelegramObject {
 }
 
 private func inlineQueryResultTelegramObjectSchema(kind: String): TelegramObjectSchema {
+    inlineQueryResultTelegramObjectSchema(kind, "")
+}
+
+private func inlineQueryResultTelegramObjectSchema(kind: String, mimeType: String): TelegramObjectSchema {
     let schema = TelegramObjectSchema("InlineQueryResult." + kind)
         .requireString("type", kind)
         .requireField("id")
@@ -558,7 +562,7 @@ private func inlineQueryResultTelegramObjectSchema(kind: String): TelegramObject
         ])
 
     if (kind == "article") {
-        schema.requireField("title").allowField("url").allowField("hide_url")
+        schema.requireField("title").requireField("input_message_content").allowField("url").allowField("hide_url")
     } else if (kind == "audio") {
         schema.allowField("title").allowField("audio_url").allowField("audio_file_id")
     } else if (kind == "contact") {
@@ -581,6 +585,9 @@ private func inlineQueryResultTelegramObjectSchema(kind: String): TelegramObject
         schema.requireField("title").requireField("latitude").requireField("longitude").requireField("address")
     } else if (kind == "video") {
         schema.allowField("title").allowField("video_url").allowField("video_file_id").allowField("mime_type").allowField("thumbnail_url")
+        if (mimeType == "text/html") {
+            schema.requireField("input_message_content")
+        }
     } else if (kind == "voice") {
         schema.allowField("title").allowField("voice_url").allowField("voice_file_id")
     }
