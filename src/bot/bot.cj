@@ -107,6 +107,7 @@ public class Bot {
     private var initWaitCount: Int64 = 0
     private var pollingRunning: Bool = false
     private var pollingSignal: Option<CancelSignal> = None<CancelSignal>
+    private var pollingStartForbiddenMessage: String = ""
     private var middlewareLocked: Bool = false
     private var lastTriedUpdate: Int64 = 0
     private let observedTypes = ArrayList<String>()
@@ -256,6 +257,10 @@ public class Bot {
         this.errorHandler = Some(handler)
     }
 
+    public func forbidPollingStart(message: String): Unit {
+        this.pollingStartForbiddenMessage = message
+    }
+
     public func middleware(): MiddlewareFn {
         this.composer.middleware()
     }
@@ -329,7 +334,10 @@ public class Bot {
         if (!this.isInited()) {
             throw BotConfigError("Bot not initialized! Call bot.init() or pass botInfo to BotConfig.")
         }
-        let updateApi = Api(this.token, this.api.config)
+        let updateApi = match (webhookReplyEnvelope) {
+            case Some(envelope) => Api(this.token, this.api.config, envelope)
+            case None => Api(this.token, this.api.config)
+        }
         let ctx = this.contextFactory(update, updateApi, this.botInfo)
         try {
             run(this.composer, ctx)
@@ -346,6 +354,9 @@ public class Bot {
     }
 
     public func start(options: PollingOptions): Unit {
+        if (!this.pollingStartForbiddenMessage.isEmpty()) {
+            throw BotConfigError(this.pollingStartForbiddenMessage)
+        }
         if (this.pollingRunning) {
             if (!this.isInited()) {
                 this.`init`()

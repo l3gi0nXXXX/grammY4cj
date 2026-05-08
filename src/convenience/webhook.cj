@@ -348,6 +348,9 @@ public func webhookCallback(bot: Bot, adapterName: String, options: WebhookOptio
             "Bot is already running via long polling, the webhook setup won't receive any updates!"
         )
     }
+    bot.forbidPollingStart(
+        "You already started the bot via webhooks, calling bot.start() starts the bot with long polling and this will prevent your webhook setup from receiving any updates!"
+    )
     WebhookCallback(BotWebhookUpdateHandler(bot), adapterName, options)
 }
 
@@ -365,6 +368,9 @@ public func webhookCallback(bot: Bot, adapter: FrameworkAdapter, options: Webhoo
             "Bot is already running via long polling, the webhook setup won't receive any updates!"
         )
     }
+    bot.forbidPollingStart(
+        "You already started the bot via webhooks, calling bot.start() starts the bot with long polling and this will prevent your webhook setup from receiving any updates!"
+    )
     WebhookCallback(BotWebhookUpdateHandler(bot), "custom", adapter, options)
 }
 

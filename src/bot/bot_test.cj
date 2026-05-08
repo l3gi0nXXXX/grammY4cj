@@ -14,6 +14,7 @@ import grammy4cj.core.CancelSignal
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
 import grammy4cj.core.Payload
+import grammy4cj.core.WebhookReplyEnvelope
 import grammy4cj.test_support.FakeHttp
 import grammy4cj.types.ApiResponse
 import grammy4cj.types.ResponseParameters
@@ -55,6 +56,14 @@ private class RecordingBotErrorHandler <: BotErrorHandler {
 
     override public func handle(error: BotError): Unit {
         this.errors.add(error)
+    }
+}
+
+private class ThrowingBotErrorHandler <: BotErrorHandler {
+    public init() {}
+
+    override public func handle(error: BotError): Unit {
+        throw Exception("error handler failed")
     }
 }
 
@@ -501,6 +510,43 @@ public class BotTest {
     }
 
     @TestCase
+    public func middlewareContextApiWritesWebhookReplyEnvelope(): Unit {
+        let me = UserFromGetMe(200, true, "WebhookCtx", "webhook_ctx_bot")
+        let client = ApiClientOptions("https://api.telegram.org", "prod", 500, false, true)
+        let bot = Bot("fake-token", BotConfig(client: client, botInfo: Some(me)))
+        let envelope = WebhookReplyEnvelope()
+
+        bot.use({ ctx: Context, _next: NextFunction =>
+            let _ = ctx.api.sendMessage(777, "hello from middleware")
+        })
+
+        bot.handleUpdate(Update(1003, "message"), envelope)
+
+        @Expect(envelope.sent, true)
+        @Expect(envelope.payload, "{\"chat_id\":777,\"text\":\"hello from middleware\",\"method\":\"sendMessage\"}")
+    }
+
+    @TestCase
+    public func middlewareWebhookReplyUsesCopiedTransformerChain(): Unit {
+        let me = UserFromGetMe(201, true, "WebhookTransform", "webhook_transform_bot")
+        let client = ApiClientOptions("https://api.telegram.org", "prod", 500, false, true)
+        let bot = Bot("fake-token", BotConfig(client: client, botInfo: Some(me)))
+        let envelope = WebhookReplyEnvelope()
+
+        bot.api.use("mark-webhook", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>
+            prev(method, payload.addValue("transformer", "copied"), signal)
+        })
+        bot.use({ ctx: Context, _next: NextFunction =>
+            let _ = ctx.api.sendMessage(778, "transformed")
+        })
+
+        bot.handleUpdate(Update(1004, "message"), envelope)
+
+        @Expect(envelope.sent, true)
+        @Expect(envelope.payload, "{\"chat_id\":778,\"text\":\"transformed\",\"transformer\":\"copied\",\"method\":\"sendMessage\"}")
+    }
+
+    @TestCase
     public func handleUpdateRunsComposerMiddlewareWithPerUpdateContext(): Unit {
         let events = ArrayList<String>()
         let contexts = ArrayList<Context>()
@@ -835,6 +881,30 @@ public class BotTest {
         @Expect(handled[0], 41)
         @Expect(runtime.getUpdatesCalls, 2)
         @Expect(bot.isRunning(), false)
+    }
+
+    @TestCase
+    public func pollingErrorHandlerThrowPropagatesAndStopsPolling(): Unit {
+        let runtime = FakeBotRuntime()
+        let me = UserFromGetMe(16, true, "ThrowCatch", "throw_catch_bot")
+        runtime.enqueueUpdates([Update(42, "message")])
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me), runtime: runtime))
+        bot.`catch`(ThrowingBotErrorHandler())
+        bot.use({ _ctx: Context, _next: NextFunction =>
+            throw Exception("middleware failed")
+        })
+
+        var thrown = false
+        try {
+            bot.start(PollingOptions(maxFetchCycles: 1))
+        } catch (e: Exception) {
+            thrown = true
+            @Expect(e.message, "error handler failed")
+        }
+
+        @Expect(thrown, true)
+        @Expect(bot.isRunning(), false)
+        @Expect(runtime.getUpdatesCalls, 1)
     }
 
     @TestCase

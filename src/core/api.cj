@@ -637,6 +637,17 @@ public class Api {
         this.traceCompatibilityMode = false
     }
 
+    public init(token: String, config: ApiConfig, webhookReplyEnvelope: WebhookReplyEnvelope) {
+        this.token = token
+        this.options = config.options
+        this.client = ApiClient(this.options, webhookReplyEnvelope)
+        config.copyTransformersTo(this.client)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+        this.config = ApiConfig(this.client, this.options)
+        this.traceCompatibilityMode = false
+    }
+
     public init(token: String, config: ApiConfig, fetcher: CoreFetch) {
         this.token = token
         this.options = config.options

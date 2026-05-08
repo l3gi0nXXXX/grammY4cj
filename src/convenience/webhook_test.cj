@@ -87,23 +87,40 @@ public class WebhookCallbackTest {
     }
 
     @TestCase
-    public func webhookHandleRejectsIfLongPollingStartsAfterSetup(): Unit {
+    public func webhookSetupForbidsSubsequentBotStart(): Unit {
         let runtime = FakeBotRuntime()
         let bot = Bot(
             "fake-token",
             BotConfig(botInfo: Some(UserFromGetMe(44, true, "Poll", "poll_bot")), runtime: runtime)
         )
-        let callback = webhookCallback(bot, "callback")
-        let probe = WebhookConflictProbe()
+        let _ = webhookCallback(bot, "callback")
+        var thrown = false
 
-        bot.start(PollingOptions(
-            maxFetchCycles: 1,
-            onStart: Some({ _info: UserFromGetMe =>
-                probe.handleCallback(callback)
-            })
-        ))
+        try {
+            bot.start(PollingOptions(maxFetchCycles: 1))
+        } catch (e: Exception) {
+            thrown = true
+            @Expect(e.message.contains("You already started the bot via webhooks"), true)
+        }
 
-        @Expect(probe.threw, true)
+        @Expect(thrown, true)
+        @Expect(runtime.deleteWebhookCalls, 0)
+        @Expect(bot.isRunning(), false)
+    }
+
+    @TestCase
+    public func webhookSetupDoesNotBreakBotStop(): Unit {
+        let runtime = FakeBotRuntime()
+        let bot = Bot(
+            "fake-token",
+            BotConfig(botInfo: Some(UserFromGetMe(45, true, "Stop", "stop_bot")), runtime: runtime)
+        )
+        let _ = webhookCallback(bot, "callback")
+
+        bot.stop()
+
+        @Expect(bot.isRunning(), false)
+        @Expect(runtime.getUpdatesCalls, 0)
     }
 
     @TestCase
