@@ -739,6 +739,17 @@ public class InputFileTest {
     }
 
     @TestCase
+    public func inputFileToRawNormalizesRuntimeAliasesInReturnedShape(): Unit {
+        let nativeRaw = InputFile.fromPath("/tmp/native.txt").toRaw("cjnative")
+        let emptyRaw = InputFile.fromBytes("bytes:1", "data.bin").toRaw("")
+
+        @Expect(nativeRaw.runtime, "node")
+        @Expect(nativeRaw.platformContract, "node-create-read-stream")
+        @Expect(emptyRaw.runtime, "node")
+        @Expect(emptyRaw.platformContract, "uint8-array-as-is")
+    }
+
+    @TestCase
     public func inputFileSupplierUnwrapsSuppliedSourceAndStaysReusable(): Unit {
         let supplierBytes = InputFile.fromSupplier("lazy-bytes", InputFileSource.bytes("bytes:5", "voice.dat"))
         let denoRaw = supplierBytes.toRaw("deno")
@@ -863,6 +874,7 @@ public class InputFileTest {
         @Expect(inferFilename("https://grammy.dev/"), "grammy.dev")
         @Expect(InputFile.fromFileUrl("file:///tmp/file.txt").filename, "file.txt")
         @Expect(inputFilePathLooksLikeRemoteUrlWarning("https://grammy.dev").contains("local file path"), true)
+        @Expect(inputFilePathLooksLikeRemoteUrlWarning("http://grammy.dev").contains("local file path"), true)
         @Expect(inputFilePathLooksLikeRemoteUrlWarning("/tmp/file.txt"), "")
     }
 }
