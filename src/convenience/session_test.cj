@@ -847,7 +847,7 @@ public class MultiSessionMiddlewareTest {
         options.add("three", SessionOptions<CounterSession>({ => CounterSession(3) }, third))
 
         multiSession<CounterSession>(options).handle(testCtx(92), { ctx: MultiSessionFlavorContext<CounterSession> =>
-            @Expect(ctx.chatId, 92)
+            @Expect(intValue(ctx.chatId), 92)
             ctx.session.get("one").count += 10
             ctx.session.set("two", CounterSession(20))
             ctx.session.delete("three")

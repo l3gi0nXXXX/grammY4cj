@@ -6,8 +6,8 @@ REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
 MOD="$REPO_DIR/src/mod.cj"
 MANIFEST="$REPO_DIR/src/architecture/root_public_export_manifest.tsv"
 EXPECTED_HEADER='export_name	module	category	upstream_anchor	note'
-EXPECTED_ROOT_EXPORTS="59"
-EXPECTED_MANIFEST_ROWS="59"
+EXPECTED_ROOT_EXPORTS="71"
+EXPECTED_MANIFEST_ROWS="71"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/grammy4cj-root-surface.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT

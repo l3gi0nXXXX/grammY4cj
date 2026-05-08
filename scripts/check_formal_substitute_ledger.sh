@@ -76,7 +76,8 @@ if [ -f "$LEDGER" ]; then
 
   for required_key in \
     telegram_types_subset_alias_trace \
-    input_file_fake_raw_contract \
+    input_file_raw_migration_helper \
+    multipart_byte_stream_payload_contract \
     api_generics_other_payload_schema \
     context_has_type_predicate_surface \
     composer_maybe_promise_fork_contract \

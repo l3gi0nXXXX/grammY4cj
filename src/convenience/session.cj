@@ -947,7 +947,7 @@ public class MultiSessionFlavorContext<T> {
         this.session = MultiSessionData<T>(sessionContext)
     }
 
-    public prop chatId: Int64 {
+    public prop chatId: Option<Int64> {
         get() { this.ctx.chatId }
     }
 
