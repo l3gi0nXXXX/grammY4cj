@@ -213,4 +213,30 @@ public class ContextTypeSurfaceTest {
             case None => @Expect(false, true)
         }
     }
+
+    @TestCase
+    public func filteredContextSubstitutesExposeConcreteOptionalSurfaces(): Unit {
+        let chat = Chat(143, "private")
+        let user = User(243, false, "Hedy", "hedy")
+        let message = Message(543, chat, "surface", user)
+
+        match (typeTestContext(Update.withMessage(1413, message)).refineText("surface")) {
+            case Some(narrowed) =>
+                let narrowedContext: Context = narrowed.ctx
+                let narrowedMessage: Message = narrowed.message
+                let narrowedMatch: ContextMatch = narrowed.`match`
+                @Expect(narrowedContext.updateId(), 1413)
+                @Expect(narrowedMessage.text, "surface")
+                @Expect(narrowedMatch.text, "surface")
+            case None => @Expect(false, true)
+        }
+
+        let empty = typeTestContext(Update(1414))
+        let maybeMessage: Option<Message> = empty.message
+        let maybeChat: Option<Chat> = empty.chat
+        let maybeMatch: Option<ContextMatch> = empty.`match`
+        @Expect(optionPresent(maybeMessage), false)
+        @Expect(optionPresent(maybeChat), false)
+        @Expect(optionPresent(maybeMatch), false)
+    }
 }

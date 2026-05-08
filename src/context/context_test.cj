@@ -373,6 +373,25 @@ public class ContextHasTest {
     }
 
     @TestCase
+    public func emptyStringAndEmptyRegexTriggersMirrorUpstreamMatchTruthiness(): Unit {
+        let chat = Chat(134, "private")
+        let user = User(465, false, "Hedy", "hedy")
+
+        let emptyTextCtx = testContext(Update.withMessage(173, Message(473, chat, "", user)))
+        @Expect(emptyTextCtx.hasText(""), false)
+        @Expect(optionPresent(emptyTextCtx.`match`), false)
+        @Expect(emptyTextCtx.hasText(Regex("^")), true)
+        let emptyRegexMatch = orThrow(emptyTextCtx.`match`, "test")
+        @Expect(emptyRegexMatch.isRegex, true)
+        @Expect(emptyRegexMatch.text, "")
+
+        let callbackCtx = testContext(Update.withCallbackQuery(174, CallbackQuery(user, "", Message(474, chat, "button", user))))
+        @Expect(callbackCtx.hasCallbackQuery(""), false)
+        @Expect(callbackCtx.hasCallbackQuery(Regex("^")), false)
+        @Expect(optionPresent(callbackCtx.`match`), false)
+    }
+
+    @TestCase
     public func failedTriggerProbesDoNotOverwriteExistingMatchAcrossKinds(): Unit {
         let chat = Chat(131, "private")
         let user = User(463, false, "Evelyn", "evelyn")
