@@ -23,11 +23,11 @@ public class SessionPropertyContract {
 
     public init() {
         this.upstreamProperty = "ctx.session"
-        this.strictRead = "SessionFlavorContext.session"
-        this.strictWrite = "SessionFlavorContext.session = value"
-        this.strictDelete = "SessionFlavorContext.deleteSession() or setOptionalSession(None)"
-        this.lazyRead = "LazySessionMiddleware + SessionFlavorContext.session"
-        this.multiDelete = "MultiSessionFlavorContext2.session slots or deleteSession()"
+        this.strictRead = "SessionFlavorContext<T>.session"
+        this.strictWrite = "SessionFlavorContext<T>.session = value"
+        this.strictDelete = "SessionFlavorContext<T>.deleteSession() or setOptionalSession(None)"
+        this.lazyRead = "LazySessionMiddleware + SessionFlavorContext<T>.session"
+        this.multiDelete = "MultiSessionFlavorContext2<A,B>.session slots or deleteSession()"
         this.contextIntegration = "typed session flavor context exposes ctx.session property"
     }
 }

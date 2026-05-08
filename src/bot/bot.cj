@@ -330,6 +330,9 @@ public class Bot {
             throw BotConfigError("Bot not initialized! Call bot.init() or pass botInfo to BotConfig.")
         }
         let updateApi = Api(this.token, this.api.config)
+        for (transformerName in this.api.installedTransformers) {
+            updateApi.use(transformerName)
+        }
         let ctx = this.contextFactory(update, updateApi, this.botInfo)
         try {
             run(this.composer, ctx)
