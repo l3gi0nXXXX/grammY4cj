@@ -297,6 +297,10 @@ public class WebhookResponse {
     public var lastAction: String = ""
     public var lateWebhookReplySent: Bool = false
     public var lateWebhookReplyPayload: String = ""
+    public var lateCompletionRecorded: Bool = false
+    public var lateErrorMessage: String = ""
+    public var timeoutRaceStarted: Bool = false
+    public var timeoutRaceWinner: String = ""
     public var updateSource: String = ""
     public var headerSource: String = ""
     public var endProtocol: String = ""
@@ -480,6 +484,23 @@ public class WebhookResponse {
         if (this.handlerReturnAvailable) {
             this.handlerReturnResolved = true
         }
+    }
+
+    public func recordLateCompletion(): Unit {
+        this.lateCompletionRecorded = true
+        this.calls.add("late-completion")
+    }
+
+    public func recordLateError(message: String): Unit {
+        this.lateCompletionRecorded = true
+        this.lateErrorMessage = message
+        this.calls.add("late-error")
+    }
+
+    public func recordLateWebhookReply(json: String): Unit {
+        this.lateWebhookReplySent = true
+        this.lateWebhookReplyPayload = json
+        this.calls.add("late-webhook-reply")
     }
 }
 

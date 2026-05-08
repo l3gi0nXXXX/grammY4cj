@@ -1,5 +1,8 @@
 package grammy4cj.convenience
 
+import std.sync.{Condition, Mutex}
+import std.time.DateTime
+
 import std.collection.ArrayList
 
 import grammy4cj.bot.Bot
@@ -98,6 +101,7 @@ public class FakeWebhookUpdateHandler <: WebhookUpdateHandler {
     public var delayMilliseconds: Int64 = 0
     public var webhookReplyJson: String = ""
     public var timeoutCallbackCount: Int64 = 0
+    public var simulatedDelayProbeCount: Int64 = 0
     public var failureMessage: String = ""
     public var failOnUpdateId: Int64 = -1
 
@@ -114,6 +118,7 @@ public class FakeWebhookUpdateHandler <: WebhookUpdateHandler {
         this.handleUpdateCount += 1
         this.lastUpdateId = update.updateId
         this.handledUpdateIds.add(update.updateId)
+        sleepMilliseconds(this.delayMilliseconds)
         if (!this.failureMessage.isEmpty() && (this.failOnUpdateId < 0 || this.failOnUpdateId == update.updateId)) {
             throw WebhookUpdateFailureError(this.failureMessage)
         }
@@ -127,6 +132,7 @@ public class FakeWebhookUpdateHandler <: WebhookUpdateHandler {
     }
 
     override public func simulatedDelayMilliseconds(): Int64 {
+        this.simulatedDelayProbeCount += 1
         this.delayMilliseconds
     }
 
@@ -188,6 +194,26 @@ public class WebhookCallbackResult {
     }
 }
 
+private class WebhookTaskResult {
+    public let usedWebhookReply: Bool
+    public let updateId: Int64
+
+    public init(usedWebhookReply: Bool, updateId: Int64) {
+        this.usedWebhookReply = usedWebhookReply
+        this.updateId = updateId
+    }
+}
+
+private class WebhookRaceState {
+    public var settled: Bool = false
+    public var timedOut: Bool = false
+    public var winner: String = ""
+    public var outcome: Option<WebhookTaskResult> = None<WebhookTaskResult>
+    public var failure: Option<Exception> = None<Exception>
+
+    public init() {}
+}
+
 public class WebhookCallback {
     public let handler: WebhookUpdateHandler
     public let adapterName: String
@@ -222,25 +248,24 @@ public class WebhookCallback {
             return WebhookCallbackResult(reqRes.handlerReturn, true, false, false, 0)
         }
 
-        let updateDelay = reqRes.updateDelayMilliseconds
-        let handlerDelay = this.handler.simulatedDelayMilliseconds()
-        if (this.updateSourceTimesOut(updateDelay)) {
-            return this.timeoutBeforeUpdateResolves(reqRes)
+        reqRes.response.timeoutRaceStarted = true
+        let task = spawn { => this.runWebhookTask(reqRes) }
+        let race = this.timeoutIfNecessary(task, reqRes)
+        if (race.timedOut) {
+            return this.handleTimeout(reqRes)
         }
-
-        let update = reqRes.update
-        if (this.updateHandlerTimesOut(updateDelay, handlerDelay)) {
-            return this.timeoutAfterUpdateResolves(reqRes, update)
+        match (race.failure) {
+            case Some(err) => throw err
+            case None => ()
         }
-
-        let webhookReplyEnvelope = WebhookReplyEnvelope()
-        this.handler.handleUpdate(update, webhookReplyEnvelope)
-        if (webhookReplyEnvelope.sent) {
-            reqRes.respond(webhookReplyEnvelope.payload)
-        } else {
+        let outcome = match (race.outcome) {
+            case Some(value) => value
+            case None => WebhookTaskResult(false, 0)
+        }
+        if (!outcome.usedWebhookReply) {
             reqRes.end()
         }
-        WebhookCallbackResult(reqRes.handlerReturn, false, false, webhookReplyEnvelope.sent, update.updateId)
+        WebhookCallbackResult(reqRes.handlerReturn, false, false, outcome.usedWebhookReply, outcome.updateId)
     }
 
     private func rejectLongPollingConflict(): Unit {
@@ -251,39 +276,96 @@ public class WebhookCallback {
         }
     }
 
-    private func updateSourceTimesOut(updateDelayMilliseconds: Int64): Bool {
-        this.timeoutEnabled() && updateDelayMilliseconds > this.options.timeoutMilliseconds
-    }
-
-    private func updateHandlerTimesOut(updateDelayMilliseconds: Int64, handlerDelayMilliseconds: Int64): Bool {
-        this.timeoutEnabled() &&
-            updateDelayMilliseconds + handlerDelayMilliseconds > this.options.timeoutMilliseconds
-    }
-
     private func timeoutEnabled(): Bool {
         this.options.timeoutMilliseconds >= 0
     }
 
-    private func timeoutBeforeUpdateResolves(reqRes: ReqResHandler): WebhookCallbackResult {
-        if (this.options.onTimeout == WEBHOOK_TIMEOUT_THROW) {
-            this.recordBackgroundUpdate(reqRes)
-            throw WebhookTimeoutError(this.options.timeoutMilliseconds)
+    private func runWebhookTask(reqRes: ReqResHandler): WebhookTaskResult {
+        sleepMilliseconds(reqRes.updateDelayMilliseconds)
+        let update = reqRes.update
+        let webhookReplyEnvelope = WebhookReplyEnvelope()
+        this.handler.handleUpdate(update, webhookReplyEnvelope)
+        if (webhookReplyEnvelope.sent) {
+            if (reqRes.response.timeoutRaceWinner == "timeout") {
+                reqRes.response.recordLateWebhookReply(webhookReplyEnvelope.payload)
+            } else {
+                reqRes.respond(webhookReplyEnvelope.payload)
+            }
         }
-        this.runTimeoutCallback()
-        reqRes.end()
-        this.recordBackgroundUpdate(reqRes)
-        WebhookCallbackResult(reqRes.handlerReturn, false, true, false, 0)
+        WebhookTaskResult(webhookReplyEnvelope.sent, update.updateId)
     }
 
-    private func timeoutAfterUpdateResolves(reqRes: ReqResHandler, update: Update): WebhookCallbackResult {
+    private func timeoutIfNecessary(task: Future<WebhookTaskResult>, reqRes: ReqResHandler): WebhookRaceState {
+        if (!this.timeoutEnabled()) {
+            let state = WebhookRaceState()
+            try {
+                state.outcome = Some(task.get())
+            } catch (err: Exception) {
+                state.failure = Some(err)
+            }
+            state.settled = true
+            state.winner = "task"
+            reqRes.response.timeoutRaceWinner = "task"
+            return state
+        }
+
+        let state = WebhookRaceState()
+        let mutex = Mutex()
+        let condition: Condition = synchronized(mutex) { mutex.condition() }
+        spawn { =>
+            try {
+                let outcome = task.get()
+                synchronized(mutex) {
+                    if (!state.settled) {
+                        state.outcome = Some(outcome)
+                        state.settled = true
+                        state.winner = "task"
+                        reqRes.response.timeoutRaceWinner = "task"
+                        condition.notifyAll()
+                    } else if (state.timedOut) {
+                        reqRes.response.recordLateCompletion()
+                    }
+                }
+            } catch (err: Exception) {
+                synchronized(mutex) {
+                    if (!state.settled) {
+                        state.failure = Some(err)
+                        state.settled = true
+                        state.winner = "task"
+                        reqRes.response.timeoutRaceWinner = "task"
+                        condition.notifyAll()
+                    } else if (state.timedOut) {
+                        reqRes.response.recordLateError(err.message)
+                    }
+                }
+            }
+        }
+        spawn { =>
+            if (waitForTimeout(this.options.timeoutMilliseconds, state, mutex)) {
+                synchronized(mutex) {
+                    if (!state.settled) {
+                        state.timedOut = true
+                        state.settled = true
+                        state.winner = "timeout"
+                        reqRes.response.timeoutRaceWinner = "timeout"
+                        condition.notifyAll()
+                    }
+                }
+            }
+        }
+        synchronized(mutex) {
+            condition.waitUntil({ => state.settled })
+        }
+        state
+    }
+
+    private func handleTimeout(reqRes: ReqResHandler): WebhookCallbackResult {
         if (this.options.onTimeout == WEBHOOK_TIMEOUT_THROW) {
-            this.recordBackgroundUpdate(reqRes, update)
             throw WebhookTimeoutError(this.options.timeoutMilliseconds)
         }
         this.runTimeoutCallback()
         reqRes.end()
-        this.recordBackgroundUpdate(reqRes, update)
-        WebhookCallbackResult(reqRes.handlerReturn, false, true, false, update.updateId)
+        WebhookCallbackResult(reqRes.handlerReturn, false, true, false, 0)
     }
 
     private func runTimeoutCallback(): Unit {
@@ -296,26 +378,6 @@ public class WebhookCallback {
         }
     }
 
-    private func recordBackgroundUpdate(reqRes: ReqResHandler): Unit {
-        try {
-            this.recordBackgroundUpdate(reqRes, reqRes.update)
-        } catch (_e: Exception) {
-            ()
-        }
-    }
-
-    private func recordBackgroundUpdate(reqRes: ReqResHandler, update: Update): Unit {
-        let envelope = WebhookReplyEnvelope()
-        try {
-            this.handler.handleUpdate(update, envelope)
-            if (envelope.sent) {
-                reqRes.response.lateWebhookReplySent = true
-                reqRes.response.lateWebhookReplyPayload = envelope.payload
-            }
-        } catch (_e: Exception) {
-            ()
-        }
-    }
 }
 
 public func webhookCallback(handler: FakeWebhookUpdateHandler, adapterName: String): WebhookCallback {
@@ -408,4 +470,35 @@ public func constantTimeStringEquals(left: String, right: String): Bool {
         i += 1
     }
     !hasDifference
+}
+
+private func waitForTimeout(milliseconds: Int64, state: WebhookRaceState, mutex: Mutex): Bool {
+    if (milliseconds <= 0) {
+        return true
+    }
+    let deadline = nowMilliseconds() + milliseconds
+    while (nowMilliseconds() < deadline) {
+        var alreadySettled = false
+        synchronized(mutex) {
+            alreadySettled = state.settled
+        }
+        if (alreadySettled) {
+            return false
+        }
+    }
+    true
+}
+
+private func sleepMilliseconds(milliseconds: Int64): Unit {
+    if (milliseconds <= 0) {
+        return
+    }
+    let deadline = nowMilliseconds() + milliseconds
+    while (nowMilliseconds() < deadline) {
+        ()
+    }
+}
+
+private func nowMilliseconds(): Int64 {
+    DateTime.now().toUnixTimeStamp().toMilliseconds()
 }

@@ -46,6 +46,20 @@ private func webhookRequest(adapterName: String, updateId: Int64): WebhookReques
     WebhookRequest(Update(updateId), "{\"update_id\":${updateId}}", WebhookHeaders(), adapterName)
 }
 
+private func waitForLateCompletion(response: WebhookResponse): Unit {
+    var spins: Int64 = 0
+    while (!response.lateCompletionRecorded && spins < 20000000) {
+        spins += 1
+    }
+}
+
+private func waitForHandleUpdateCount(handler: FakeWebhookUpdateHandler, count: Int64): Unit {
+    var spins: Int64 = 0
+    while (handler.handleUpdateCount < count && spins < 20000000) {
+        spins += 1
+    }
+}
+
 @Test
 public class WebhookCallbackTest {
     @TestCase
@@ -246,9 +260,14 @@ public class WebhookCallbackTest {
         let result = callback.handle(WebhookRequest(Update(211), WebhookHeaders(), "callback"))
 
         @Expect(result.timedOut, true)
+        @Expect(result.response.timeoutRaceStarted, true)
+        @Expect(result.response.timeoutRaceWinner, "timeout")
         @Expect(result.response.ended, false)
         @Expect(handler.handleUpdateCount, 1)
         @Expect(handler.lastUpdateId, 211)
+        @Expect(handler.simulatedDelayProbeCount, 0)
+        waitForLateCompletion(result.response)
+        @Expect(result.response.lateCompletionRecorded, true)
     }
 
     @TestCase
@@ -268,6 +287,7 @@ public class WebhookCallbackTest {
 
         @Expect(thrown, true)
         @Expect(handler.handleUpdateCount, 1)
+        @Expect(handler.simulatedDelayProbeCount, 0)
     }
 
     @TestCase
@@ -282,6 +302,7 @@ public class WebhookCallbackTest {
         @Expect(result.timedOut, true)
         @Expect(handler.timeoutCallbackCount, 1)
         @Expect(handler.handleUpdateCount, 1)
+        @Expect(handler.simulatedDelayProbeCount, 0)
     }
 
     @TestCase
@@ -299,6 +320,7 @@ public class WebhookCallbackTest {
         @Expect(result.timedOut, true)
         @Expect(probe.count, 1)
         @Expect(handler.timeoutCallbackCount, 0)
+        @Expect(handler.simulatedDelayProbeCount, 0)
     }
 
     @TestCase
@@ -314,8 +336,30 @@ public class WebhookCallbackTest {
         @Expect(result.timedOut, true)
         @Expect(result.response.ended, false)
         @Expect(result.response.responded, false)
+        @Expect(result.response.timeoutRaceWinner, "timeout")
+        waitForLateCompletion(result.response)
+        @Expect(result.response.lateCompletionRecorded, true)
         @Expect(result.response.lateWebhookReplySent, true)
         @Expect(result.response.lateWebhookReplyPayload, "{\"ok\":true}")
+    }
+
+    @TestCase
+    public func lateTaskFailureAfterTimeoutIsRecordedWithoutUsingSimulatedDelayComparison(): Unit {
+        let handler = FakeWebhookUpdateHandler()
+        handler.delayMilliseconds = 25
+        handler.failureMessage = "late boom"
+        let options = WebhookOptions(WEBHOOK_TIMEOUT_RETURN, 10, "")
+        let callback = webhookCallback(handler, "callback", options)
+
+        let result = callback.handle(WebhookRequest(Update(216), WebhookHeaders(), "callback"))
+
+        @Expect(result.timedOut, true)
+        @Expect(result.response.timeoutRaceStarted, true)
+        @Expect(result.response.timeoutRaceWinner, "timeout")
+        @Expect(handler.simulatedDelayProbeCount, 0)
+        waitForLateCompletion(result.response)
+        @Expect(result.response.lateCompletionRecorded, true)
+        @Expect(result.response.lateErrorMessage, "late boom")
     }
 
     @TestCase
@@ -360,7 +404,10 @@ public class WebhookCallbackTest {
         @Expect(returned.timedOut, true)
         @Expect(returned.response.ended, true)
         @Expect(returned.updateId, 0)
+        @Expect(returned.response.timeoutRaceWinner, "timeout")
+        waitForLateCompletion(returned.response)
         @Expect(returnHandler.handleUpdateCount, 1)
+        @Expect(returnHandler.simulatedDelayProbeCount, 0)
 
         let throwHandler = FakeWebhookUpdateHandler()
         let throwCallback = webhookCallback(
@@ -383,7 +430,9 @@ public class WebhookCallbackTest {
         }
 
         @Expect(thrown, true)
+        waitForHandleUpdateCount(throwHandler, 1)
         @Expect(throwHandler.handleUpdateCount, 1)
+        @Expect(throwHandler.simulatedDelayProbeCount, 0)
     }
 
     @TestCase
