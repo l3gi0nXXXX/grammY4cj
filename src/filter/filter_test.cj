@@ -77,7 +77,7 @@ private func editedMessageContext(kind: String): FilterTestContext {
     let update = Update(1, kind)
     let message = Message(100, testChat(), "")
     message.caption = "caption"
-    message.addObjectField("photo")
+    message.photo = true
     update.editedMessage = message
     testContext(update)
 }
@@ -259,14 +259,12 @@ public class FilterQueryTest {
         @Expect(matchFilter(":caption", ctx), false)
 
         message.text = "hello"
-        message.addObjectField("text")
         @Expect(matchFilter(":text", ctx), true)
         @Expect(matchFilter(":caption", ctx), false)
 
         let captionMessage = presentMessageWithoutOptionalFields()
         let captionCtx = testContext(Update.withMessage(6, captionMessage))
         captionMessage.caption = "caption"
-        captionMessage.addObjectField("caption")
         @Expect(matchFilter(":text", captionCtx), false)
         @Expect(matchFilter(":caption", captionCtx), true)
     }
@@ -286,11 +284,11 @@ public class FilterQueryTest {
     @TestCase
     public func objectMatcherMatchesWideMessageFieldsThroughObjectAccessor(): Unit {
         let message = presentMessageWithoutOptionalFields()
-        message.addObjectField("photo")
-        message.addObjectNestedField("sticker", "is_animated")
-        message.addObjectNestedField("forward_origin", "channel")
-        message.addObjectNestedField("giveaway", "has_public_winners")
-        message.addObjectNestedField("checklist", "others_can_add_tasks")
+        message.photo = true
+        message.stickerIsAnimated = true
+        message.forwardOriginType = "channel"
+        message.giveawayHasPublicWinners = true
+        message.checklistOthersCanAddTasks = true
         let ctx = testContext(Update.withMessage(12, message))
 
         @Expect(matchFilter("message:photo", ctx), true)
@@ -411,10 +409,14 @@ public class FilterQueryTest {
 
     @TestCase
     public func objectMatcherMatchesNestedL3SchemaPathsThroughObjectAccessor(): Unit {
-        let forwardMessage = presentMessageWithoutOptionalFields().addObjectNestedField("forward_origin", "channel")
-        let stickerMessage = presentMessageWithoutOptionalFields().addObjectNestedField("sticker", "is_animated")
-        let giveawayMessage = presentMessageWithoutOptionalFields().addObjectNestedField("giveaway", "has_public_winners")
-        let linkPreviewMessage = presentMessageWithoutOptionalFields().addObjectNestedField("link_preview_options", "url")
+        let forwardMessage = presentMessageWithoutOptionalFields()
+        forwardMessage.forwardOriginType = "channel"
+        let stickerMessage = presentMessageWithoutOptionalFields()
+        stickerMessage.stickerIsAnimated = true
+        let giveawayMessage = presentMessageWithoutOptionalFields()
+        giveawayMessage.giveawayHasPublicWinners = true
+        let linkPreviewMessage = presentMessageWithoutOptionalFields()
+        linkPreviewMessage.linkPreviewUrl = "https://grammy.dev"
         let forward = testContext(Update.withMessage(6, forwardMessage))
         let sticker = testContext(Update.withMessage(7, stickerMessage))
         let giveaway = testContext(Update.withMessage(8, giveawayMessage))
@@ -429,8 +431,19 @@ public class FilterQueryTest {
     }
 
     @TestCase
+    public func legacyObjectFieldBagsDoNotDriveFilterMatching(): Unit {
+        let message = presentMessageWithoutOptionalFields()
+        message.addObjectField("photo")
+        message.addObjectNestedField("sticker", "is_animated")
+        let ctx = testContext(Update.withMessage(15, message))
+
+        @Expect(matchFilter("message:photo", ctx), false)
+        @Expect(matchFilter("message:sticker:is_animated", ctx), false)
+    }
+
+    @TestCase
     public func emptyArraysAndUnknownL3KindsDoNotMatch(): Unit {
-        let emptyEntityMessage = presentMessageWithoutOptionalFields().addObjectField("entities")
+        let emptyEntityMessage = presentMessageWithoutOptionalFields()
         let emptyReactionUpdate = Update.withMessageReaction(
             13,
             MessageReactionUpdated(testChat(), User(7, false, "User", "user"), 100, [], []),

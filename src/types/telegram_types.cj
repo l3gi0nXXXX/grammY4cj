@@ -292,6 +292,8 @@ public class Message {
     public var chat: Chat = Chat()
     public var text: String = ""
     public var caption: String = ""
+    public var textPresent: Bool = false
+    public var captionPresent: Bool = false
     public var user: User = User()
     public var senderChat: Chat = Chat()
     public var entities: ArrayList<MessageEntity> = ArrayList<MessageEntity>()
@@ -300,6 +302,31 @@ public class Message {
     public var isTopicMessage: Bool = false
     public var messageThreadId: Int64 = 0
     public var directMessagesTopicId: Int64 = 0
+    public var animation: Bool = false
+    public var audio: Bool = false
+    public var document: Bool = false
+    public var paidMedia: Bool = false
+    public var photo: Bool = false
+    public var sticker: Bool = false
+    public var story: Bool = false
+    public var video: Bool = false
+    public var videoNote: Bool = false
+    public var voice: Bool = false
+    public var contact: Bool = false
+    public var dice: Bool = false
+    public var game: Bool = false
+    public var poll: Bool = false
+    public var venue: Bool = false
+    public var location: Bool = false
+    public var forwardOriginType: String = ""
+    public var stickerIsVideo: Bool = false
+    public var stickerIsAnimated: Bool = false
+    public var stickerPremiumAnimation: Bool = false
+    public var giveawayOnlyNewMembers: Bool = false
+    public var giveawayHasPublicWinners: Bool = false
+    public var checklistOthersCanAddTasks: Bool = false
+    public var checklistOthersCanMarkTasksAsDone: Bool = false
+    public var linkPreviewUrl: String = ""
     public var objectFields: ArrayList<String> = ArrayList<String>()
     public var objectNestedFields: ArrayList<String> = ArrayList<String>()
     public var isPresent: Bool = false
@@ -310,6 +337,7 @@ public class Message {
         this.messageId = messageId
         this.chat = chat
         this.text = text
+        this.textPresent = true
         this.addObjectField("text")
         this.isPresent = true
     }
@@ -319,6 +347,7 @@ public class Message {
         this.chat = chat
         this.text = text
         this.user = user
+        this.textPresent = true
         this.addObjectField("text")
         this.isPresent = true
     }

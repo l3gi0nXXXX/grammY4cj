@@ -501,27 +501,58 @@ private func messageL2Present(message: Message, l2: String): Bool {
     if (!message.isPresent) {
         return false
     }
-    if (messageObjectFieldPresent(message, l2)) { return true }
-    if (l2 == "text") { return !message.text.isEmpty() }
-    if (l2 == "caption") { return !message.caption.isEmpty() }
+    if (l2 == "text") { return message.textPresent || !message.text.isEmpty() }
+    if (l2 == "caption") { return message.captionPresent || !message.caption.isEmpty() }
     if (l2 == "entities") { return message.entities.size > 0 }
     if (l2 == "caption_entities") { return message.captionEntities.size > 0 }
     if (l2 == "new_chat_members" || l2 == "left_chat_member") { return message.user.isPresent }
     if (l2 == "business_connection_id") { return !message.businessConnectionId.isEmpty() }
     if (l2 == "is_topic_message") { return message.isTopicMessage }
     if (l2 == "direct_messages_topic") { return message.directMessagesTopicId != 0 }
+    if (l2 == "animation") { return message.animation }
+    if (l2 == "audio") { return message.audio }
+    if (l2 == "document") { return message.document }
+    if (l2 == "paid_media") { return message.paidMedia }
+    if (l2 == "photo") { return message.photo }
+    if (l2 == "sticker") { return message.sticker || message.stickerIsVideo || message.stickerIsAnimated || message.stickerPremiumAnimation }
+    if (l2 == "story") { return message.story }
+    if (l2 == "video") { return message.video }
+    if (l2 == "video_note") { return message.videoNote }
+    if (l2 == "voice") { return message.voice }
+    if (l2 == "contact") { return message.contact }
+    if (l2 == "dice") { return message.dice }
+    if (l2 == "game") { return message.game }
+    if (l2 == "poll") { return message.poll }
+    if (l2 == "venue") { return message.venue }
+    if (l2 == "location") { return message.location }
+    if (l2 == "forward_origin") { return !message.forwardOriginType.isEmpty() }
+    if (l2 == "giveaway") { return message.giveawayOnlyNewMembers || message.giveawayHasPublicWinners }
+    if (l2 == "checklist") { return message.checklistOthersCanAddTasks || message.checklistOthersCanMarkTasksAsDone }
+    if (l2 == "link_preview_options") { return !message.linkPreviewUrl.isEmpty() }
     false
 }
 
-private func messageObjectFieldPresent(message: Message, key: String): Bool {
-    containsString(message.objectFields.toArray(), key)
-}
-
 private func messageNestedFieldPresent(message: Message, key: String, nestedKey: String): Bool {
-    if (!messageObjectFieldPresent(message, key)) {
-        return false
+    if (key == "forward_origin") {
+        return message.forwardOriginType == nestedKey
     }
-    containsString(message.objectNestedFields.toArray(), key + ":" + nestedKey)
+    if (key == "sticker") {
+        if (nestedKey == "is_video") { return message.stickerIsVideo }
+        if (nestedKey == "is_animated") { return message.stickerIsAnimated }
+        if (nestedKey == "premium_animation") { return message.stickerPremiumAnimation }
+    }
+    if (key == "giveaway") {
+        if (nestedKey == "only_new_members") { return message.giveawayOnlyNewMembers }
+        if (nestedKey == "has_public_winners") { return message.giveawayHasPublicWinners }
+    }
+    if (key == "checklist") {
+        if (nestedKey == "others_can_add_tasks") { return message.checklistOthersCanAddTasks }
+        if (nestedKey == "others_can_mark_tasks_as_done") { return message.checklistOthersCanMarkTasksAsDone }
+    }
+    if (key == "link_preview_options") {
+        return nestedKey == "url" && !message.linkPreviewUrl.isEmpty()
+    }
+    false
 }
 
 private func callbackQueryL2Present(callbackQuery: CallbackQuery, l2: String): Bool {
