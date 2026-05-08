@@ -3,8 +3,10 @@ package grammy4cj.bot
 import std.collection.ArrayList
 import std.sync.Mutex
 
+import grammy4cj.composer.AsyncMiddlewareFn
 import grammy4cj.composer.BotError
 import grammy4cj.composer.Composer
+import grammy4cj.composer.MaybeMiddlewareFn
 import grammy4cj.composer.MiddlewareFn
 import grammy4cj.composer.run
 import grammy4cj.context.Context
@@ -105,6 +107,7 @@ public class Bot {
     private var initFailureId: Int64 = 0
     private var initFailure: Option<Exception> = None<Exception>
     private var initWaitCount: Int64 = 0
+    private let pollingMutex: Mutex = Mutex()
     private var pollingRunning: Bool = false
     private var pollingSignal: Option<CancelSignal> = None<CancelSignal>
     private var pollingStartForbiddenMessage: String = ""
@@ -270,7 +273,32 @@ public class Bot {
         this.composer.use(middleware)
     }
 
+    public func use(middleware: AsyncMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.use(middleware)
+    }
+
+    public func use(middleware: MaybeMiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.use(middleware)
+    }
+
+    public func use(composer: Composer): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.use(composer)
+    }
+
     public func use(middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.use(middleware)
+    }
+
+    public func use(middleware: Array<AsyncMiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.composer.use(middleware)
+    }
+
+    public func use(middleware: Array<MaybeMiddlewareFn>): Composer {
         this.assertMiddlewareRegistrationAllowed()
         this.composer.use(middleware)
     }
@@ -282,6 +310,12 @@ public class Bot {
     }
 
     public func on(query: String, middleware: MiddlewareFn): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeFilterQuery(query)
+        this.composer.on(query, middleware)
+    }
+
+    public func on(query: String, middleware: Array<MiddlewareFn>): Composer {
         this.assertMiddlewareRegistrationAllowed()
         this.observeFilterQuery(query)
         this.composer.on(query, middleware)
@@ -299,13 +333,16 @@ public class Bot {
         this.composer.on(queries, middleware)
     }
 
+    public func on(queries: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.assertMiddlewareRegistrationAllowed()
+        this.observeFilterQueries(queries)
+        this.composer.on(queries, middleware)
+    }
+
     public func reaction(reaction: String, middleware: MiddlewareFn): Composer {
         this.assertMiddlewareRegistrationAllowed()
         this.observeUpdateType("message_reaction")
-        this.composer.filter(
-            { ctx: Context => ctx.hasReaction(reaction) },
-            middleware
-        )
+        this.composer.reaction(reaction, middleware)
     }
 
     public func observeUpdateType(updateType: String): Unit {
@@ -357,18 +394,30 @@ public class Bot {
         if (!this.pollingStartForbiddenMessage.isEmpty()) {
             throw BotConfigError(this.pollingStartForbiddenMessage)
         }
-        if (this.pollingRunning) {
+        var alreadyRunning = false
+        var signal = CancelSignal()
+        synchronized(this.pollingMutex) {
+            if (this.pollingRunning) {
+                alreadyRunning = true
+                match (this.pollingSignal) {
+                    case Some(existing) => signal = existing
+                    case None => ()
+                }
+            } else {
+                this.pollingRunning = true
+                this.pollingSignal = Some(signal)
+            }
+        }
+        if (alreadyRunning) {
             if (!this.isInited()) {
-                this.`init`()
+                this.`init`(signal)
             }
             return
         }
 
-        this.pollingRunning = true
-        this.pollingSignal = Some(CancelSignal())
         try {
             if (!this.isInited()) {
-                this.`init`()
+                this.`init`(signal)
             }
             this.deleteWebhookWithRetries(options.dropPendingUpdates)
             match (options.onStart) {
@@ -377,8 +426,10 @@ public class Bot {
             }
             this.validateAllowedUpdates(if (options.allowedUpdatesSpecified) { options.allowedUpdates } else { defaultUpdateTypes() })
         } catch (e: Exception) {
-            this.pollingRunning = false
-            this.pollingSignal = None<CancelSignal>
+            synchronized(this.pollingMutex) {
+                this.pollingRunning = false
+                this.pollingSignal = None<CancelSignal>
+            }
             throw e
         }
 
@@ -389,11 +440,15 @@ public class Bot {
     }
 
     public func stop(): Unit {
-        if (!this.pollingRunning) {
-            return
+        var signalToCancel = None<CancelSignal>
+        synchronized(this.pollingMutex) {
+            if (!this.pollingRunning) {
+                return
+            }
+            this.pollingRunning = false
+            signalToCancel = this.pollingSignal
         }
-        this.pollingRunning = false
-        match (this.pollingSignal) {
+        match (signalToCancel) {
             case Some(signal) => signal.cancel("Polling stopped")
             case None => ()
         }
@@ -402,12 +457,18 @@ public class Bot {
         try {
             let _ = this.runtime.getUpdates(request, CancelSignal())
         } finally {
-            this.pollingSignal = None<CancelSignal>
+            synchronized(this.pollingMutex) {
+                this.pollingSignal = None<CancelSignal>
+            }
         }
     }
 
     public func isRunning(): Bool {
-        this.pollingRunning
+        var running = false
+        synchronized(this.pollingMutex) {
+            running = this.pollingRunning
+        }
+        running
     }
 
     public func lastTriedUpdateId(): Int64 {
@@ -422,12 +483,25 @@ public class Bot {
         count
     }
 
+    private func setPollingStopped(clearSignal: Bool): Unit {
+        synchronized(this.pollingMutex) {
+            this.pollingRunning = false
+            if (clearSignal) {
+                this.pollingSignal = None<CancelSignal>
+            }
+        }
+    }
+
+    private func pollingIsRunning(): Bool {
+        this.isRunning()
+    }
+
     private func loop(options: PollingOptions): Unit {
         var includeAllowedUpdates = true
         var cycles: Int64 = 0
         this.middlewareLocked = true
         try {
-            while (this.pollingRunning) {
+            while (this.pollingIsRunning()) {
                 let allowed = if (includeAllowedUpdates) {
                     if (options.allowedUpdatesSpecified) { options.allowedUpdates } else { Array<String>() }
                 } else {
@@ -439,24 +513,26 @@ public class Bot {
                     allowed,
                     includeAllowedUpdates
                 )
-                if (!this.pollingRunning) {
+                if (!this.pollingIsRunning()) {
                     return
                 }
                 this.handleUpdates(updates)
                 includeAllowedUpdates = false
                 cycles += 1
                 if (options.maxFetchCycles > 0 && cycles >= options.maxFetchCycles) {
-                    this.pollingRunning = false
+                    this.setPollingStopped(false)
                 } else if (this.runtime.shouldStopPolling()) {
-                    this.pollingRunning = false
+                    this.setPollingStopped(false)
                 }
             }
         } finally {
-            if (this.pollingRunning) {
-                this.pollingRunning = false
+            if (this.pollingIsRunning()) {
+                this.setPollingStopped(false)
             }
-            if (!this.pollingRunning) {
-                this.pollingSignal = None<CancelSignal>
+            if (!this.pollingIsRunning()) {
+                synchronized(this.pollingMutex) {
+                    this.pollingSignal = None<CancelSignal>
+                }
             }
         }
     }
@@ -478,7 +554,7 @@ public class Bot {
         allowedUpdates: Array<String>,
         includesAllowedUpdates: Bool
     ): Array<Update> {
-        while (this.pollingRunning) {
+        while (this.pollingIsRunning()) {
             let request = PollingFetchRequest(
                 this.lastTriedUpdate + 1,
                 limit,
@@ -500,10 +576,14 @@ public class Bot {
     }
 
     private func currentPollingSignal(): CancelSignal {
-        match (this.pollingSignal) {
-            case Some(signal) => signal
-            case None => CancelSignal()
+        var signal = CancelSignal()
+        synchronized(this.pollingMutex) {
+            match (this.pollingSignal) {
+                case Some(existing) => signal = existing
+                case None => ()
+            }
         }
+        signal
     }
 
     private func getMeWithRetries(signal: CancelSignal): UserFromGetMe {

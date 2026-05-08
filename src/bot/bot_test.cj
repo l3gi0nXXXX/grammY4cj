@@ -4,7 +4,10 @@ import std.collection.ArrayList
 import std.sync.Mutex
 import std.unittest.*
 
+import grammy4cj.composer.AsyncMiddlewareFn
+import grammy4cj.composer.AsyncNextFunction
 import grammy4cj.composer.BotError
+import grammy4cj.composer.Composer
 import grammy4cj.composer.NextFunction
 import grammy4cj.context.Context
 import grammy4cj.core.Api
@@ -573,6 +576,35 @@ public class BotTest {
         @Expect(contexts[0].update.updateId, 1101)
         @Expect(contexts[0].api.token, "fake-token")
         @Expect(contexts[0].api.endpointFor("sendMessage"), "https://api.telegram.org/botfake-token/sendMessage")
+    }
+
+    @TestCase
+    public func botDelegatesComposerAndAsyncMiddlewarePublicSurface(): Unit {
+        let events = ArrayList<String>()
+        let child = Composer()
+        let me = UserFromGetMe(202, true, "Delegate", "delegate_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
+        let asyncMiddleware: AsyncMiddlewareFn = { _ctx: Context, next: AsyncNextFunction =>
+            spawn { =>
+                events.add("async:pre")
+                next().get()
+                events.add("async:post")
+            }
+        }
+
+        child.use({ _ctx: Context, next: NextFunction =>
+            events.add("child")
+            next()
+        })
+        bot.use(asyncMiddleware)
+        bot.use(child)
+
+        bot.handleUpdate(Update(1005, "message"))
+
+        @Expect(events.size, 3)
+        @Expect(events[0], "async:pre")
+        @Expect(events[1], "child")
+        @Expect(events[2], "async:post")
     }
 
     @TestCase
