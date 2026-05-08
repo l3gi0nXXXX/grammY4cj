@@ -434,7 +434,11 @@ public class ContextHasTest {
         @Expect(Context.has.filterQuery("::url").matches(ctx), true)
         @Expect(ctx.hasFilter("message::email"), false)
 
-        let emptyMessageCtx = testContext(Update.withMessage(10, Message(46, chat, "")))
+        let emptyMessage = Message()
+        emptyMessage.messageId = 46
+        emptyMessage.chat = chat
+        emptyMessage.isPresent = true
+        let emptyMessageCtx = testContext(Update.withMessage(10, emptyMessage))
         @Expect(Context.has.filterQuery(":text").matches(emptyMessageCtx), false)
         @Expect(Context.has.filterQuery(":caption").matches(emptyMessageCtx), false)
     }

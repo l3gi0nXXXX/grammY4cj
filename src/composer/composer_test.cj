@@ -38,6 +38,37 @@ private class AsyncSignal {
 }
 
 private func testCtx(updateId: Int64, kind: String): Context {
+    let chat = Chat(updateId, "private")
+    let user = User(42, false, "Test", "test")
+    if (kind == "message:text") {
+        let update = Update(updateId, kind)
+        update.message = Message(updateId, chat, "text", user)
+        return Context(update, Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
+    }
+    if (kind == "message") {
+        let update = Update(updateId, kind)
+        let message = Message()
+        message.messageId = updateId
+        message.chat = chat
+        message.user = user
+        message.isPresent = true
+        update.message = message
+        return Context(update, Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
+    }
+    if (kind == "channel_post:text") {
+        let update = Update(updateId, kind)
+        update.channelPost = Message(updateId, chat, "text", user)
+        return Context(update, Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
+    }
+    if (kind == "channel_post") {
+        let update = Update(updateId, kind)
+        let message = Message()
+        message.messageId = updateId
+        message.chat = chat
+        message.isPresent = true
+        update.channelPost = message
+        return Context(update, Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
+    }
     Context(Update(updateId, kind), Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
 }
 

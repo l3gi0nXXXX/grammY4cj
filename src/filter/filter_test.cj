@@ -77,8 +77,17 @@ private func editedMessageContext(kind: String): FilterTestContext {
     let update = Update(1, kind)
     let message = Message(100, testChat(), "")
     message.caption = "caption"
+    message.addObjectField("photo")
     update.editedMessage = message
     testContext(update)
+}
+
+private func presentMessageWithoutOptionalFields(): Message {
+    let message = Message()
+    message.messageId = 101
+    message.chat = testChat()
+    message.isPresent = true
+    message
 }
 
 private func entityContext(kind: String, entityKind: String): FilterTestContext {
@@ -243,20 +252,59 @@ public class FilterQueryTest {
 
     @TestCase
     public func objectMatcherUsesMessageFieldsWhenKindIsOnlyL1(): Unit {
-        let message = Message(101, testChat(), "")
+        let message = presentMessageWithoutOptionalFields()
         let ctx = testContext(Update.withMessage(5, message))
 
         @Expect(matchFilter(":text", ctx), false)
         @Expect(matchFilter(":caption", ctx), false)
 
         message.text = "hello"
+        message.addObjectField("text")
         @Expect(matchFilter(":text", ctx), true)
         @Expect(matchFilter(":caption", ctx), false)
 
-        message.text = ""
-        message.caption = "caption"
-        @Expect(matchFilter(":text", ctx), false)
-        @Expect(matchFilter(":caption", ctx), true)
+        let captionMessage = presentMessageWithoutOptionalFields()
+        let captionCtx = testContext(Update.withMessage(6, captionMessage))
+        captionMessage.caption = "caption"
+        captionMessage.addObjectField("caption")
+        @Expect(matchFilter(":text", captionCtx), false)
+        @Expect(matchFilter(":caption", captionCtx), true)
+    }
+
+    @TestCase
+    public func objectMatcherDoesNotUseKindAsProductionFieldFallback(): Unit {
+        let kindOnly = testContext(Update(11, "message:photo"))
+        let presentWithoutPhoto = Update.withMessage(12, presentMessageWithoutOptionalFields())
+        let ctx = testContext(presentWithoutPhoto)
+
+        @Expect(matchFilter("message", kindOnly), false)
+        @Expect(matchFilter("message:photo", kindOnly), false)
+        @Expect(matchFilter("message:photo", ctx), false)
+        @Expect(matchFilter("message:photo", "message:photo"), true)
+    }
+
+    @TestCase
+    public func objectMatcherMatchesWideMessageFieldsThroughObjectAccessor(): Unit {
+        let message = presentMessageWithoutOptionalFields()
+        message.addObjectField("photo")
+        message.addObjectNestedField("sticker", "is_animated")
+        message.addObjectNestedField("forward_origin", "channel")
+        message.addObjectNestedField("giveaway", "has_public_winners")
+        message.addObjectNestedField("checklist", "others_can_add_tasks")
+        let ctx = testContext(Update.withMessage(12, message))
+
+        @Expect(matchFilter("message:photo", ctx), true)
+        @Expect(matchFilter("message:sticker", ctx), true)
+        @Expect(matchFilter("message:sticker:is_animated", ctx), true)
+        @Expect(matchFilter("message:sticker:is_video", ctx), false)
+        @Expect(matchFilter("message:forward_origin", ctx), true)
+        @Expect(matchFilter("message:forward_origin:channel", ctx), true)
+        @Expect(matchFilter("message:forward_origin:user", ctx), false)
+        @Expect(matchFilter("message:giveaway", ctx), true)
+        @Expect(matchFilter("message:giveaway:has_public_winners", ctx), true)
+        @Expect(matchFilter("message:checklist", ctx), true)
+        @Expect(matchFilter("message:checklist:others_can_add_tasks", ctx), true)
+        @Expect(matchFilter("message:checklist:others_can_mark_tasks_as_done", ctx), false)
     }
 
     @TestCase
@@ -350,9 +398,9 @@ public class FilterQueryTest {
     }
 
     @TestCase
-    public func objectMatcherMatchesReactionCountL2AndKindBackedL3(): Unit {
+    public func objectMatcherMatchesReactionCountL2AndObjectBackedL3(): Unit {
         let update = Update(5, "message_reaction_count:reactions:paid")
-        update.messageReactionCount = MessageReactionCountUpdated(testChat(), 100)
+        update.messageReactionCount = MessageReactionCountUpdated(testChat(), 100, [ReactionType.paidReaction()])
         let ctx = testContext(update)
 
         @Expect(matchFilter("message_reaction_count", ctx), true)
@@ -362,11 +410,15 @@ public class FilterQueryTest {
     }
 
     @TestCase
-    public func objectMatcherKeepsNestedL3SchemaPathsKindBacked(): Unit {
-        let forward = testContext(Update(6, "message:forward_origin:channel"))
-        let sticker = testContext(Update(7, "message:sticker:is_animated"))
-        let giveaway = testContext(Update(8, "message:giveaway:has_public_winners"))
-        let linkPreview = testContext(Update(9, "message:link_preview_options:url"))
+    public func objectMatcherMatchesNestedL3SchemaPathsThroughObjectAccessor(): Unit {
+        let forwardMessage = presentMessageWithoutOptionalFields().addObjectNestedField("forward_origin", "channel")
+        let stickerMessage = presentMessageWithoutOptionalFields().addObjectNestedField("sticker", "is_animated")
+        let giveawayMessage = presentMessageWithoutOptionalFields().addObjectNestedField("giveaway", "has_public_winners")
+        let linkPreviewMessage = presentMessageWithoutOptionalFields().addObjectNestedField("link_preview_options", "url")
+        let forward = testContext(Update.withMessage(6, forwardMessage))
+        let sticker = testContext(Update.withMessage(7, stickerMessage))
+        let giveaway = testContext(Update.withMessage(8, giveawayMessage))
+        let linkPreview = testContext(Update.withMessage(9, linkPreviewMessage))
 
         @Expect(matchFilter("message:forward_origin:channel", forward), true)
         @Expect(matchFilter("message:forward_origin:user", forward), false)
@@ -374,6 +426,23 @@ public class FilterQueryTest {
         @Expect(matchFilter("message:sticker:is_video", sticker), false)
         @Expect(matchFilter("message:giveaway:has_public_winners", giveaway), true)
         @Expect(matchFilter("message:link_preview_options:url", linkPreview), true)
+    }
+
+    @TestCase
+    public func emptyArraysAndUnknownL3KindsDoNotMatch(): Unit {
+        let emptyEntityMessage = presentMessageWithoutOptionalFields().addObjectField("entities")
+        let emptyReactionUpdate = Update.withMessageReaction(
+            13,
+            MessageReactionUpdated(testChat(), User(7, false, "User", "user"), 100, [], []),
+        )
+        let emptyReactionCount = Update.withMessageReactionCount(
+            14,
+            MessageReactionCountUpdated(testChat(), 100, []),
+        )
+
+        @Expect(matchFilter("message:entities:url", testContext(Update.withMessage(13, emptyEntityMessage))), false)
+        @Expect(matchFilter("message_reaction:new_reaction:emoji", testContext(emptyReactionUpdate)), false)
+        @Expect(matchFilter("message_reaction_count:reactions:paid", testContext(emptyReactionCount)), false)
     }
 
     @TestCase
@@ -389,5 +458,15 @@ public class FilterQueryTest {
         @Expect(filterPredicateCacheSize(), 1)
         @Expect(matchFilter(["message:text", "channel_post:text"], channelPostContext("channel_post:text")), true)
         @Expect(filterPredicateCacheSize(), 2)
+    }
+
+    @TestCase
+    public func invalidQueriesAreNotCached(): Unit {
+        clearFilterPredicateCache()
+
+        @Expect(throwsFor("message:nope"), true)
+        @Expect(filterPredicateCacheSize(), 0)
+        @Expect(throwsFor("message:nope"), true)
+        @Expect(filterPredicateCacheSize(), 0)
     }
 }

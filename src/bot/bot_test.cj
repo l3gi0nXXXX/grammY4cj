@@ -17,8 +17,22 @@ import grammy4cj.core.Payload
 import grammy4cj.test_support.FakeHttp
 import grammy4cj.types.ApiResponse
 import grammy4cj.types.ResponseParameters
+import grammy4cj.types.Chat
+import grammy4cj.types.Message
 import grammy4cj.types.Update
+import grammy4cj.types.User
 import grammy4cj.types.UserFromGetMe
+
+private func messageUpdate(updateId: Int64): Update {
+    let update = Update(updateId, "message")
+    let message = Message()
+    message.messageId = updateId
+    message.chat = Chat(updateId, "private")
+    message.user = User(7, false, "User", "user")
+    message.isPresent = true
+    update.message = message
+    update
+}
 
 private class StartProbe {
     public var called: Bool = false
@@ -503,7 +517,7 @@ public class BotTest {
             events.add("on:" + ctx.botInfoUsername())
         })
 
-        bot.handleUpdate(Update(1101, "message"))
+        bot.handleUpdate(messageUpdate(1101))
 
         @Expect(events.size, 3)
         @Expect(events[0], "outer:pre")

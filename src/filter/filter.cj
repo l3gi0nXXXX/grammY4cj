@@ -400,9 +400,6 @@ private func matchesL2Node(ctx: FilterContextView, l1: String, node: L2Node): Bo
 }
 
 private func l1Present(update: Update, l1: String): Bool {
-    if (kindMatches(l1, update.kind)) {
-        return true
-    }
     if (l1 == "message") { return update.message.isPresent }
     if (l1 == "edited_message") { return update.editedMessage.isPresent }
     if (l1 == "channel_post") { return update.channelPost.isPresent }
@@ -431,9 +428,6 @@ private func l1Present(update: Update, l1: String): Bool {
 }
 
 private func l2Present(update: Update, l1: String, l2: String): Bool {
-    if (kindMatches(l1 + ":" + l2, update.kind)) {
-        return true
-    }
     if (isMessageLike(l1)) {
         return messageL2Present(messageFor(update, l1), l2)
     }
@@ -460,9 +454,6 @@ private func l2Present(update: Update, l1: String, l2: String): Bool {
 
 private func l3Present(ctx: FilterContextView, l1: String, l2: String, l3: String): Bool {
     let update = ctx.filterUpdate()
-    if (kindMatches(l1 + ":" + l2 + ":" + l3, update.kind)) {
-        return true
-    }
     if (isMessageLike(l1)) {
         let message = messageFor(update, l1)
         if (l2 == "entities") {
@@ -474,7 +465,7 @@ private func l3Present(ctx: FilterContextView, l1: String, l2: String, l3: Strin
         if (l2 == "new_chat_members" || l2 == "left_chat_member") {
             return userL3Present(ctx, message.user, l3)
         }
-        return false
+        return messageNestedFieldPresent(message, l2, l3)
     }
     if (l1 == "my_chat_member" && l2 == "from") {
         return userL3Present(ctx, update.myChatMember.user, l3)
@@ -491,7 +482,7 @@ private func l3Present(ctx: FilterContextView, l1: String, l2: String, l3: Strin
         }
     }
     if (l1 == "message_reaction_count" && l2 == "reactions") {
-        return kindMatches(l1 + ":" + l2 + ":" + l3, update.kind)
+        return reactionsHaveKind(update.messageReactionCount.reactions, l3)
     }
     false
 }
@@ -510,6 +501,7 @@ private func messageL2Present(message: Message, l2: String): Bool {
     if (!message.isPresent) {
         return false
     }
+    if (messageObjectFieldPresent(message, l2)) { return true }
     if (l2 == "text") { return !message.text.isEmpty() }
     if (l2 == "caption") { return !message.caption.isEmpty() }
     if (l2 == "entities") { return message.entities.size > 0 }
@@ -519,6 +511,17 @@ private func messageL2Present(message: Message, l2: String): Bool {
     if (l2 == "is_topic_message") { return message.isTopicMessage }
     if (l2 == "direct_messages_topic") { return message.directMessagesTopicId != 0 }
     false
+}
+
+private func messageObjectFieldPresent(message: Message, key: String): Bool {
+    containsString(message.objectFields.toArray(), key)
+}
+
+private func messageNestedFieldPresent(message: Message, key: String, nestedKey: String): Bool {
+    if (!messageObjectFieldPresent(message, key)) {
+        return false
+    }
+    containsString(message.objectNestedFields.toArray(), key + ":" + nestedKey)
 }
 
 private func callbackQueryL2Present(callbackQuery: CallbackQuery, l2: String): Bool {

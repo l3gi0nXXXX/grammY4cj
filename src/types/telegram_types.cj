@@ -300,6 +300,8 @@ public class Message {
     public var isTopicMessage: Bool = false
     public var messageThreadId: Int64 = 0
     public var directMessagesTopicId: Int64 = 0
+    public var objectFields: ArrayList<String> = ArrayList<String>()
+    public var objectNestedFields: ArrayList<String> = ArrayList<String>()
     public var isPresent: Bool = false
 
     public init() {}
@@ -308,6 +310,7 @@ public class Message {
         this.messageId = messageId
         this.chat = chat
         this.text = text
+        this.addObjectField("text")
         this.isPresent = true
     }
 
@@ -316,15 +319,34 @@ public class Message {
         this.chat = chat
         this.text = text
         this.user = user
+        this.addObjectField("text")
         this.isPresent = true
     }
 
+    public func addObjectField(key: String): Message {
+        if (!containsTelegramString(this.objectFields, key)) {
+            this.objectFields.add(key)
+        }
+        this
+    }
+
+    public func addObjectNestedField(key: String, nestedKey: String): Message {
+        this.addObjectField(key)
+        let path = key + ":" + nestedKey
+        if (!containsTelegramString(this.objectNestedFields, path)) {
+            this.objectNestedFields.add(path)
+        }
+        this
+    }
+
     public func addEntity(entity: MessageEntity): Message {
+        this.addObjectField("entities")
         this.entities.add(entity)
         this
     }
 
     public func addCaptionEntity(entity: MessageEntity): Message {
+        this.addObjectField("caption_entities")
         this.captionEntities.add(entity)
         this
     }
@@ -409,6 +431,7 @@ public class MessageReactionUpdated {
 public class MessageReactionCountUpdated {
     public var chat: Chat = Chat()
     public var messageId: Int64 = 0
+    public var reactions: Array<ReactionType> = []
     public var isPresent: Bool = false
 
     public init() {}
@@ -416,6 +439,13 @@ public class MessageReactionCountUpdated {
     public init(chat: Chat, messageId: Int64) {
         this.chat = chat
         this.messageId = messageId
+        this.isPresent = true
+    }
+
+    public init(chat: Chat, messageId: Int64, reactions: Array<ReactionType>) {
+        this.chat = chat
+        this.messageId = messageId
+        this.reactions = reactions
         this.isPresent = true
     }
 }
@@ -827,4 +857,13 @@ public class Update {
         update.purchasedPaidMedia = purchasedPaidMedia
         return update
     }
+}
+
+private func containsTelegramString(values: ArrayList<String>, needle: String): Bool {
+    for (value in values) {
+        if (value == needle) {
+            return true
+        }
+    }
+    false
 }
