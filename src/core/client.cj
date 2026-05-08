@@ -374,7 +374,16 @@ public class ApiClient {
     }
 
     public func callApi(token: String, method: String, payload: Payload, signal: CancelSignal): String {
-        let response = this.callWithTransformers(token, method, payload, signal)
+        var response = ApiResponse.success("")
+        try {
+            response = this.callWithTransformers(token, method, payload, signal)
+        } catch (err: GrammyError) {
+            throw err
+        } catch (err: HttpError) {
+            throw err
+        } catch (err: Exception) {
+            throw toHttpError(method, this.config.sensitiveLogs, err)
+        }
         this.resultOrThrow(method, payload, response)
     }
 
@@ -1021,6 +1030,12 @@ public class TransformableApi {
         this.installedTransformers = this.client.installedTransformers
     }
 
+    public init(token: String, options: ApiClientOptions, webhookReplyEnvelope: WebhookReplyEnvelope) {
+        this.client = ApiClient(options, webhookReplyEnvelope)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+    }
+
     public init(token: String, options: ApiClientOptions, webhookReplyEnvelope: WebhookReplyEnvelope, fetcher: CoreFetch) {
         this.client = ApiClient(options, webhookReplyEnvelope, fetcher)
         this.raw = RawApiFacade(token, this.client)
@@ -1053,6 +1068,10 @@ public func createRawApi(token: String, options: ApiClientOptions): Transformabl
 
 public func createRawApi(token: String, options: ApiClientOptions, fetcher: CoreFetch): TransformableApi {
     TransformableApi(token, options, fetcher)
+}
+
+public func createRawApi(token: String, options: ApiClientOptions, webhookReplyEnvelope: WebhookReplyEnvelope): TransformableApi {
+    TransformableApi(token, options, webhookReplyEnvelope)
 }
 
 public func createRawApi(token: String, options: ApiClientOptions, webhookReplyEnvelope: WebhookReplyEnvelope, fetcher: CoreFetch): TransformableApi {

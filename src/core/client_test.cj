@@ -286,6 +286,16 @@ public class ApiClientTest {
     }
 
     @TestCase
+    public func createRawApiAcceptsWebhookReplyEnvelopeWithoutCustomFetch(): Unit {
+        let envelope = WebhookReplyEnvelope()
+        let api = createRawApi("token", ApiClientOptions("https://api.telegram.org", "prod", 500, false, true), envelope)
+
+        @Expect(api.raw.sendMessage(Payload("").addValue("chat_id", "42")), "true")
+        @Expect(envelope.sent, true)
+        @Expect(envelope.payload, "{\"chat_id\":\"42\",\"method\":\"sendMessage\"}")
+    }
+
+    @TestCase
     public func multipartPayloadDisablesWebhookReply(): Unit {
         let predicate = MethodPredicateProbe("sendDocument")
         let envelope = WebhookReplyEnvelope()
@@ -581,9 +591,9 @@ public class ApiClientTest {
     }
 
     @TestCase
-    public func transformerErrorsPropagateWithoutCallingFetch(): Unit {
+    public func transformerErrorsMapToHttpErrorWithoutCallingFetch(): Unit {
         let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("unused"))
-        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false), fake)
         client.use("boom", { _prev: ApiCallFn, method: String, _payload: Payload, _signal: CancelSignal =>
             throw Exception("transformer failed for " + method)
         })
@@ -591,8 +601,9 @@ public class ApiClientTest {
         try {
             client.callApi("token", "sendMessage", Payload("").addValue("chat_id", "42"))
             @Expect(true, false)
-        } catch (err: Exception) {
-            @Expect(err.message, "transformer failed for sendMessage")
+        } catch (err: HttpError) {
+            @Expect(err.message, "Network request for 'sendMessage' failed! transformer failed for sendMessage")
+            @Expect(err.error, "transformer failed for sendMessage")
             @Expect(fake.called, false)
         }
     }
