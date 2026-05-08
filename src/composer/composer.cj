@@ -4,6 +4,7 @@ import grammy4cj.context.Context
 import grammy4cj.filter.matchFilter
 import grammy4cj.types.ReactionType
 import std.collection.{ArrayList, HashMap}
+import std.regex.Regex
 import std.sync.{Condition, Mutex}
 
 public type NextFunction = () -> Unit
@@ -373,6 +374,30 @@ public class Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.text(triggers).matches(ctx) }), middleware)
     }
 
+    public func hears(trigger: Regex): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(trigger).matches(ctx) }))
+    }
+
+    public func hears(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(trigger).matches(ctx) }), middleware)
+    }
+
+    public func hears(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(trigger).matches(ctx) }), middleware)
+    }
+
+    public func hears(triggers: Array<Regex>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(triggers).matches(ctx) }))
+    }
+
+    public func hears(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(triggers).matches(ctx) }), middleware)
+    }
+
+    public func hears(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.text(triggers).matches(ctx) }), middleware)
+    }
+
     public func command(command: String): Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.command(command).matches(ctx) }))
     }
@@ -493,6 +518,30 @@ public class Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(triggers).matches(ctx) }), middleware)
     }
 
+    public func callbackQuery(trigger: Regex): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(trigger).matches(ctx) }))
+    }
+
+    public func callbackQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func callbackQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func callbackQuery(triggers: Array<Regex>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(triggers).matches(ctx) }))
+    }
+
+    public func callbackQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func callbackQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.callbackQuery(triggers).matches(ctx) }), middleware)
+    }
+
     public func gameQuery(trigger: String): Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(trigger).matches(ctx) }))
     }
@@ -514,6 +563,30 @@ public class Composer {
     }
 
     public func gameQuery(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func gameQuery(trigger: Regex): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(trigger).matches(ctx) }))
+    }
+
+    public func gameQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func gameQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func gameQuery(triggers: Array<Regex>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(triggers).matches(ctx) }))
+    }
+
+    public func gameQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func gameQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.gameQuery(triggers).matches(ctx) }), middleware)
     }
 
@@ -541,6 +614,30 @@ public class Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(triggers).matches(ctx) }), middleware)
     }
 
+    public func inlineQuery(trigger: Regex): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(trigger).matches(ctx) }))
+    }
+
+    public func inlineQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func inlineQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func inlineQuery(triggers: Array<Regex>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(triggers).matches(ctx) }))
+    }
+
+    public func inlineQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func inlineQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.inlineQuery(triggers).matches(ctx) }), middleware)
+    }
+
     public func chosenInlineResult(trigger: String): Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(trigger).matches(ctx) }))
     }
@@ -562,6 +659,30 @@ public class Composer {
     }
 
     public func chosenInlineResult(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(triggers).matches(ctx) }), middleware)
+    }
+
+    public func chosenInlineResult(trigger: Regex): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(trigger).matches(ctx) }))
+    }
+
+    public func chosenInlineResult(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(trigger).matches(ctx) }), middleware)
+    }
+
+    public func chosenInlineResult(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(trigger).matches(ctx) }), middleware)
+    }
+
+    public func chosenInlineResult(triggers: Array<Regex>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(triggers).matches(ctx) }))
+    }
+
+    public func chosenInlineResult(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(triggers).matches(ctx) }), middleware)
+    }
+
+    public func chosenInlineResult(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.chosenInlineResult(triggers).matches(ctx) }), middleware)
     }
 
@@ -589,6 +710,30 @@ public class Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(triggers).matches(ctx) }), middleware)
     }
 
+    public func preCheckoutQuery(trigger: Regex): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(trigger).matches(ctx) }))
+    }
+
+    public func preCheckoutQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func preCheckoutQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func preCheckoutQuery(triggers: Array<Regex>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(triggers).matches(ctx) }))
+    }
+
+    public func preCheckoutQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func preCheckoutQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.preCheckoutQuery(triggers).matches(ctx) }), middleware)
+    }
+
     public func shippingQuery(trigger: String): Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(trigger).matches(ctx) }))
     }
@@ -610,6 +755,30 @@ public class Composer {
     }
 
     public func shippingQuery(triggers: Array<String>, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func shippingQuery(trigger: Regex): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(trigger).matches(ctx) }))
+    }
+
+    public func shippingQuery(trigger: Regex, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func shippingQuery(trigger: Regex, middleware: Array<MiddlewareFn>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(trigger).matches(ctx) }), middleware)
+    }
+
+    public func shippingQuery(triggers: Array<Regex>): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(triggers).matches(ctx) }))
+    }
+
+    public func shippingQuery(triggers: Array<Regex>, middleware: MiddlewareFn): Composer {
+        this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(triggers).matches(ctx) }), middleware)
+    }
+
+    public func shippingQuery(triggers: Array<Regex>, middleware: Array<MiddlewareFn>): Composer {
         this.filter(hasPredicate({ ctx: Context => Context.has.shippingQuery(triggers).matches(ctx) }), middleware)
     }
 

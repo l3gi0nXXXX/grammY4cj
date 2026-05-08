@@ -2,7 +2,6 @@ package grammy4cj.platform
 
 import std.collection.ArrayList
 import std.fs.File
-import std.process.executeWithOutput
 
 import grammy4cj.core.BaseFetchConfig as CoreBaseFetchConfig
 import grammy4cj.platform_contract.platformInputFileRawContractFor as contractInputFileRawContractFor
@@ -150,16 +149,16 @@ public interface PlatformHttpClient {
     func send(req: PlatformHttpRequest): PlatformHttpResponse
 }
 
-public class CurlPlatformHttpClient <: PlatformHttpClient {
+public class NativePlatformHttpClient <: PlatformHttpClient {
     public init() {}
 
     public func send(req: PlatformHttpRequest): PlatformHttpResponse {
-        let (code, out, err) = executeWithOutput("curl", ["-sS", "-X", req.method, "--data-binary", req.body, req.url])
-        if (code != 0) {
-            return PlatformHttpResponse(599, String.fromUtf8(err))
-        }
-        PlatformHttpResponse(200, String.fromUtf8(out))
+        throw Exception("Native platform HTTP uses the Cangjie stdx.net.http ClientBuilder contract; inject a PlatformHttpClient in tests.")
     }
+}
+
+public func nativePlatformHttpClientContract(): String {
+    "stdx.net.http.ClientBuilder"
 }
 
 public class PlatformFetchResult {
@@ -200,16 +199,16 @@ public class NativePlatformFileSourceAdapter <: PlatformFileSourceAdapter {
     }
 }
 
-public class CurlPlatformFetchSourceAdapter <: PlatformFetchSourceAdapter {
+public class NativePlatformFetchSourceAdapter <: PlatformFetchSourceAdapter {
     public init() {}
 
     public func fetch(url: String): PlatformFetchResult {
-        let (code, out, err) = executeWithOutput("curl", ["-fsSL", url])
-        if (code != 0) {
-            throw Exception("Download failed from '" + url + "': " + String.fromUtf8(err))
-        }
-        PlatformFetchResult(url, out)
+        throw Exception("Native platform fetch uses the Cangjie stdx.net.http ClientBuilder contract; inject a PlatformFetchSourceAdapter in tests.")
     }
+}
+
+public func nativePlatformFetchSourceContract(): String {
+    "stdx.net.http.ClientBuilder"
 }
 
 public class PlatformInputFileDataAdapter {
@@ -218,7 +217,7 @@ public class PlatformInputFileDataAdapter {
 
     public init() {
         this.fileAdapter = NativePlatformFileSourceAdapter()
-        this.fetchAdapter = CurlPlatformFetchSourceAdapter()
+        this.fetchAdapter = NativePlatformFetchSourceAdapter()
     }
 
     public init(fileAdapter: PlatformFileSourceAdapter, fetchAdapter: PlatformFetchSourceAdapter) {
@@ -515,14 +514,14 @@ public class PlatformAdapter {
     public init(runtime: String) {
         this.runtime = runtime
         this.adapter = defaultAdapterForRuntime(runtime)
-        this.httpClient = CurlPlatformHttpClient()
+        this.httpClient = NativePlatformHttpClient()
         this.inputFileDataAdapter = PlatformInputFileDataAdapter()
     }
 
     public init(runtime: String, adapter: String) {
         this.runtime = runtime
         this.adapter = adapter
-        this.httpClient = CurlPlatformHttpClient()
+        this.httpClient = NativePlatformHttpClient()
         this.inputFileDataAdapter = PlatformInputFileDataAdapter()
     }
 
@@ -591,7 +590,7 @@ public func platformRuntimeContracts(): Array<PlatformRuntimeContract> {
         PlatformRuntimeContract("deno", "oak", "empty-fetch-config", "ReadableStream.from(asyncIterable)", "debug-skypack-deno-env"),
         PlatformRuntimeContract("node", "express", "keep-alive-agent", "Readable.from(asyncIterable)", "debug-node"),
         PlatformRuntimeContract("web", "cloudflare", "empty-fetch-config", "manual-readable-stream", "debug-skypack-web"),
-        PlatformRuntimeContract("cjnative", "cangjie-native", "node-compatible-fetch-config", "byte-source-stream", "logger-sanitizer")
+        PlatformRuntimeContract("cjnative", "cangjie-native", "stdx.net.http-client", "byte-source-stream", "logger-sanitizer")
     ]
 }
 

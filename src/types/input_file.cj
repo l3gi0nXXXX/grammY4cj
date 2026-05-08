@@ -2,7 +2,9 @@ package grammy4cj.types
 
 import std.collection.ArrayList
 import std.fs.File
-import std.process.executeWithOutput
+import stdx.encoding.url.URL
+import stdx.net.http.*
+import stdx.net.tls.TlsClientConfig
 
 import grammy4cj.platform_contract.platformInputFileRawContractFor as contractInputFileRawContractFor
 import grammy4cj.platform_contract.platformInputFileRuntimeNames as contractInputFileRuntimeNames
@@ -48,16 +50,45 @@ public class NativeInputFileFileAdapter <: InputFileFileAdapter {
     }
 }
 
-public class CurlInputFileFetchAdapter <: InputFileFetchAdapter {
+public class NativeInputFileFetchAdapter <: InputFileFetchAdapter {
     public init() {}
 
     public func fetch(url: String): InputFileFetchResult {
-        let (code, out, err) = executeWithOutput("curl", ["-fsSL", url])
-        if (code != 0) {
-            throw Exception("Download failed from '" + url + "': " + String.fromUtf8(err))
+        let client = nativeInputFileHttpClient(url)
+        try {
+            let response = client.get(url)
+            InputFileFetchResult(url, nativeInputFileReadBody(response))
+        } catch (err: Exception) {
+            throw Exception("Download failed from '" + url + "': " + err.message)
+        } finally {
+            client.close()
         }
-        InputFileFetchResult(url, out)
     }
+}
+
+private func nativeInputFileHttpClient(url: String): Client {
+    let builder = ClientBuilder()
+    if (url.startsWith("https://")) {
+        var tlsConfig = TlsClientConfig()
+        tlsConfig.domain = URL.parse(url).hostName
+        builder.tlsConfig(tlsConfig)
+    }
+    builder.build()
+}
+
+private func nativeInputFileReadBody(response: HttpResponse): Array<Byte> {
+    let out = ArrayList<Byte>()
+    let buffer = Array<Byte>(1024 * 16, repeat: 0)
+    while (true) {
+        let length = response.body.read(buffer)
+        if (length == 0) {
+            break
+        }
+        for (byte in buffer[..length]) {
+            out.add(byte)
+        }
+    }
+    out.toArray()
 }
 
 public class InputFileRawAdapter {
@@ -66,7 +97,7 @@ public class InputFileRawAdapter {
 
     public init() {
         this.fileAdapter = NativeInputFileFileAdapter()
-        this.fetchAdapter = CurlInputFileFetchAdapter()
+        this.fetchAdapter = NativeInputFileFetchAdapter()
     }
 
     public init(fileAdapter: InputFileFileAdapter, fetchAdapter: InputFileFetchAdapter) {
@@ -394,7 +425,7 @@ public class InputFileRawData {
         this.originalSourceKind = sourceKind
         this.supplierLabel = ""
         this.singleUseBoundary = !reusable
-        this.body = InputFileRawBody(sourceKind, sourceValue, filename, contract, rawChunkCount(sourceKind), reusable, defaultInputFileRawAdapter())
+        this.body = InputFileRawBody(sourceKind, sourceValue, filename, contract, rawChunkCount(sourceKind, sourceValue), reusable, defaultInputFileRawAdapter())
         this.isFakeContract = false
         this.rawKind = sourceKind
     }
@@ -426,7 +457,7 @@ public class InputFileRawData {
         this.originalSourceKind = originalSourceKind
         this.supplierLabel = supplierLabel
         this.singleUseBoundary = !reusable
-        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind), reusable, defaultInputFileRawAdapter())
+        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind, sourceValue), reusable, defaultInputFileRawAdapter())
         this.isFakeContract = false
         this.rawKind = rawSourceKind
     }
@@ -459,7 +490,7 @@ public class InputFileRawData {
         this.originalSourceKind = originalSourceKind
         this.supplierLabel = supplierLabel
         this.singleUseBoundary = !reusable
-        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind), reusable, adapter)
+        this.body = InputFileRawBody(rawSourceKind, sourceValue, filename, platformContract, rawChunkCount(rawSourceKind, sourceValue), reusable, adapter)
         this.isFakeContract = false
         this.rawKind = rawSourceKind
     }
@@ -485,8 +516,16 @@ public class InputFileRawData {
         this.body.collectBytes()
     }
 
+    public func collectChunks(): Array<Array<Byte>> {
+        this.body.collectChunks()
+    }
+
     public func collectString(): String {
         String.fromUtf8(this.collectBytes())
+    }
+
+    public func previewString(): String {
+        this.body.previewString()
     }
 }
 
@@ -538,6 +577,9 @@ public class InputFileRawBody {
 
     public func collectBytes(): Array<Byte> {
         this.consume()
+        if (this.sourceKind == "stream_error" || this.sourceKind == "stream_error_after") {
+            throw Exception(this.sourceValue)
+        }
         if (this.sourceKind == "path") {
             return this.adapter.readPath(this.sourceValue)
         }
@@ -549,6 +591,31 @@ public class InputFileRawBody {
             return result.body
         }
         flattenByteChunks(this.chunks)
+    }
+
+    public func collectChunks(): Array<Array<Byte>> {
+        this.consume()
+        if (this.sourceKind == "stream_error" || this.sourceKind == "stream_error_after") {
+            throw Exception(this.sourceValue)
+        }
+        if (this.sourceKind == "path") {
+            return [this.adapter.readPath(this.sourceValue)]
+        }
+        if (this.sourceKind == "url" || this.sourceKind == "url_like") {
+            let result = this.adapter.fetchUrl(this.sourceValue)
+            if (!result.hasBody) {
+                throw Exception("Download failed, no response body from '" + this.sourceValue + "'")
+            }
+            return [result.body]
+        }
+        this.chunks
+    }
+
+    public func previewString(): String {
+        if (this.sourceKind == "path" || this.sourceKind == "url" || this.sourceKind == "url_like") {
+            return ""
+        }
+        String.fromUtf8(flattenByteChunks(this.chunks))
     }
 }
 
@@ -860,9 +927,9 @@ private func inputFileSourceKindExists(sourceKind: String): Bool {
     false
 }
 
-private func rawChunkCount(sourceKind: String): Int64 {
+private func rawChunkCount(sourceKind: String, sourceValue: String): Int64 {
     if (sourceKind == "stream" || sourceKind == "iterable" || sourceKind == "async_iterable") {
-        return 2
+        return defaultRawChunks(sourceKind, sourceValue).size
     }
     1
 }
@@ -922,9 +989,20 @@ private func stripQueryAndHash(value: String): String {
 
 private func defaultRawChunks(sourceKind: String, sourceValue: String): Array<Array<Byte>> {
     if (sourceKind == "stream" || sourceKind == "iterable" || sourceKind == "async_iterable") {
-        return [sourceValue.toArray(), sourceValue.toArray()]
+        return parseChunkLabel(sourceValue)
     }
     [sourceValue.toArray()]
+}
+
+private func parseChunkLabel(sourceValue: String): Array<Array<Byte>> {
+    let chunks = ArrayList<Array<Byte>>()
+    for (part in sourceValue.split("|")) {
+        chunks.add(part.toArray())
+    }
+    if (chunks.size == 0) {
+        chunks.add(sourceValue.toArray())
+    }
+    chunks.toArray()
 }
 
 private func flattenByteChunks(chunks: Array<Array<Byte>>): Array<Byte> {

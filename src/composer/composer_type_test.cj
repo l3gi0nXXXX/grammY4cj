@@ -1,6 +1,7 @@
 package grammy4cj.composer
 
 import grammy4cj.context.Context
+import std.regex.Regex
 import std.unittest.*
 
 @Test
@@ -108,6 +109,20 @@ public class ComposerTypeSurfaceTest {
         let second: Composer = Composer().callbackQuery("query").chatType("private")
         @Expect(first.layerName(), "Composer")
         @Expect(second.layerName(), "Composer")
+    }
+
+    @TestCase
+    public func regexpTriggerEntrypointsCompile(): Unit {
+        let composer = Composer()
+        composer.hears(Regex("^hello"))
+        composer.callbackQuery(Regex("^callback"))
+        composer.gameQuery([Regex("^game")])
+        composer.inlineQuery(Regex("^inline"), { _ctx: Context, next: NextFunction => next() })
+        composer.chosenInlineResult([Regex("^chosen")], { _ctx: Context, next: NextFunction => next() })
+        composer.preCheckoutQuery(Regex("^pre"))
+        composer.shippingQuery([Regex("^ship")])
+
+        @Expect(composer.layerName(), "Composer")
     }
 }
 

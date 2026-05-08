@@ -429,14 +429,42 @@ public class SessionMiddlewareTest {
     public func defaultKeyUsesChatIdAndSkipsNoChatUpdates(): Unit {
         let contract = sessionPropertyContract()
         @Expect(contract.upstreamProperty, "ctx.session")
-        @Expect(contract.strictRead, "SessionContext.session")
-        @Expect(contract.strictWrite, "SessionContext.session = value")
-        @Expect(contract.strictDelete, "SessionContext.deleteSession()")
-        @Expect(contract.lazyRead, "LazySessionMiddleware + SessionContext.session")
-        @Expect(contract.multiDelete, "MultiSessionContext2.session slots or deleteSession()")
-        @Expect(contract.contextIntegration, "typed session wrapper exposes ctx.session property")
+        @Expect(contract.strictRead, "SessionFlavorContext.session")
+        @Expect(contract.strictWrite, "SessionFlavorContext.session = value")
+        @Expect(contract.strictDelete, "SessionFlavorContext.deleteSession() or setOptionalSession(None)")
+        @Expect(contract.lazyRead, "LazySessionMiddleware + SessionFlavorContext.session")
+        @Expect(contract.multiDelete, "MultiSessionFlavorContext2.session slots or deleteSession()")
+        @Expect(contract.contextIntegration, "typed session flavor context exposes ctx.session property")
         @Expect(stringValue(defaultGetSessionKey(testCtx(7))), "7")
         @Expect(stringValue(defaultGetSessionKey(noChatCtx(8))), "")
+    }
+
+    @TestCase
+    public func sessionFlavorContextExposesDirectSessionProperty(): Unit {
+        let storage = MemorySessionStorage<CounterSession>()
+        let middleware = session<CounterSession>(SessionOptions<CounterSession>({ => CounterSession(1) }, storage))
+
+        middleware.handle(testCtx(70), { ctx: SessionFlavorContext<CounterSession> =>
+            @Expect(ctx.chatId, 70)
+            @Expect(ctx.updateId(), 70)
+            ctx.session.count += 1
+        })
+
+        @Expect(counterValue(storage.read("70")), 2)
+    }
+
+    @TestCase
+    public func sessionOptionalNoneDeletesStorageLikeNullAssignment(): Unit {
+        let storage = MemorySessionStorage<CounterSession>()
+        storage.write("71", CounterSession(8))
+        let middleware = session<CounterSession>(SessionOptions<CounterSession>(storage))
+
+        middleware.handle(testCtx(71), { ctx: SessionFlavorContext<CounterSession> =>
+            @Expect(ctx.session.count, 8)
+            ctx.setOptionalSession(None<CounterSession>)
+        })
+
+        @Expect(storage.has("71"), false)
     }
 
     @TestCase
@@ -689,6 +717,29 @@ public class SessionMiddlewareTest {
         @Expect(events[1], "next")
         @Expect(counterValue(storage.read("44")), 9)
     }
+
+    @TestCase
+    public func middlewareAdapterSupportsFlavorContextAcrossNext(): Unit {
+        let events = ArrayList<String>()
+        let storage = MemorySessionStorage<CounterSession>()
+        let middleware = session<CounterSession>(SessionOptions<CounterSession>({ => CounterSession(0) }, storage)).middleware(
+            { ctx: SessionFlavorContext<CounterSession>, next: () -> Unit =>
+                events.add("handler:" + ctx.session.count.toString())
+                ctx.session.count = 13
+                next()
+                ctx.session.count += 1
+            },
+        )
+
+        middleware(testCtx(72), { =>
+            events.add("next")
+        })
+
+        @Expect(events.size, 2)
+        @Expect(events[0], "handler:0")
+        @Expect(events[1], "next")
+        @Expect(counterValue(storage.read("72")), 14)
+    }
 }
 
 @Test
@@ -742,6 +793,56 @@ public class MultiSessionMiddlewareTest {
 
         @Expect(first.has("35"), false)
         @Expect(counterValue(second.read("35")), 12)
+    }
+
+    @TestCase
+    public func multiSessionFlavorContextExposesSessionSlots(): Unit {
+        let first = MemorySessionStorage<CounterSession>()
+        let second = MemorySessionStorage<CounterSession>()
+        let middleware = multiSession<CounterSession, CounterSession>(
+            MultiSessionOptions2<CounterSession, CounterSession>(
+                SessionOptions<CounterSession>({ => CounterSession(2) }, first),
+                SessionOptions<CounterSession>({ => CounterSession(4) }, second),
+            ),
+        )
+
+        middleware.handle(testCtx(36), { ctx: MultiSessionFlavorContext2<CounterSession, CounterSession> =>
+            @Expect(ctx.chatId, 36)
+            ctx.session.first.count += 3
+            ctx.session.second = CounterSession(11)
+        })
+
+        @Expect(counterValue(first.read("36")), 5)
+        @Expect(counterValue(second.read("36")), 11)
+    }
+
+    @TestCase
+    public func multiSessionFlavorOptionalNoneDeletesSlotsLikeNullAssignments(): Unit {
+        let first = MemorySessionStorage<CounterSession>()
+        let second = MemorySessionStorage<CounterSession>()
+        first.write("37", CounterSession(1))
+        second.write("37", CounterSession(2))
+        let middleware = multiSession<CounterSession, CounterSession>(
+            MultiSessionOptions2<CounterSession, CounterSession>(
+                SessionOptions<CounterSession>(first),
+                SessionOptions<CounterSession>(second),
+            ),
+        )
+
+        middleware.handle(testCtx(37), { ctx: MultiSessionFlavorContext2<CounterSession, CounterSession> =>
+            ctx.session.setOptionalFirst(None<CounterSession>)
+            ctx.session.second.count += 8
+        })
+
+        @Expect(first.has("37"), false)
+        @Expect(counterValue(second.read("37")), 10)
+
+        middleware.handle(testCtx(37), { ctx: MultiSessionFlavorContext2<CounterSession, CounterSession> =>
+            ctx.setOptionalSession(None<MultiSessionData2<CounterSession, CounterSession>>)
+        })
+
+        @Expect(first.has("37"), false)
+        @Expect(second.has("37"), false)
     }
 
     @TestCase
@@ -1113,6 +1214,45 @@ public class LazySessionMiddlewareTest {
         @Expect(storage.readCount, 1)
         @Expect(storage.writeCount, 1)
         @Expect(counterValue(storage.inner.read("45")), 5)
+    }
+
+    @TestCase
+    public func lazySessionFlavorContextWritesResolvedTask(): Unit {
+        let storage = CountingStorage<CounterSession>()
+        storage.readCount = 0
+        storage.writeCount = 0
+
+        lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
+            testCtx(48),
+            { ctx: SessionFlavorContext<CounterSession> =>
+                ctx.setSessionTask(SessionTask<CounterSession>({ => CounterSession(15) }))
+            },
+        )
+
+        @Expect(storage.readCount, 0)
+        @Expect(storage.writeCount, 1)
+        @Expect(counterValue(storage.inner.read("48")), 15)
+    }
+
+    @TestCase
+    public func lazySessionOptionalTaskNoneDeletesStorage(): Unit {
+        let storage = CountingStorage<CounterSession>()
+        storage.write("49", CounterSession(5))
+        storage.readCount = 0
+        storage.writeCount = 0
+        storage.deleteCount = 0
+
+        lazySession<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
+            testCtx(49),
+            { ctx: SessionFlavorContext<CounterSession> =>
+                ctx.setOptionalSessionTask(SessionTask<Option<CounterSession>>({ => None<CounterSession> }))
+            },
+        )
+
+        @Expect(storage.readCount, 0)
+        @Expect(storage.writeCount, 0)
+        @Expect(storage.deleteCount, 1)
+        @Expect(storage.inner.has("49"), false)
     }
 }
 

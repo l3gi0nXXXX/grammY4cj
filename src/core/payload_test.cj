@@ -1,10 +1,50 @@
 package grammy4cj.core
 
 import grammy4cj.types.InputFile
+import grammy4cj.types.InputFileFetchAdapter
+import grammy4cj.types.InputFileFetchResult
+import grammy4cj.types.InputFileFileAdapter
+import grammy4cj.types.InputFileRawAdapter
 import std.collection.ArrayList
 import std.unittest.*
 
 private func ignorePayloadStreamError(_err: Exception): Unit {}
+
+private func chunkSummary(chunks: Array<Array<Byte>>): String {
+    var out = ""
+    var first = true
+    for (chunk in chunks) {
+        if (!first) {
+            out += "|"
+        }
+        out += String.fromUtf8(chunk)
+        first = false
+    }
+    out
+}
+
+private class FakePayloadFileAdapter <: InputFileFileAdapter {
+    public var lastPath: String = ""
+
+    public init() {}
+
+    public func read(path: String): Array<Byte> {
+        this.lastPath = path
+        ("file:" + path).toArray()
+    }
+}
+
+private class FakePayloadFetchAdapter <: InputFileFetchAdapter {
+    public var lastUrl: String = ""
+    public var body: Array<Byte> = "fetch-body".toArray()
+
+    public init() {}
+
+    public func fetch(url: String): InputFileFetchResult {
+        this.lastUrl = url
+        InputFileFetchResult(url, this.body)
+    }
+}
 
 @Test
 public class PayloadTest {
@@ -73,13 +113,14 @@ public class PayloadTest {
         payload.addFile("document", InputFile.fromBytes("abc", "my-file"))
 
         let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
 
         @Expect(req.method, "POST")
         @Expect(req.headers, "content-type=multipart/form-data; boundary=boundary;connection=keep-alive")
-        @Expect(req.body.contains("name=\"chat_id\"\r\n\r\n42"), true)
-        @Expect(req.body.contains("name=\"document\"\r\n\r\nattach://attach0"), true)
-        @Expect(req.body.contains("name=\"attach0\";filename=my-file"), true)
-        @Expect(req.body.contains("abc\r\n--boundary--"), true)
+        @Expect(body.contains("name=\"chat_id\"\r\n\r\n42"), true)
+        @Expect(body.contains("name=\"document\"\r\n\r\nattach://attach0"), true)
+        @Expect(body.contains("name=\"attach0\";filename=my-file"), true)
+        @Expect(body.contains("abc\r\n--boundary--"), true)
         @Expect(req.bodyKind, "stream")
         @Expect(req.stream.chunkCount() > 0, true)
     }
@@ -91,13 +132,14 @@ public class PayloadTest {
         payload.addFile("document", InputFile.fromBytes("abc", "my-file"))
 
         let req = createFormDataPayload(payload, ignorePayloadStreamError)
+        let body = req.stream.drain()
 
         @Expect(req.method, "POST")
         @Expect(req.headers.contains("content-type=multipart/form-data; boundary=----------"), true)
-        @Expect(req.body.startsWith("------------"), true)
-        @Expect(req.body.contains("name=\"document\"\r\n\r\nattach://"), true)
-        @Expect(req.body.contains("filename=my-file"), true)
-        @Expect(req.body.contains("abc\r\n--"), true)
+        @Expect(body.startsWith("------------"), true)
+        @Expect(body.contains("name=\"document\"\r\n\r\nattach://"), true)
+        @Expect(body.contains("filename=my-file"), true)
+        @Expect(body.contains("abc\r\n--"), true)
         @Expect(req.bodyKind, "stream")
     }
 
@@ -107,34 +149,57 @@ public class PayloadTest {
         payload.addFile("document", InputFile.fromIterable("iterable-bytes", "iter.txt"))
 
         let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
 
-        @Expect(req.body.contains("name=\"attach0\";filename=iter.txt"), true)
-        @Expect(req.body.contains("iterable-bytes\r\n--boundary--"), true)
+        @Expect(body.contains("name=\"attach0\";filename=iter.txt"), true)
+        @Expect(body.contains("iterable-bytes\r\n--boundary--"), true)
+    }
+
+    @TestCase
+    public func multipartPayloadPreservesRawChunkOrder(): Unit {
+        let payload = Payload("")
+        payload.addFile("document", InputFile.fromAsyncIterable("AA|BB", "chunks.bin"))
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+        let chunks = req.stream.drainChunks()
+        let summary = chunkSummary(chunks)
+
+        @Expect(req.bodyKind, "stream")
+        @Expect(summary.contains("AA|BB|\r\n--boundary--\r\n"), true)
     }
 
     @TestCase
     public func multipartPayloadUsesInputFileRawFilenameInference(): Unit {
+        let fileAdapter = FakePayloadFileAdapter()
+        let adapter = InputFileRawAdapter(fileAdapter, FakePayloadFetchAdapter())
         let payload = Payload("")
         payload.addFile("photo", InputFile.fromPath("/tmp/images/photo.png"))
 
-        let req = createFormDataPayload(payload, "boundary", "attach")
+        let req = createFormDataPayload(payload, "boundary", "attach", adapter)
+        let body = req.stream.drain()
 
-        @Expect(req.body.contains("name=\"attach0\";filename=photo.png"), true)
-        @Expect(req.body.contains("/tmp/images/photo.png\r\n--boundary--"), true)
+        @Expect(body.contains("name=\"attach0\";filename=photo.png"), true)
+        @Expect(body.contains("file:/tmp/images/photo.png\r\n--boundary--"), true)
+        @Expect(fileAdapter.lastPath, "/tmp/images/photo.png")
     }
 
     @TestCase
     public func multipartPayloadUsesUrlAndAsyncIterableRawSources(): Unit {
+        let fetchAdapter = FakePayloadFetchAdapter()
+        fetchAdapter.body = "remote-report".toArray()
+        let adapter = InputFileRawAdapter(FakePayloadFileAdapter(), fetchAdapter)
         let payload = Payload("")
         payload.addFile("document", InputFile.fromUrl("https://example.test/files/report.pdf?download=1"))
         payload.addFile("voice", InputFile.fromAsyncIterable("async-bytes", "voice.ogg"))
 
-        let req = createFormDataPayload(payload, "boundary", "attach")
+        let req = createFormDataPayload(payload, "boundary", "attach", adapter)
+        let body = req.stream.drain()
 
-        @Expect(req.body.contains("name=\"attach0\";filename=report.pdf"), true)
-        @Expect(req.body.contains("https://example.test/files/report.pdf?download=1"), true)
-        @Expect(req.body.contains("name=\"attach1\";filename=voice.ogg"), true)
-        @Expect(req.body.contains("async-bytes\r\n--boundary--"), true)
+        @Expect(body.contains("name=\"attach0\";filename=report.pdf"), true)
+        @Expect(body.contains("remote-report\r\n--boundary"), true)
+        @Expect(fetchAdapter.lastUrl, "https://example.test/files/report.pdf?download=1")
+        @Expect(body.contains("name=\"attach1\";filename=voice.ogg"), true)
+        @Expect(body.contains("async-bytes\r\n--boundary--"), true)
     }
 
     @TestCase
@@ -175,10 +240,11 @@ public class PayloadTest {
         item.addFile("media", InputFile.fromBytes("abc", ""))
 
         let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
 
         @Expect(requiresFormDataUpload(payload), true)
-        @Expect(req.body.contains("\"media\":\"attach://attach0\""), true)
-        @Expect(req.body.contains("name=\"attach0\";filename=photo.jpg"), true)
+        @Expect(body.contains("\"media\":\"attach://attach0\""), true)
+        @Expect(body.contains("name=\"attach0\";filename=photo.jpg"), true)
     }
 
     @TestCase
@@ -197,14 +263,15 @@ public class PayloadTest {
         files.addFileItem(InputFile.fromBytes("document-bytes", "doc.txt"))
 
         let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
 
         @Expect(requiresFormDataUpload(payload), true)
-        @Expect(req.body.contains("\"media\":\"attach://attach0\""), true)
-        @Expect(req.body.contains("\"thumbnail\":\"attach://attach1\""), true)
-        @Expect(req.body.contains("\"files\":[\"attach://attach2\"]"), true)
-        @Expect(req.body.contains("name=\"attach0\";filename=photo.jpg"), true)
-        @Expect(req.body.contains("name=\"attach1\";filename=thumbnail.jpg"), true)
-        @Expect(req.body.contains("name=\"attach2\";filename=doc.txt"), true)
+        @Expect(body.contains("\"media\":\"attach://attach0\""), true)
+        @Expect(body.contains("\"thumbnail\":\"attach://attach1\""), true)
+        @Expect(body.contains("\"files\":[\"attach://attach2\"]"), true)
+        @Expect(body.contains("name=\"attach0\";filename=photo.jpg"), true)
+        @Expect(body.contains("name=\"attach1\";filename=thumbnail.jpg"), true)
+        @Expect(body.contains("name=\"attach2\";filename=doc.txt"), true)
     }
 
     @TestCase
@@ -248,7 +315,7 @@ public class PayloadTest {
         let first = createFormDataPayload(payload, "boundary", "attach")
         let second = createFormDataPayload(payload, "boundary", "attach")
 
-        @Expect(first.body, second.body)
+        @Expect(first.stream.drain(), second.stream.drain())
     }
 
     @TestCase

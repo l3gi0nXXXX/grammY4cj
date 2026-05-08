@@ -156,7 +156,7 @@ public class BotWebhookUpdateHandler <: WebhookUpdateHandler {
     override public func handleUpdate(update: Update, webhookReplyEnvelope: WebhookReplyEnvelope): Unit {
         this.handleUpdateCount += 1
         this.lastUpdateId = update.updateId
-        this.bot.handleUpdate(update)
+        this.bot.handleUpdate(update, webhookReplyEnvelope)
     }
 
     override public func onTimeout(): Unit {

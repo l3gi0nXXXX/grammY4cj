@@ -85,13 +85,14 @@ public class ApiClientTest {
 
     @TestCase
     public func defaultApiClientUsesNativeFetchAdapterInsteadOfNoop(): Unit {
-        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false))
+        let client = ApiClient(ApiClientOptions("unsupported://telegram", "prod", 500, true, false))
 
         try {
             client.callApi("token", "getMe", Payload("{}"))
             @Expect(true, false)
         } catch (err: HttpError) {
-            @Expect(err.message.contains("Native HTTP fetch adapter failed"), true)
+            @Expect(err.message.contains("Network request for 'getMe' failed!"), true)
+            @Expect(err.message.contains("Native HTTP fetch adapter failed"), false)
             @Expect(err.message.contains("No HTTP client configured"), false)
         }
     }

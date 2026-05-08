@@ -133,6 +133,10 @@ public class BotApiBoundary {
     public func copyForUpdate(): BotApiBoundary {
         BotApiBoundary(this.token, this.client, this.transformers.copy(), this.webhookReplyEnvelope)
     }
+
+    public func copyForUpdate(webhookReplyEnvelope: WebhookReplyEnvelope): BotApiBoundary {
+        BotApiBoundary(this.token, this.client, this.transformers.copy(), Some(webhookReplyEnvelope))
+    }
 }
 
 public class BotUpdateContextBoundary {
@@ -202,7 +206,7 @@ public class PollingOptions {
         allowedUpdates!: Array<String> = [],
         allowedUpdatesSpecified!: Bool = false,
         dropPendingUpdates!: Bool = false,
-        maxFetchCycles!: Int64 = 1,
+        maxFetchCycles!: Int64 = 0,
         onStart!: Option<BotStartHook> = None<BotStartHook>
     ) {
         this.limit = if (limit > 0) { limit } else { 100 }
@@ -210,7 +214,7 @@ public class PollingOptions {
         this.allowedUpdates = allowedUpdates
         this.allowedUpdatesSpecified = allowedUpdatesSpecified
         this.dropPendingUpdates = dropPendingUpdates
-        this.maxFetchCycles = if (maxFetchCycles > 0) { maxFetchCycles } else { 1 }
+        this.maxFetchCycles = if (maxFetchCycles > 0) { maxFetchCycles } else { 0 }
         this.onStart = onStart
     }
 }
@@ -517,6 +521,7 @@ public interface BotRuntime {
     func getMe(signal: CancelSignal): UserFromGetMe
     func deleteWebhook(dropPendingUpdates: Bool, signal: CancelSignal): Unit
     func getUpdates(request: PollingFetchRequest, signal: CancelSignal): Array<Update>
+    func shouldStopPolling(): Bool
 }
 
 public class DefaultBotRuntime <: BotRuntime {
@@ -532,6 +537,10 @@ public class DefaultBotRuntime <: BotRuntime {
 
     override public func getUpdates(request: PollingFetchRequest, signal: CancelSignal): Array<Update> {
         throw Exception("DefaultBotRuntime is a constructor placeholder and must be resolved before use.")
+    }
+
+    override public func shouldStopPolling(): Bool {
+        false
     }
 }
 
@@ -562,6 +571,10 @@ public class ApiBackedBotRuntime <: BotRuntime {
         let result = this.client.callApi(this.token, "getUpdates", pollingPayload(request), signal)
         parseUpdates(result)
     }
+
+    override public func shouldStopPolling(): Bool {
+        false
+    }
 }
 
 public class OfflineBotRuntime <: BotRuntime {
@@ -579,6 +592,10 @@ public class OfflineBotRuntime <: BotRuntime {
     override public func getUpdates(request: PollingFetchRequest, signal: CancelSignal): Array<Update> {
         signal.throwIfCancelled()
         []
+    }
+
+    override public func shouldStopPolling(): Bool {
+        false
     }
 }
 
@@ -611,6 +628,7 @@ public class FakeBotRuntime <: BotRuntime {
     public let pollingRequests: ArrayList<PollingFetchRequest> = ArrayList<PollingFetchRequest>()
     public let pollingSignals: ArrayList<CancelSignal> = ArrayList<CancelSignal>()
     public let deleteWebhookErrors: ArrayList<Exception> = ArrayList<Exception>()
+    public var stopWhenPollingStepsExhausted: Bool = true
     private var getMeErrorCursor: Int64 = 0
     private var pollingCursor: Int64 = 0
     private var deleteWebhookErrorCursor: Int64 = 0
@@ -673,6 +691,10 @@ public class FakeBotRuntime <: BotRuntime {
             case Some(err) => throw err
             case None => step.updates
         }
+    }
+
+    override public func shouldStopPolling(): Bool {
+        this.stopWhenPollingStepsExhausted && this.pollingCursor >= this.pollingSteps.size
     }
 }
 

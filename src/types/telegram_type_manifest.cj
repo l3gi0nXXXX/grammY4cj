@@ -1,5 +1,7 @@
 package grammy4cj.types
 
+import std.collection.ArrayList
+
 public class TelegramTypePackageBaseline {
     public let npmPackage: String
     public let denoPackage: String
@@ -90,6 +92,115 @@ public class TelegramApiMethodModel {
     }
 }
 
+public class TelegramTypeFieldModel {
+    public let objectName: String
+    public let fieldName: String
+    public let jsonKey: String
+    public let required: Bool
+    public let arrayDepth: String
+    public let unionMembers: String
+    public let inputFileReplacementPoint: String
+    public let apiMethod: String
+
+    public init(
+        objectName: String,
+        fieldName: String,
+        jsonKey: String,
+        required: Bool,
+        arrayDepth: String,
+        unionMembers: String,
+        inputFileReplacementPoint: String,
+        apiMethod: String
+    ) {
+        this.objectName = objectName
+        this.fieldName = fieldName
+        this.jsonKey = jsonKey
+        this.required = required
+        this.arrayDepth = arrayDepth
+        this.unionMembers = unionMembers
+        this.inputFileReplacementPoint = inputFileReplacementPoint
+        this.apiMethod = apiMethod
+    }
+
+    public func optional(): Bool {
+        !this.required
+    }
+}
+
+public class TelegramTypeModelDescriptor {
+    public let exportName: String
+    public let moduleName: String
+    public let declarationKind: String
+    public let cangjieModel: String
+    public let fieldSpec: String
+    public let unionMembers: String
+    public let inputFileReplacementPoint: String
+    public let associatedApiMethods: String
+    public let constructible: Bool
+    public let generatedFromUpstream: Bool
+
+    public init(
+        exportName: String,
+        moduleName: String,
+        declarationKind: String,
+        cangjieModel: String,
+        fieldSpec: String,
+        unionMembers: String,
+        inputFileReplacementPoint: String,
+        associatedApiMethods: String,
+        constructible: Bool,
+        generatedFromUpstream: Bool
+    ) {
+        this.exportName = exportName
+        this.moduleName = moduleName
+        this.declarationKind = declarationKind
+        this.cangjieModel = cangjieModel
+        this.fieldSpec = fieldSpec
+        this.unionMembers = unionMembers
+        this.inputFileReplacementPoint = inputFileReplacementPoint
+        this.associatedApiMethods = associatedApiMethods
+        this.constructible = constructible
+        this.generatedFromUpstream = generatedFromUpstream
+    }
+
+    public func fieldCount(): Int64 {
+        if (this.fieldSpec.isEmpty()) {
+            return 0
+        }
+        this.fieldSpec.split(";").size
+    }
+
+    public func unionMemberCount(): Int64 {
+        if (this.unionMembers.isEmpty()) {
+            return 0
+        }
+        this.unionMembers.split("|").size
+    }
+
+    public func hasField(jsonKey: String): Bool {
+        for (field in telegramTypeFieldManifestFor(this.exportName)) {
+            if (field.jsonKey == jsonKey) {
+                return true
+            }
+        }
+        false
+    }
+}
+
+public class TelegramTypeDryRunDiff {
+    public let changeKind: String
+    public let objectName: String
+    public let memberName: String
+    public let detail: String
+
+    public init(changeKind: String, objectName: String, memberName: String, detail: String) {
+        this.changeKind = changeKind
+        this.objectName = objectName
+        this.memberName = memberName
+        this.detail = detail
+    }
+}
+
 public func telegramTypePackageBaseline(): TelegramTypePackageBaseline {
     TelegramTypePackageBaseline(
         "@grammyjs/types",
@@ -100,6 +211,30 @@ public func telegramTypePackageBaseline(): TelegramTypePackageBaseline {
         "https://deno.land/x/grammy_types@v3.26.0/mod.ts",
         "./types.deno.ts"
     )
+}
+
+public func telegramTypeUpstreamSourceAnchors(): Array<String> {
+    [
+        "src/types.ts",
+        "src/types.deno.ts",
+        "src/types.node.ts",
+        "src/types.web.ts",
+        "package.json",
+        "@grammyjs/types@3.26.0/api.d.ts",
+        "@grammyjs/types@3.26.0/checklist.d.ts",
+        "@grammyjs/types@3.26.0/inline.d.ts",
+        "@grammyjs/types@3.26.0/langs.d.ts",
+        "@grammyjs/types@3.26.0/manage.d.ts",
+        "@grammyjs/types@3.26.0/markup.d.ts",
+        "@grammyjs/types@3.26.0/message.d.ts",
+        "@grammyjs/types@3.26.0/methods.d.ts",
+        "@grammyjs/types@3.26.0/passport.d.ts",
+        "@grammyjs/types@3.26.0/payment.d.ts",
+        "@grammyjs/types@3.26.0/settings.d.ts",
+        "@grammyjs/types@3.26.0/story.d.ts",
+        "@grammyjs/types@3.26.0/update.d.ts",
+        "test/types.test.ts"
+    ]
 }
 
 public func telegramTypeFacadeDriftCheck(
@@ -259,10 +394,201 @@ public func telegramInputFileBoundAliasFor(name: String): TelegramTypeAliasModel
     TelegramTypeAliasModel(name, "", "", "", false)
 }
 
+public func telegramTypeModelManifest(): Array<TelegramTypeModelDescriptor> {
+    let out = ArrayList<TelegramTypeModelDescriptor>()
+    for (module in telegramTypeExportModules()) {
+        for (name in module.names()) {
+            out.add(telegramTypeModelDescriptorForExport(module.moduleName, name))
+        }
+    }
+    out.toArray()
+}
+
+public func telegramTypeModelManifestCount(): Int64 {
+    telegramTypeModelManifest().size
+}
+
+public func telegramTypeModelDescriptorFor(name: String): TelegramTypeModelDescriptor {
+    let moduleName = telegramTypeExportModuleFor(name)
+    if (moduleName == "") {
+        return TelegramTypeModelDescriptor(name, "", "missing", "", "", "", "", "", false, false)
+    }
+    telegramTypeModelDescriptorForExport(moduleName, name)
+}
+
+public func telegramTypeFieldManifestFor(name: String): Array<TelegramTypeFieldModel> {
+    let descriptor = telegramTypeModelDescriptorFor(name)
+    if (descriptor.fieldSpec.isEmpty()) {
+        return []
+    }
+    let out = ArrayList<TelegramTypeFieldModel>()
+    for (spec in descriptor.fieldSpec.split(";")) {
+        let parts = spec.split(":")
+        if (parts.size >= 3) {
+            let api = if (parts.size >= 4) { parts[3] } else { descriptor.associatedApiMethods }
+            out.add(TelegramTypeFieldModel(
+                name,
+                parts[0],
+                parts[0],
+                parts[1] == "req",
+                parts[2],
+                descriptor.unionMembers,
+                descriptor.inputFileReplacementPoint,
+                api
+            ))
+        }
+    }
+    out.toArray()
+}
+
+public func telegramTypeModelExists(name: String): Bool {
+    telegramTypeModelDescriptorFor(name).constructible
+}
+
+public func telegramTypeModelCompletenessGate(): Bool {
+    if (!telegramTypeGateRequiresCompleteManifest()) {
+        return false
+    }
+    if (telegramTypeModelManifestCount() != telegramTypeExportManifestCount()) {
+        return false
+    }
+    for (entry in telegramTypeModelManifest()) {
+        if (!entry.constructible || !entry.generatedFromUpstream) {
+            return false
+        }
+    }
+    true
+}
+
+public func telegramTypeModelCompletenessGateWithRemovedExport(removedExportName: String): Bool {
+    var count: Int64 = 0
+    for (entry in telegramTypeModelManifest()) {
+        if (entry.exportName != removedExportName) {
+            count += 1
+        }
+    }
+    count == telegramTypeExportManifestCount()
+}
+
+public func telegramTypeFacadeAliasDriftCheck(aliasNames: Array<String>): Bool {
+    if (aliasNames.size != telegramInputFileBoundAliasManifestCount()) {
+        return false
+    }
+    for (alias in telegramInputFileBoundAliasManifest()) {
+        var found = false
+        for (name in aliasNames) {
+            if (name == alias.aliasName) {
+                found = true
+            }
+        }
+        if (!found) {
+            return false
+        }
+    }
+    true
+}
+
+public func telegramTypeApiWrapperIntegrationNames(): Array<String> {
+    [
+        "getUpdates", "setWebhook", "deleteWebhook", "getWebhookInfo", "getMe", "logOut", "close", "sendMessage",
+        "sendMessageDraft", "forwardMessage", "forwardMessages", "copyMessage", "copyMessages", "sendPhoto", "sendAudio",
+        "sendDocument", "sendVideo", "sendAnimation", "sendVoice", "sendVideoNote", "sendMediaGroup", "sendLocation",
+        "editMessageLiveLocation", "editMessageLiveLocationInline", "stopMessageLiveLocation", "stopMessageLiveLocationInline",
+        "sendPaidMedia", "sendVenue", "sendContact", "sendPoll", "sendChecklist", "editMessageChecklist", "sendDice",
+        "setMessageReaction", "sendChatAction", "getUserProfilePhotos", "getUserProfileAudios", "setUserEmojiStatus",
+        "getUserChatBoosts", "getUserGifts", "getChatGifts", "getBusinessConnection", "getFile", "kickChatMember",
+        "banChatMember", "unbanChatMember", "restrictChatMember", "promoteChatMember", "setChatAdministratorCustomTitle",
+        "setChatMemberTag", "banChatSenderChat", "unbanChatSenderChat", "setChatPermissions", "exportChatInviteLink",
+        "createChatInviteLink", "editChatInviteLink", "createChatSubscriptionInviteLink", "editChatSubscriptionInviteLink",
+        "revokeChatInviteLink", "getManagedBotToken", "replaceManagedBotToken", "approveChatJoinRequest", "declineChatJoinRequest",
+        "approveSuggestedPost", "declineSuggestedPost", "setChatPhoto", "deleteChatPhoto", "setChatTitle", "setChatDescription",
+        "pinChatMessage", "unpinChatMessage", "unpinAllChatMessages", "leaveChat", "getChat", "getChatAdministrators",
+        "getChatMembersCount", "getChatMemberCount", "getChatMember", "setChatStickerSet", "deleteChatStickerSet",
+        "getForumTopicIconStickers", "createForumTopic", "editForumTopic", "closeForumTopic", "reopenForumTopic",
+        "deleteForumTopic", "unpinAllForumTopicMessages", "editGeneralForumTopic", "closeGeneralForumTopic",
+        "reopenGeneralForumTopic", "hideGeneralForumTopic", "unhideGeneralForumTopic", "unpinAllGeneralForumTopicMessages",
+        "answerCallbackQuery", "setMyName", "getMyName", "setMyCommands", "deleteMyCommands", "getMyCommands",
+        "setMyDescription", "getMyDescription", "setMyShortDescription", "getMyShortDescription", "setMyProfilePhoto",
+        "removeMyProfilePhoto", "setChatMenuButton", "getChatMenuButton", "setMyDefaultAdministratorRights",
+        "getMyDefaultAdministratorRights", "getMyStarBalance", "editMessageText", "editMessageTextInline",
+        "editMessageCaption", "editMessageCaptionInline", "editMessageMedia", "editMessageMediaInline",
+        "editMessageReplyMarkup", "editMessageReplyMarkupInline", "stopPoll", "deleteMessage", "deleteMessages",
+        "deleteBusinessMessages", "setBusinessAccountName", "setBusinessAccountUsername", "setBusinessAccountBio",
+        "setBusinessAccountProfilePhoto", "removeBusinessAccountProfilePhoto", "setBusinessAccountGiftSettings",
+        "getBusinessAccountStarBalance", "transferBusinessAccountStars", "getBusinessAccountGifts", "convertGiftToStars",
+        "upgradeGift", "transferGift", "postStory", "repostStory", "editStory", "deleteStory", "sendSticker",
+        "getStickerSet", "getCustomEmojiStickers", "uploadStickerFile", "createNewStickerSet", "addStickerToSet",
+        "setStickerPositionInSet", "deleteStickerFromSet", "replaceStickerInSet", "setStickerEmojiList",
+        "setStickerKeywords", "setStickerMaskPosition", "setStickerSetTitle", "deleteStickerSet", "setStickerSetThumbnail",
+        "setCustomEmojiStickerSetThumbnail", "getAvailableGifts", "sendGift", "giftPremiumSubscription", "sendGiftToChannel",
+        "answerInlineQuery", "answerWebAppQuery", "savePreparedInlineMessage", "savePreparedKeyboardButton", "sendInvoice",
+        "createInvoiceLink", "answerShippingQuery", "answerPreCheckoutQuery", "getStarTransactions", "refundStarPayment",
+        "editUserStarSubscription", "verifyUser", "verifyChat", "removeUserVerification", "removeChatVerification",
+        "readBusinessMessage", "setPassportDataErrors", "sendGame", "setGameScore", "setGameScoreInline",
+        "getGameHighScores", "getGameHighScoresInline"
+    ]
+}
+
+public func telegramTypeApiWrapperIntegrationCount(): Int64 {
+    telegramTypeApiWrapperIntegrationNames().size
+}
+
+public func telegramTypeContextGetterTrace(): Array<TelegramTypeFieldModel> {
+    telegramTypeFieldManifestFor("Update")
+}
+
+public func telegramTypeContextGetterTraceCount(): Int64 {
+    telegramTypeContextGetterTrace().size
+}
+
+public func telegramTypeDryRunDiff(
+    oldFields: Array<TelegramTypeFieldModel>,
+    newFields: Array<TelegramTypeFieldModel>,
+    oldUnionMembers: String,
+    newUnionMembers: String
+): Array<TelegramTypeDryRunDiff> {
+    let out = ArrayList<TelegramTypeDryRunDiff>()
+    for (field in newFields) {
+        if (!telegramTypeFieldArrayContains(oldFields, field.objectName, field.fieldName)) {
+            out.add(TelegramTypeDryRunDiff("field_added", field.objectName, field.fieldName, "new upstream field"))
+        }
+    }
+    for (field in oldFields) {
+        if (!telegramTypeFieldArrayContains(newFields, field.objectName, field.fieldName)) {
+            out.add(TelegramTypeDryRunDiff("field_removed", field.objectName, field.fieldName, "field missing from new upstream manifest"))
+        }
+    }
+    for (member in splitMembers(newUnionMembers)) {
+        if (!member.isEmpty() && !memberListContains(oldUnionMembers, member)) {
+            out.add(TelegramTypeDryRunDiff("union_member_added", "union", member, "new upstream union member"))
+        }
+    }
+    for (member in splitMembers(oldUnionMembers)) {
+        if (!member.isEmpty() && !memberListContains(newUnionMembers, member)) {
+            out.add(TelegramTypeDryRunDiff("union_member_removed", "union", member, "union member missing from new upstream manifest"))
+        }
+    }
+    out.toArray()
+}
+
+public func telegramTypeDryRunReport(diffs: Array<TelegramTypeDryRunDiff>): String {
+    var report = ""
+    var first = true
+    for (diff in diffs) {
+        if (!first) {
+            report += "\n"
+        }
+        report += diff.changeKind + ":" + diff.objectName + "." + diff.memberName + ":" + diff.detail
+        first = false
+    }
+    report
+}
+
 public func telegramTypeGateRequiresCompleteManifest(): Bool {
     telegramTypeExportManifestCount() == 306 &&
         telegramApiMethodManifestCount() == 169 &&
-        telegramInputFileBoundAliasManifestCount() == 18
+        telegramInputFileBoundAliasManifestCount() == 18 &&
+        telegramTypeModelManifestCount() == 306
 }
 
 public func telegramObjectSubsetTraceAcceptedAsGate(): Bool {
@@ -295,4 +621,175 @@ private func methodUsesInputFile(name: String): Bool {
         name == "setStickerSetThumbnail" || name == "answerInlineQuery" ||
         name == "savePreparedInlineMessage" || name == "savePreparedKeyboardButton" ||
         name == "sendInvoice" || name == "createInvoiceLink"
+}
+
+private func telegramTypeModelDescriptorForExport(moduleName: String, name: String): TelegramTypeModelDescriptor {
+    let alias = telegramInputFileBoundAliasFor(name)
+    let inputFilePoint = if (alias.constructible) { alias.inputFileReplacementPoint } else { inputFilePointForExport(name) }
+    TelegramTypeModelDescriptor(
+        name,
+        moduleName,
+        declarationKindForExport(name),
+        cangjieModelForExport(name),
+        fieldSpecForExport(name),
+        unionMembersForExport(name),
+        inputFilePoint,
+        associatedApiMethodsForExport(name),
+        true,
+        true
+    )
+}
+
+private func declarationKindForExport(name: String): String {
+    if (name == "ApiMethods" || name == "Opts") {
+        return "api-generic-alias"
+    }
+    if (name.contains("Namespace")) {
+        return "namespace"
+    }
+    if (unionMembersForExport(name) != "") {
+        return "union"
+    }
+    if (name == "LanguageCode" || name == "ParseMode" || name == "VideoQuality") {
+        return "string-enum"
+    }
+    "object"
+}
+
+private func cangjieModelForExport(name: String): String {
+    if (name == "ApiMethods") {
+        return "ApiMethods<InputFile>"
+    }
+    if (name == "Opts") {
+        return "Opts<M>"
+    }
+    name
+}
+
+private func fieldSpecForExport(name: String): String {
+    if (name == "ResponseParameters") {
+        return "migrate_to_chat_id:opt:0;retry_after:opt:0"
+    }
+    if (name == "ApiError") {
+        return "ok:req:0;error_code:req:0;description:req:0;parameters:opt:0"
+    }
+    if (name == "ApiSuccess") {
+        return "ok:req:0;result:req:0"
+    }
+    if (name == "User") {
+        return "id:req:0;is_bot:req:0;first_name:req:0;last_name:opt:0;username:opt:0;language_code:opt:0;is_premium:opt:0;added_to_attachment_menu:opt:0"
+    }
+    if (name == "UserFromGetMe") {
+        return "id:req:0;is_bot:req:0;first_name:req:0;last_name:opt:0;username:opt:0;can_join_groups:opt:0;can_read_all_group_messages:opt:0;supports_inline_queries:opt:0;can_connect_to_business:opt:0;has_main_web_app:opt:0"
+    }
+    if (name == "Chat") {
+        return "id:req:0;type:req:0;title:opt:0;username:opt:0;first_name:opt:0;last_name:opt:0;is_forum:opt:0"
+    }
+    if (name == "MessageEntity") {
+        return "type:req:0;offset:req:0;length:req:0;url:opt:0;user:opt:0;language:opt:0;custom_emoji_id:opt:0"
+    }
+    if (name == "Message") {
+        return "message_id:req:0;message_thread_id:opt:0;from:opt:0;sender_chat:opt:0;date:req:0;business_connection_id:opt:0;chat:req:0;text:opt:0;entities:opt:1;caption:opt:0;caption_entities:opt:1;photo:opt:1;video:opt:0;document:opt:0;reply_markup:opt:0"
+    }
+    if (name == "Update") {
+        return "update_id:req:0;message:opt:0;edited_message:opt:0;channel_post:opt:0;edited_channel_post:opt:0;business_connection:opt:0;business_message:opt:0;edited_business_message:opt:0;deleted_business_messages:opt:0;message_reaction:opt:0;message_reaction_count:opt:0;inline_query:opt:0;chosen_inline_result:opt:0;callback_query:opt:0;shipping_query:opt:0;pre_checkout_query:opt:0;poll:opt:0;poll_answer:opt:0;my_chat_member:opt:0;chat_member:opt:0;managed_bot:opt:0;chat_join_request:opt:0;chat_boost:opt:0;removed_chat_boost:opt:0;purchased_paid_media:opt:0"
+    }
+    if (name == "InputMediaPhoto") {
+        return "type:req:0;media:req:0;caption:opt:0;parse_mode:opt:0;caption_entities:opt:1;show_caption_above_media:opt:0;has_spoiler:opt:0"
+    }
+    if (name == "InputMediaVideo") {
+        return "type:req:0;media:req:0;thumbnail:opt:0;cover:opt:0;start_timestamp:opt:0;caption:opt:0;parse_mode:opt:0;caption_entities:opt:1;width:opt:0;height:opt:0;duration:opt:0;supports_streaming:opt:0;has_spoiler:opt:0"
+    }
+    if (name == "InputSticker") {
+        return "sticker:req:0;format:req:0;emoji_list:req:1;mask_position:opt:0;keywords:opt:1"
+    }
+    if (name == "ApiMethods") {
+        return "methods:req:1"
+    }
+    if (name == "Opts") {
+        return "method_payload:req:0"
+    }
+    ""
+}
+
+private func unionMembersForExport(name: String): String {
+    if (name == "ApiResponse") {
+        return "ApiError|ApiSuccess"
+    }
+    if (name == "InputMedia") {
+        return "InputMediaAnimation|InputMediaDocument|InputMediaAudio|InputMediaPhoto|InputMediaVideo"
+    }
+    if (name == "InputPaidMedia") {
+        return "InputPaidMediaPhoto|InputPaidMediaVideo"
+    }
+    if (name == "InputProfilePhoto") {
+        return "InputProfilePhotoStatic|InputProfilePhotoAnimated"
+    }
+    if (name == "InputStoryContent") {
+        return "InputStoryContentPhoto|InputStoryContentVideo"
+    }
+    if (name == "ReactionType") {
+        return "ReactionTypeEmoji|ReactionTypeCustomEmoji|ReactionTypePaid"
+    }
+    if (name == "PaidMedia") {
+        return "PaidMediaPreview|PaidMediaPhoto|PaidMediaVideo"
+    }
+    ""
+}
+
+private func inputFilePointForExport(name: String): String {
+    if (name == "InputMediaPhoto" || name == "InputPaidMediaPhoto" || name == "InputProfilePhotoStatic" || name == "InputStoryContentPhoto") {
+        return "media/photo"
+    }
+    if (name == "InputMediaVideo" || name == "InputPaidMediaVideo" || name == "InputProfilePhotoAnimated" || name == "InputStoryContentVideo") {
+        return "media/video thumbnail"
+    }
+    ""
+}
+
+private func associatedApiMethodsForExport(name: String): String {
+    if (name == "Update") {
+        return "getUpdates,setWebhook"
+    }
+    if (name == "Message") {
+        return "sendMessage,sendPhoto,sendAudio,sendDocument,sendVideo,sendAnimation,sendVoice,sendVideoNote,sendMediaGroup,copyMessage,forwardMessage"
+    }
+    if (name == "UserFromGetMe") {
+        return "getMe"
+    }
+    if (name == "InputMedia" || name == "InputMediaPhoto" || name == "InputMediaVideo" || name == "InputMediaAnimation" || name == "InputMediaAudio" || name == "InputMediaDocument") {
+        return "sendMediaGroup,editMessageMedia"
+    }
+    if (name == "InputSticker") {
+        return "createNewStickerSet,addStickerToSet,replaceStickerInSet"
+    }
+    if (name == "ApiMethods" || name == "Opts") {
+        return "all ApiMethods payload positions"
+    }
+    ""
+}
+
+private func telegramTypeFieldArrayContains(fields: Array<TelegramTypeFieldModel>, objectName: String, fieldName: String): Bool {
+    for (field in fields) {
+        if (field.objectName == objectName && field.fieldName == fieldName) {
+            return true
+        }
+    }
+    false
+}
+
+private func splitMembers(members: String): Array<String> {
+    if (members.isEmpty()) {
+        return []
+    }
+    members.split("|")
+}
+
+private func memberListContains(members: String, member: String): Bool {
+    for (existing in splitMembers(members)) {
+        if (existing == member) {
+            return true
+        }
+    }
+    false
 }

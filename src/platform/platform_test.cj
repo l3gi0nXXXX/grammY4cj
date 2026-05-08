@@ -155,6 +155,17 @@ public class PlatformTest {
     }
 
     @TestCase
+    public func defaultPlatformDocumentsNativeHttpInsteadOfCurlShellOut(): Unit {
+        let nativeHttp = nativePlatformHttpClientContract()
+        let nativeFetch = nativePlatformFetchSourceContract()
+        let cjnative = platformRuntimeContractFor("cjnative")
+
+        @Expect(nativeHttp, "stdx.net.http.ClientBuilder")
+        @Expect(nativeFetch, "stdx.net.http.ClientBuilder")
+        @Expect(cjnative.baseFetchConfigContract, "stdx.net.http-client")
+    }
+
+    @TestCase
     public func baseFetchConfigMirrorsRuntimeContracts(): Unit {
         let https = baseFetchConfig("https://api.telegram.org")
         let http = baseFetchConfig("http://localhost:8081")
@@ -346,6 +357,7 @@ public class PlatformTest {
         @Expect(web.defaultAdapter, "cloudflare")
         @Expect(web.byteStreamContract, "manual-readable-stream")
         @Expect(cjnative.defaultAdapter, "cangjie-native")
+        @Expect(cjnative.baseFetchConfigContract, "stdx.net.http-client")
         @Expect(cjnative.byteStreamContract, "byte-source-stream")
     }
 }

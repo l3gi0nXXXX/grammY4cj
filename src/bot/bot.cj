@@ -14,6 +14,7 @@ import grammy4cj.core.CancelSignal
 import grammy4cj.core.CoreFetch
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
+import grammy4cj.core.WebhookReplyEnvelope
 import grammy4cj.filter.expandedFilterQueries
 import grammy4cj.types.Update
 import grammy4cj.types.UserFromGetMe
@@ -317,6 +318,14 @@ public class Bot {
     }
 
     public func handleUpdate(update: Update): Unit {
+        this.handleUpdate(update, None<WebhookReplyEnvelope>)
+    }
+
+    public func handleUpdate(update: Update, webhookReplyEnvelope: WebhookReplyEnvelope): Unit {
+        this.handleUpdate(update, Some(webhookReplyEnvelope))
+    }
+
+    private func handleUpdate(update: Update, webhookReplyEnvelope: Option<WebhookReplyEnvelope>): Unit {
         if (!this.isInited()) {
             throw BotConfigError("Bot not initialized! Call bot.init() or pass botInfo to BotConfig.")
         }
@@ -329,7 +338,7 @@ public class Bot {
         } catch (e: Exception) {
             throw BotError(e, ctx)
         }
-        this.notifyTestUpdateHandler(update)
+        this.notifyTestUpdateHandler(update, webhookReplyEnvelope)
     }
 
     public func start(): Unit {
@@ -407,7 +416,7 @@ public class Bot {
         var cycles: Int64 = 0
         this.middlewareLocked = true
         try {
-            while (this.pollingRunning && cycles < options.maxFetchCycles) {
+            while (this.pollingRunning) {
                 let allowed = if (includeAllowedUpdates) {
                     if (options.allowedUpdatesSpecified) { options.allowedUpdates } else { Array<String>() }
                 } else {
@@ -425,6 +434,11 @@ public class Bot {
                 this.handleUpdates(updates)
                 includeAllowedUpdates = false
                 cycles += 1
+                if (options.maxFetchCycles > 0 && cycles >= options.maxFetchCycles) {
+                    this.pollingRunning = false
+                } else if (this.runtime.shouldStopPolling()) {
+                    this.pollingRunning = false
+                }
             }
         } finally {
             if (this.pollingRunning) {
@@ -609,8 +623,11 @@ public class Bot {
         }
     }
 
-    private func notifyTestUpdateHandler(update: Update): Unit {
-        let apiForUpdate = this.apiBoundary.copyForUpdate()
+    private func notifyTestUpdateHandler(update: Update, webhookReplyEnvelope: Option<WebhookReplyEnvelope>): Unit {
+        let apiForUpdate = match (webhookReplyEnvelope) {
+            case Some(envelope) => this.apiBoundary.copyForUpdate(envelope)
+            case None => this.apiBoundary.copyForUpdate()
+        }
         let boundary = BotUpdateContextBoundary(update, apiForUpdate, this.botInfo)
         this.updateHandler.handle(boundary)
     }

@@ -4,6 +4,7 @@ import grammy4cj.context.Context
 import grammy4cj.core.Api
 import grammy4cj.types.{CallbackQuery, Chat, ChosenInlineResult, InlineQuery, Message, MessageEntity, MessageReactionUpdated, PreCheckoutQuery, ReactionType, ShippingQuery, Update, User, UserFromGetMe}
 import std.collection.{ArrayList, HashMap}
+import std.regex.Regex
 import std.sync.Mutex
 import std.unittest.*
 
@@ -441,6 +442,61 @@ public class ComposerMiddlewareTest {
         @Expect(events[7], "chosenInlineResult")
         @Expect(events[8], "preCheckoutQuery")
         @Expect(events[9], "shippingQuery")
+    }
+
+    @TestCase
+    public func regexpTriggerControlMethodsMirrorUpstreamComposerChaining(): Unit {
+        let chat = Chat(203, "private")
+        let user = User(302, false, "Barbara", "barbara")
+        let callbackMessage = Message(80, chat, "callback-message", user)
+        let events = ArrayList<String>()
+        let composer = Composer()
+
+        composer.hears(Regex("^x")).hears(Regex("x$"), eventMiddleware(events, "miss"))
+        composer.hears(Regex("^he")).hears([Regex("llo$")], eventMiddleware(events, "hears"))
+        composer.callbackQuery([Regex("^missing"), Regex("^cb")]).callbackQuery(Regex("^cb"), eventMiddleware(events, "callbackQuery"))
+        composer.gameQuery([Regex("^missing"), Regex("^ga")]).gameQuery([Regex("^ga")], eventMiddleware(events, "gameQuery"))
+        composer.inlineQuery([Regex("^missing"), Regex("^in")]).inlineQuery(Regex("^in"), eventMiddleware(events, "inlineQuery"))
+        composer.chosenInlineResult([Regex("^missing"), Regex("^cho")]).chosenInlineResult([Regex("^cho")], eventMiddleware(events, "chosenInlineResult"))
+        composer.preCheckoutQuery([Regex("^missing"), Regex("^pre")]).preCheckoutQuery(Regex("^pre"), eventMiddleware(events, "preCheckoutQuery"))
+        composer.shippingQuery([Regex("^missing"), Regex("^ship")]).shippingQuery([Regex("^ship")], eventMiddleware(events, "shippingQuery"))
+
+        let hearsCtx = Context(Update.withMessage(90, Message(81, chat, "hello", user)), Api("fake-token"), botInfo())
+        run(composer, hearsCtx)
+        @Expect(hearsCtx.`match`, "llo")
+
+        let callbackCtx = Context(Update.withCallbackQuery(91, CallbackQuery(user, "cb-data", callbackMessage)), Api("fake-token"), botInfo())
+        run(composer, callbackCtx)
+        @Expect(callbackCtx.`match`, "cb")
+
+        let gameCtx = Context(Update.withCallbackQuery(92, CallbackQuery(user, "", "game-data", callbackMessage, "")), Api("fake-token"), botInfo())
+        run(composer, gameCtx)
+        @Expect(gameCtx.`match`, "ga")
+
+        let inlineCtx = Context(Update.withInlineQuery(93, InlineQuery(user, "inline-data")), Api("fake-token"), botInfo())
+        run(composer, inlineCtx)
+        @Expect(inlineCtx.`match`, "in")
+
+        let chosenCtx = Context(Update.withChosenInlineResult(94, ChosenInlineResult(user, "chosen-data", "inline-id")), Api("fake-token"), botInfo())
+        run(composer, chosenCtx)
+        @Expect(chosenCtx.`match`, "cho")
+
+        let preCheckoutCtx = Context(Update.withPreCheckoutQuery(95, PreCheckoutQuery(user, "pre-data")), Api("fake-token"), botInfo())
+        run(composer, preCheckoutCtx)
+        @Expect(preCheckoutCtx.`match`, "pre")
+
+        let shippingCtx = Context(Update.withShippingQuery(96, ShippingQuery(user, "ship-data")), Api("fake-token"), botInfo())
+        run(composer, shippingCtx)
+        @Expect(shippingCtx.`match`, "ship")
+
+        @Expect(events.size, 7)
+        @Expect(events[0], "hears")
+        @Expect(events[1], "callbackQuery")
+        @Expect(events[2], "gameQuery")
+        @Expect(events[3], "inlineQuery")
+        @Expect(events[4], "chosenInlineResult")
+        @Expect(events[5], "preCheckoutQuery")
+        @Expect(events[6], "shippingQuery")
     }
 
     @TestCase

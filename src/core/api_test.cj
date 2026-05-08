@@ -280,7 +280,7 @@ public class ApiWrapperTest {
 
     @TestCase
     public func everyWrapperDispatchesToUpstreamRawMethod(): Unit {
-        let api = Api("token")
+        let api = Api.trace("token")
         let payload = Payload("").addValue("chat_id", "42").addValue("payload_matrix", "kept")
 
         for (method in apiWrapperMethodNames()) {
@@ -352,7 +352,7 @@ public class ApiWrapperTest {
         )
         @Expect(goldenRowFor(rows, "sendInvoice").contains("\"prices\":\"prices_value\""), true)
 
-        let api = Api("token")
+        let api = Api.trace("token")
         for (method in apiWrapperMethodNames()) {
             let output = callWrapper(api, method, apiWrapperMinimalPayloadFor(method))
             @Expect(methodName(output), apiWrapperSchemaTraceFor(method).rawMethodName)
@@ -462,7 +462,7 @@ public class ApiWrapperTest {
 
     @TestCase
     public func typedWrapperPayloadGoldensMergeRequiredAndOtherOptions(): Unit {
-        let api = Api("token")
+        let api = Api.trace("token")
 
         let messageOptions = Payload("").addValue("parse_mode", "MarkdownV2").addBool("disable_notification", true)
         let message = api.sendMessage(42, "hi", messageOptions)
@@ -563,8 +563,9 @@ public class ApiWrapperTest {
         try {
             api.sendMessage(42, "hi", controller.signal)
             @Expect(true, false)
-        } catch (err: Exception) {
-            @Expect(err.message.contains("Operation cancelled: abort send"), true)
+        } catch (err: HttpError) {
+            @Expect(err.message, "Network request for 'sendMessage' failed!")
+            @Expect(err.error.contains("Operation cancelled: abort send"), true)
         }
     }
 

@@ -1,6 +1,7 @@
 package grammy4cj.context
 
 import std.unittest.*
+import std.regex.Regex
 
 import grammy4cj.core.Api
 import grammy4cj.types.CallbackQuery
@@ -176,6 +177,36 @@ public class ContextTypeSurfaceTest {
         match (ctx.refineText("missing")) {
             case Some(_) => @Expect(false, true)
             case None => @Expect(true, true)
+        }
+    }
+
+    @TestCase
+    public func regexpPredicateAndRefineHelpersCompile(): Unit {
+        let chat = Chat(142, "private")
+        let user = User(242, false, "Grace", "grace")
+        let message = Message(542, chat, "regex text", user)
+        let ctx = typeTestContext(Update.withMessage(1411, message))
+
+        @Expect(ctx.hasText(Regex("^regex")), true)
+        let matchValue: String = ctx.`match`
+        @Expect(matchValue, "regex")
+
+        match (ctx.refineText(Regex("text$"))) {
+            case Some(narrowed) =>
+                let narrowedMessage: Message = narrowed.message
+                @Expect(narrowedMessage.messageId, 542)
+                @Expect(narrowed.`match`, "text")
+            case None => @Expect(false, true)
+        }
+
+        let callbackCtx = typeTestContext(Update.withCallbackQuery(
+            1412,
+            CallbackQuery(user, "callback-regex", "", message, "")
+        ))
+        @Expect(callbackCtx.hasCallbackQuery(Regex("^callback")), true)
+        match (callbackCtx.refineCallbackQuery([Regex("regex$")])) {
+            case Some(narrowed) => @Expect(narrowed.`match`, "regex")
+            case None => @Expect(false, true)
         }
     }
 }

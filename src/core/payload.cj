@@ -4,6 +4,8 @@ import std.collection.ArrayList
 import std.time.DateTime
 
 import grammy4cj.types.InputFile
+import grammy4cj.types.InputFileRawAdapter
+import grammy4cj.types.InputFileRawData
 
 public type MultipartStreamErrorCallback = (Exception) -> Unit
 
@@ -209,12 +211,32 @@ public class PayloadField {
 public class MultipartChunk {
     public let kind: String
     public let data: String
+    public let bytes: Array<Byte>
     public let sourceKind: String
+    public let raw: Option<InputFileRawData>
 
     public init(kind: String, data: String, sourceKind: String) {
         this.kind = kind
         this.data = data
+        this.bytes = data.toArray()
         this.sourceKind = sourceKind
+        this.raw = None<InputFileRawData>
+    }
+
+    public init(kind: String, bytes: Array<Byte>, sourceKind: String) {
+        this.kind = kind
+        this.data = String.fromUtf8(bytes)
+        this.bytes = bytes
+        this.sourceKind = sourceKind
+        this.raw = None<InputFileRawData>
+    }
+
+    public init(kind: String, raw: InputFileRawData) {
+        this.kind = kind
+        this.data = raw.previewString()
+        this.bytes = []
+        this.sourceKind = raw.rawSourceKind
+        this.raw = Some(raw)
     }
 }
 
@@ -238,8 +260,18 @@ public class MultipartByteStream {
         this
     }
 
+    public func addBytes(sourceKind: String, data: Array<Byte>): MultipartByteStream {
+        this.chunks.add(MultipartChunk("file", data, sourceKind))
+        this
+    }
+
     public func addFile(sourceKind: String, data: String): MultipartByteStream {
         this.chunks.add(MultipartChunk("file", data, sourceKind))
+        this
+    }
+
+    public func addRaw(raw: InputFileRawData): MultipartByteStream {
+        this.chunks.add(MultipartChunk("file", raw))
         this
     }
 
@@ -258,6 +290,10 @@ public class MultipartByteStream {
     }
 
     public func body(): String {
+        String.fromUtf8(this.collectBytes())
+    }
+
+    public func previewBody(): String {
         var out = ""
         for (chunk in this.chunks) {
             out += chunk.data
@@ -266,10 +302,45 @@ public class MultipartByteStream {
     }
 
     public func drain(): String {
+        String.fromUtf8(this.drainBytes())
+    }
+
+    public func drainBytes(): Array<Byte> {
         if (this.hasError) {
             this.raiseError()
         }
-        this.body()
+        this.collectBytes()
+    }
+
+    public func collectBytes(): Array<Byte> {
+        flattenMultipartChunks(this.collectChunks())
+    }
+
+    public func drainChunks(): Array<Array<Byte>> {
+        if (this.hasError) {
+            this.raiseError()
+        }
+        this.collectChunks()
+    }
+
+    public func collectChunks(): Array<Array<Byte>> {
+        let chunks = ArrayList<Array<Byte>>()
+        try {
+            for (chunk in this.chunks) {
+                match (chunk.raw) {
+                    case Some(raw) =>
+                        for (rawChunk in raw.collectChunks()) {
+                            chunks.add(rawChunk)
+                        }
+                    case None =>
+                        chunks.add(chunk.bytes)
+                }
+            }
+        } catch (err: Exception) {
+            this.onError(err)
+            throw err
+        }
+        chunks.toArray()
     }
 
     public func raiseError(): Unit {
@@ -508,7 +579,21 @@ public func createFormDataPayload(payload: Payload, onError: MultipartStreamErro
     createFormDataPayload(payload, createBoundary(), "", onError)
 }
 
+public func createFormDataPayload(payload: Payload, boundary: String, attachIdPrefix: String, adapter: InputFileRawAdapter): RequestPayload {
+    createFormDataPayload(payload, boundary, attachIdPrefix, ignoreMultipartStreamError, adapter)
+}
+
 public func createFormDataPayload(payload: Payload, boundary: String, attachIdPrefix: String, onError: MultipartStreamErrorCallback): RequestPayload {
+    createFormDataPayload(payload, boundary, attachIdPrefix, onError, InputFileRawAdapter())
+}
+
+public func createFormDataPayload(
+    payload: Payload,
+    boundary: String,
+    attachIdPrefix: String,
+    onError: MultipartStreamErrorCallback,
+    adapter: InputFileRawAdapter
+): RequestPayload {
     let stream = MultipartByteStream(onError)
     let fileParts = ArrayList<CollectedFile>()
 
@@ -528,11 +613,11 @@ public func createFormDataPayload(payload: Payload, boundary: String, attachIdPr
         if (!first) {
             stream.addText("\r\n--" + boundary + "\r\n")
         }
-        appendFilePart(stream, part)
+        appendFilePart(stream, part, adapter)
         first = false
     }
     stream.addText("\r\n--" + boundary + "--\r\n")
-    let body = stream.body()
+    let body = stream.previewBody()
     RequestPayload("POST", "content-type=multipart/form-data; boundary=" + boundary + ";connection=keep-alive", body, stream)
 }
 
@@ -652,7 +737,7 @@ public func filePart(attachId: String, origin: String, filename: String, body: S
     filePartHeader(attachId, origin, filename) + body
 }
 
-private func appendFilePart(stream: MultipartByteStream, part: CollectedFile): Unit {
+private func appendFilePart(stream: MultipartByteStream, part: CollectedFile, adapter: InputFileRawAdapter): Unit {
     stream.addText(filePartHeader(part.id, part.origin, part.file.filename))
     if (part.file.sourceKind == "stream_error_after") {
         stream.fail(part.file.value, 100)
@@ -662,16 +747,14 @@ private func appendFilePart(stream: MultipartByteStream, part: CollectedFile): U
         stream.fail(part.file.value, 0)
         return
     }
-    stream.addFile(part.file.sourceKind, inputFileBytes(part.file))
+    appendInputFileBytes(stream, part.file, adapter)
 }
 
-private func inputFileBytes(field: PayloadField): String {
+private func appendInputFileBytes(stream: MultipartByteStream, field: PayloadField, adapter: InputFileRawAdapter): Unit {
     match (field.inputFile) {
         case Some(file) =>
-            let raw = file.toRaw()
-            raw.consume()
-            raw.body.sourceValue
-        case None => field.value
+            stream.addRaw(file.toRaw(adapter))
+        case None => stream.addFile(field.sourceKind, field.value)
     }
 }
 
@@ -715,4 +798,14 @@ public func defaultFileExtension(key: String): String {
 
 public func escapeJson(value: String): String {
     value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+}
+
+private func flattenMultipartChunks(chunks: Array<Array<Byte>>): Array<Byte> {
+    let out = ArrayList<Byte>()
+    for (chunk in chunks) {
+        for (byte in chunk) {
+            out.add(byte)
+        }
+    }
+    out.toArray()
 }

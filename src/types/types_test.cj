@@ -195,6 +195,110 @@ public class TelegramTypesTest {
     }
 
     @TestCase
+    public func telegramTypeModelManifestCoversAllUpstreamExports(): Unit {
+        let update = telegramTypeModelDescriptorFor("Update")
+        let message = telegramTypeModelDescriptorFor("Message")
+        let inputMedia = telegramTypeModelDescriptorFor("InputMedia")
+        let missing = telegramTypeModelDescriptorFor("MissingType")
+
+        @Expect(telegramTypeUpstreamSourceAnchors().size, 19)
+        @Expect(telegramTypeModelManifestCount(), 306)
+        @Expect(telegramTypeModelManifestCount(), telegramTypeExportManifestCount())
+        @Expect(telegramTypeModelCompletenessGate(), true)
+        @Expect(telegramTypeModelCompletenessGateWithRemovedExport("Message"), false)
+        @Expect(update.generatedFromUpstream, true)
+        @Expect(update.fieldCount(), 25)
+        @Expect(update.hasField("update_id"), true)
+        @Expect(update.hasField("callback_query"), true)
+        @Expect(message.hasField("message_id"), true)
+        @Expect(message.hasField("entities"), true)
+        @Expect(inputMedia.declarationKind, "union")
+        @Expect(inputMedia.unionMemberCount(), 5)
+        @Expect(inputMedia.inputFileReplacementPoint, "media and thumbnail")
+        @Expect(missing.constructible, false)
+    }
+
+    @TestCase
+    public func telegramTypeFieldManifestRecordsJsonKeysOptionalityArraysAndApiLinks(): Unit {
+        let updateFields = telegramTypeFieldManifestFor("Update")
+        let messageFields = telegramTypeFieldManifestFor("Message")
+        let inputMediaVideo = telegramTypeFieldManifestFor("InputMediaVideo")
+
+        @Expect(updateFields.size, 25)
+        @Expect(updateFields[0].objectName, "Update")
+        @Expect(updateFields[0].fieldName, "update_id")
+        @Expect(updateFields[0].jsonKey, "update_id")
+        @Expect(updateFields[0].required, true)
+        @Expect(updateFields[1].fieldName, "message")
+        @Expect(updateFields[1].optional(), true)
+        @Expect(updateFields[1].apiMethod, "getUpdates,setWebhook")
+        @Expect(messageFields[8].fieldName, "entities")
+        @Expect(messageFields[8].arrayDepth, "1")
+        @Expect(inputMediaVideo[1].fieldName, "media")
+        @Expect(inputMediaVideo[1].inputFileReplacementPoint, "media and thumbnail")
+        @Expect(inputMediaVideo[2].fieldName, "thumbnail")
+    }
+
+    @TestCase
+    public func telegramInputFileBoundAliasDriftGateDetectsDeletedAlias(): Unit {
+        let aliases = [
+            "ApiMethods", "Opts", "InputSticker", "InputMedia", "InputMediaPhoto", "InputMediaVideo",
+            "InputMediaAnimation", "InputMediaAudio", "InputMediaDocument", "InputPaidMedia",
+            "InputPaidMediaPhoto", "InputPaidMediaVideo", "InputProfilePhoto", "InputProfilePhotoStatic",
+            "InputProfilePhotoAnimated", "InputStoryContent", "InputStoryContentPhoto", "InputStoryContentVideo"
+        ]
+        let missingOne = [
+            "ApiMethods", "Opts", "InputSticker", "InputMedia", "InputMediaPhoto", "InputMediaVideo",
+            "InputMediaAnimation", "InputMediaAudio", "InputMediaDocument", "InputPaidMedia",
+            "InputPaidMediaPhoto", "InputPaidMediaVideo", "InputProfilePhoto", "InputProfilePhotoStatic",
+            "InputProfilePhotoAnimated", "InputStoryContent", "InputStoryContentPhoto"
+        ]
+
+        @Expect(telegramTypeFacadeAliasDriftCheck(aliases), true)
+        @Expect(telegramTypeFacadeAliasDriftCheck(missingOne), false)
+        @Expect(telegramInputFileBoundAliasFor("ApiMethods").upstreamGeneric, "ApiMethodsF<InputFile>")
+        @Expect(telegramTypeModelDescriptorFor("ApiMethods").associatedApiMethods, "all ApiMethods payload positions")
+        @Expect(telegramTypeModelDescriptorFor("InputStoryContentVideo").inputFileReplacementPoint, "video")
+    }
+
+    @TestCase
+    public func telegramTypeBusExposesApiAndContextIntegrationTrace(): Unit {
+        let sendPhoto = telegramTypeModelDescriptorFor("Message")
+        let updateFields = telegramTypeContextGetterTrace()
+
+        @Expect(telegramTypeApiWrapperIntegrationCount(), 180)
+        @Expect(telegramTypeContextGetterTraceCount(), 25)
+        @Expect(sendPhoto.associatedApiMethods.contains("sendPhoto"), true)
+        @Expect(updateFields[0].fieldName, "update_id")
+        @Expect(updateFields[11].fieldName, "inline_query")
+        @Expect(updateFields[12].fieldName, "chosen_inline_result")
+        @Expect(updateFields[13].fieldName, "callback_query")
+        @Expect(telegramObjectSubsetTraceAcceptedAsGate(), false)
+    }
+
+    @TestCase
+    public func telegramTypeDryRunDiffReportsFieldAndUnionChanges(): Unit {
+        let oldFields = [
+            TelegramTypeFieldModel("Fixture", "id", "id", true, "0", "", "", ""),
+            TelegramTypeFieldModel("Fixture", "username", "username", false, "0", "", "", "")
+        ]
+        let newFields = [
+            TelegramTypeFieldModel("Fixture", "id", "id", true, "0", "", "", ""),
+            TelegramTypeFieldModel("Fixture", "language_code", "language_code", false, "0", "", "", "")
+        ]
+        let diffs = telegramTypeDryRunDiff(oldFields, newFields, "A|B", "A|C")
+        let report = telegramTypeDryRunReport(diffs)
+
+        @Expect(diffs.size, 4)
+        @Expect(diffs[0].changeKind, "field_added")
+        @Expect(diffs[0].memberName, "language_code")
+        @Expect(diffs[1].changeKind, "field_removed")
+        @Expect(diffs[1].memberName, "username")
+        @Expect(report.contains("union_member_added:union.C"), true)
+        @Expect(report.contains("union_member_removed:union.B"), true)
+    }
+
+    @TestCase
     public func typeSourceMatrixCoversUpstreamFacadesAndGenericAliases(): Unit {
         let matrix = typeSourceMatrix()
         let deno = typeSourceMatrixFor("src/types.deno.ts")
@@ -357,10 +461,21 @@ public class InputFileTest {
         @Expect(responseRaw.rawSourceKind, "response")
         @Expect(responseRaw.collectString(), "EFGH")
         @Expect(iterableRaw.rawSourceKind, "iterable")
-        @Expect(iterableRaw.collectString(), "IJIJ")
+        @Expect(iterableRaw.collectString(), "IJ")
         @Expect(rawCollectErrorMessage(iterableRaw), "Cannot reuse InputFile data source!")
         @Expect(asyncIterableRaw.rawSourceKind, "async_iterable")
-        @Expect(asyncIterableRaw.collectString(), "KLKL")
+        @Expect(asyncIterableRaw.collectString(), "KL")
+    }
+
+    @TestCase
+    public func inputFileRawPreservesIterableChunkOrder(): Unit {
+        let raw = InputFile.fromIterable("AA|BB|CC", "chunks.bin").toRaw("deno")
+        let chunks = raw.collectChunks()
+
+        @Expect(chunks.size, 3)
+        @Expect(String.fromUtf8(chunks[0]), "AA")
+        @Expect(String.fromUtf8(chunks[1]), "BB")
+        @Expect(String.fromUtf8(chunks[2]), "CC")
     }
 
     @TestCase
@@ -470,7 +585,7 @@ public class InputFileTest {
         let raw = streamFile.toRaw()
         @Expect(raw.contract, "stream-as-is")
         @Expect(streamFile.consumed, true)
-        @Expect(raw.collectString(), "stream:1stream:1")
+        @Expect(raw.collectString(), "stream:1")
         @Expect(rawCollectErrorMessage(raw), "Cannot reuse InputFile data source!")
         @Expect(toRawErrorMessage(streamFile), "Cannot reuse InputFile data source!")
     }

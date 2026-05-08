@@ -298,7 +298,7 @@ public class Api {
         this.client = ApiClient(this.config)
         this.raw = RawApiFacade(token, this.client)
         this.installedTransformers = this.client.installedTransformers
-        this.traceCompatibilityMode = true
+        this.traceCompatibilityMode = false
     }
 
     public init(token: String, config: ApiClientOptions) {
@@ -307,7 +307,7 @@ public class Api {
         this.client = ApiClient(config)
         this.raw = RawApiFacade(token, this.client)
         this.installedTransformers = this.client.installedTransformers
-        this.traceCompatibilityMode = true
+        this.traceCompatibilityMode = false
     }
 
     public init(token: String, config: ApiClientOptions, fetcher: CoreFetch) {
@@ -317,6 +317,23 @@ public class Api {
         this.raw = RawApiFacade(token, this.client)
         this.installedTransformers = this.client.installedTransformers
         this.traceCompatibilityMode = false
+    }
+
+    public init(token: String, config: ApiClientOptions, traceCompatibilityMode: Bool) {
+        this.token = token
+        this.config = config
+        this.client = ApiClient(config)
+        this.raw = RawApiFacade(token, this.client)
+        this.installedTransformers = this.client.installedTransformers
+        this.traceCompatibilityMode = traceCompatibilityMode
+    }
+
+    public static func trace(token: String): Api {
+        Api(token, ApiClientOptions(), true)
+    }
+
+    public static func trace(token: String, config: ApiClientOptions): Api {
+        Api(token, config, true)
     }
 
     public func endpointFor(method: String): String {

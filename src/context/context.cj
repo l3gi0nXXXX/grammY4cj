@@ -1,6 +1,7 @@
 package grammy4cj.context
 
 import std.collection.ArrayList
+import std.regex.Regex
 
 import grammy4cj.core.Api
 import grammy4cj.core.Payload
@@ -45,15 +46,30 @@ public class ContextShortcutMapping {
 public class TextTrigger {
     public let values: Array<String>
     public let mode: String
+    public let regexes: Array<Regex>
 
     public init(values: Array<String>) {
         this.values = values
         this.mode = "exact"
+        this.regexes = []
     }
 
     public init(values: Array<String>, mode: String) {
         this.values = values
         this.mode = mode
+        this.regexes = []
+    }
+
+    public init(regex: Regex) {
+        this.values = []
+        this.mode = "regex"
+        this.regexes = [regex]
+    }
+
+    public init(regexes: Array<Regex>) {
+        this.values = []
+        this.mode = "regex"
+        this.regexes = regexes
     }
 
     public static func exact(value: String): TextTrigger {
@@ -88,22 +104,61 @@ public class TextTrigger {
         TextTrigger(values, "suffix")
     }
 
+    public static func regex(pattern: String): TextTrigger {
+        TextTrigger(Regex(pattern))
+    }
+
+    public static func regex(patterns: Array<String>): TextTrigger {
+        let regexes = ArrayList<Regex>()
+        for (pattern in patterns) {
+            regexes.add(Regex(pattern))
+        }
+        TextTrigger(regexes.toArray())
+    }
+
+    public static func regex(regex: Regex): TextTrigger {
+        TextTrigger(regex)
+    }
+
+    public static func regex(regexes: Array<Regex>): TextTrigger {
+        TextTrigger(regexes)
+    }
+
     public func matchValue(content: String): String {
+        match (this.matchResult(content)) {
+            case Some(value) => return value
+            case None => return ""
+        }
+    }
+
+    public func matchResult(content: String): Option<String> {
+        if (this.mode == "regex") {
+            for (regex in this.regexes) {
+                match (firstRegexMatch(regex, content)) {
+                    case Some(value) => return Some(value)
+                    case None => ()
+                }
+            }
+            return None<String>
+        }
         for (value in this.values) {
+            if (value.isEmpty()) {
+                continue
+            }
             if (this.mode == "exact" && content == value) {
-                return value
+                return Some(value)
             }
             if (this.mode == "contains" && content.contains(value)) {
-                return value
+                return Some(value)
             }
             if (this.mode == "prefix" && content.startsWith(value)) {
-                return value
+                return Some(value)
             }
             if (this.mode == "suffix" && content.endsWith(value)) {
-                return value
+                return Some(value)
             }
         }
-        ""
+        None<String>
     }
 }
 
@@ -126,6 +181,14 @@ public class ContextHas {
 
     public func text(trigger: TextTrigger): ContextPredicate {
         ContextPredicate("text", trigger, [])
+    }
+
+    public func text(trigger: Regex): ContextPredicate {
+        ContextPredicate("text", TextTrigger.regex(trigger), [])
+    }
+
+    public func text(triggers: Array<Regex>): ContextPredicate {
+        ContextPredicate("text", TextTrigger.regex(triggers), [])
     }
 
     public func command(command: String): ContextPredicate {
@@ -178,6 +241,14 @@ public class ContextHas {
         ContextPredicate("callbackQuery", trigger, [])
     }
 
+    public func callbackQuery(trigger: Regex): ContextPredicate {
+        ContextPredicate("callbackQuery", TextTrigger.regex(trigger), [])
+    }
+
+    public func callbackQuery(triggers: Array<Regex>): ContextPredicate {
+        ContextPredicate("callbackQuery", TextTrigger.regex(triggers), [])
+    }
+
     public func gameQuery(trigger: String): ContextPredicate {
         ContextPredicate("gameQuery", toArray(trigger), [])
     }
@@ -188,6 +259,14 @@ public class ContextHas {
 
     public func gameQuery(trigger: TextTrigger): ContextPredicate {
         ContextPredicate("gameQuery", trigger, [])
+    }
+
+    public func gameQuery(trigger: Regex): ContextPredicate {
+        ContextPredicate("gameQuery", TextTrigger.regex(trigger), [])
+    }
+
+    public func gameQuery(triggers: Array<Regex>): ContextPredicate {
+        ContextPredicate("gameQuery", TextTrigger.regex(triggers), [])
     }
 
     public func inlineQuery(trigger: String): ContextPredicate {
@@ -202,6 +281,14 @@ public class ContextHas {
         ContextPredicate("inlineQuery", trigger, [])
     }
 
+    public func inlineQuery(trigger: Regex): ContextPredicate {
+        ContextPredicate("inlineQuery", TextTrigger.regex(trigger), [])
+    }
+
+    public func inlineQuery(triggers: Array<Regex>): ContextPredicate {
+        ContextPredicate("inlineQuery", TextTrigger.regex(triggers), [])
+    }
+
     public func chosenInlineResult(trigger: String): ContextPredicate {
         ContextPredicate("chosenInlineResult", toArray(trigger), [])
     }
@@ -212,6 +299,14 @@ public class ContextHas {
 
     public func chosenInlineResult(trigger: TextTrigger): ContextPredicate {
         ContextPredicate("chosenInlineResult", trigger, [])
+    }
+
+    public func chosenInlineResult(trigger: Regex): ContextPredicate {
+        ContextPredicate("chosenInlineResult", TextTrigger.regex(trigger), [])
+    }
+
+    public func chosenInlineResult(triggers: Array<Regex>): ContextPredicate {
+        ContextPredicate("chosenInlineResult", TextTrigger.regex(triggers), [])
     }
 
     public func preCheckoutQuery(trigger: String): ContextPredicate {
@@ -226,6 +321,14 @@ public class ContextHas {
         ContextPredicate("preCheckoutQuery", trigger, [])
     }
 
+    public func preCheckoutQuery(trigger: Regex): ContextPredicate {
+        ContextPredicate("preCheckoutQuery", TextTrigger.regex(trigger), [])
+    }
+
+    public func preCheckoutQuery(triggers: Array<Regex>): ContextPredicate {
+        ContextPredicate("preCheckoutQuery", TextTrigger.regex(triggers), [])
+    }
+
     public func shippingQuery(trigger: String): ContextPredicate {
         ContextPredicate("shippingQuery", toArray(trigger), [])
     }
@@ -236,6 +339,14 @@ public class ContextHas {
 
     public func shippingQuery(trigger: TextTrigger): ContextPredicate {
         ContextPredicate("shippingQuery", trigger, [])
+    }
+
+    public func shippingQuery(trigger: Regex): ContextPredicate {
+        ContextPredicate("shippingQuery", TextTrigger.regex(trigger), [])
+    }
+
+    public func shippingQuery(triggers: Array<Regex>): ContextPredicate {
+        ContextPredicate("shippingQuery", TextTrigger.regex(triggers), [])
     }
 }
 
@@ -678,6 +789,14 @@ public class Context {
         Context.has.text(trigger).matches(this)
     }
 
+    public func hasText(trigger: Regex): Bool {
+        Context.has.text(trigger).matches(this)
+    }
+
+    public func hasText(triggers: Array<Regex>): Bool {
+        Context.has.text(triggers).matches(this)
+    }
+
     public func hasCommand(command: String): Bool {
         Context.has.command(command).matches(this)
     }
@@ -722,6 +841,14 @@ public class Context {
         Context.has.callbackQuery(trigger).matches(this)
     }
 
+    public func hasCallbackQuery(trigger: Regex): Bool {
+        Context.has.callbackQuery(trigger).matches(this)
+    }
+
+    public func hasCallbackQuery(triggers: Array<Regex>): Bool {
+        Context.has.callbackQuery(triggers).matches(this)
+    }
+
     public func hasGameQuery(trigger: String): Bool {
         Context.has.gameQuery(trigger).matches(this)
     }
@@ -732,6 +859,14 @@ public class Context {
 
     public func hasGameQuery(trigger: TextTrigger): Bool {
         Context.has.gameQuery(trigger).matches(this)
+    }
+
+    public func hasGameQuery(trigger: Regex): Bool {
+        Context.has.gameQuery(trigger).matches(this)
+    }
+
+    public func hasGameQuery(triggers: Array<Regex>): Bool {
+        Context.has.gameQuery(triggers).matches(this)
     }
 
     public func hasInlineQuery(trigger: String): Bool {
@@ -746,6 +881,14 @@ public class Context {
         Context.has.inlineQuery(trigger).matches(this)
     }
 
+    public func hasInlineQuery(trigger: Regex): Bool {
+        Context.has.inlineQuery(trigger).matches(this)
+    }
+
+    public func hasInlineQuery(triggers: Array<Regex>): Bool {
+        Context.has.inlineQuery(triggers).matches(this)
+    }
+
     public func hasChosenInlineResult(trigger: String): Bool {
         Context.has.chosenInlineResult(trigger).matches(this)
     }
@@ -756,6 +899,14 @@ public class Context {
 
     public func hasChosenInlineResult(trigger: TextTrigger): Bool {
         Context.has.chosenInlineResult(trigger).matches(this)
+    }
+
+    public func hasChosenInlineResult(trigger: Regex): Bool {
+        Context.has.chosenInlineResult(trigger).matches(this)
+    }
+
+    public func hasChosenInlineResult(triggers: Array<Regex>): Bool {
+        Context.has.chosenInlineResult(triggers).matches(this)
     }
 
     public func hasPreCheckoutQuery(trigger: String): Bool {
@@ -770,6 +921,14 @@ public class Context {
         Context.has.preCheckoutQuery(trigger).matches(this)
     }
 
+    public func hasPreCheckoutQuery(trigger: Regex): Bool {
+        Context.has.preCheckoutQuery(trigger).matches(this)
+    }
+
+    public func hasPreCheckoutQuery(triggers: Array<Regex>): Bool {
+        Context.has.preCheckoutQuery(triggers).matches(this)
+    }
+
     public func hasShippingQuery(trigger: String): Bool {
         Context.has.shippingQuery(trigger).matches(this)
     }
@@ -780,6 +939,14 @@ public class Context {
 
     public func hasShippingQuery(trigger: TextTrigger): Bool {
         Context.has.shippingQuery(trigger).matches(this)
+    }
+
+    public func hasShippingQuery(trigger: Regex): Bool {
+        Context.has.shippingQuery(trigger).matches(this)
+    }
+
+    public func hasShippingQuery(triggers: Array<Regex>): Bool {
+        Context.has.shippingQuery(triggers).matches(this)
     }
 
     public func refineText(trigger: String): Option<HearsContext> {
@@ -795,6 +962,14 @@ public class Context {
             return None<HearsContext>
         }
         Some(HearsContext(this, triggerMessage(this), this.`match`))
+    }
+
+    public func refineText(trigger: Regex): Option<HearsContext> {
+        this.refineText(TextTrigger.regex(trigger))
+    }
+
+    public func refineText(triggers: Array<Regex>): Option<HearsContext> {
+        this.refineText(TextTrigger.regex(triggers))
     }
 
     public func refineCommand(command: String): Option<CommandContext> {
@@ -834,6 +1009,14 @@ public class Context {
         Some(CallbackQueryContext(this, this.callbackQuery, this.`match`))
     }
 
+    public func refineCallbackQuery(trigger: Regex): Option<CallbackQueryContext> {
+        this.refineCallbackQuery(TextTrigger.regex(trigger))
+    }
+
+    public func refineCallbackQuery(triggers: Array<Regex>): Option<CallbackQueryContext> {
+        this.refineCallbackQuery(TextTrigger.regex(triggers))
+    }
+
     public func refineGameQuery(trigger: String): Option<GameQueryContext> {
         this.refineGameQuery(TextTrigger.exact(trigger))
     }
@@ -847,6 +1030,14 @@ public class Context {
             return None<GameQueryContext>
         }
         Some(GameQueryContext(this, this.callbackQuery, this.`match`))
+    }
+
+    public func refineGameQuery(trigger: Regex): Option<GameQueryContext> {
+        this.refineGameQuery(TextTrigger.regex(trigger))
+    }
+
+    public func refineGameQuery(triggers: Array<Regex>): Option<GameQueryContext> {
+        this.refineGameQuery(TextTrigger.regex(triggers))
     }
 
     public func refineInlineQuery(trigger: String): Option<InlineQueryContext> {
@@ -864,6 +1055,14 @@ public class Context {
         Some(InlineQueryContext(this, this.inlineQuery, this.`match`))
     }
 
+    public func refineInlineQuery(trigger: Regex): Option<InlineQueryContext> {
+        this.refineInlineQuery(TextTrigger.regex(trigger))
+    }
+
+    public func refineInlineQuery(triggers: Array<Regex>): Option<InlineQueryContext> {
+        this.refineInlineQuery(TextTrigger.regex(triggers))
+    }
+
     public func refineChosenInlineResult(trigger: String): Option<ChosenInlineResultContext> {
         this.refineChosenInlineResult(TextTrigger.exact(trigger))
     }
@@ -877,6 +1076,14 @@ public class Context {
             return None<ChosenInlineResultContext>
         }
         Some(ChosenInlineResultContext(this, this.chosenInlineResult, this.`match`))
+    }
+
+    public func refineChosenInlineResult(trigger: Regex): Option<ChosenInlineResultContext> {
+        this.refineChosenInlineResult(TextTrigger.regex(trigger))
+    }
+
+    public func refineChosenInlineResult(triggers: Array<Regex>): Option<ChosenInlineResultContext> {
+        this.refineChosenInlineResult(TextTrigger.regex(triggers))
     }
 
     public func refinePreCheckoutQuery(trigger: String): Option<PreCheckoutQueryContext> {
@@ -894,6 +1101,14 @@ public class Context {
         Some(PreCheckoutQueryContext(this, this.preCheckoutQuery, this.`match`))
     }
 
+    public func refinePreCheckoutQuery(trigger: Regex): Option<PreCheckoutQueryContext> {
+        this.refinePreCheckoutQuery(TextTrigger.regex(trigger))
+    }
+
+    public func refinePreCheckoutQuery(triggers: Array<Regex>): Option<PreCheckoutQueryContext> {
+        this.refinePreCheckoutQuery(TextTrigger.regex(triggers))
+    }
+
     public func refineShippingQuery(trigger: String): Option<ShippingQueryContext> {
         this.refineShippingQuery(TextTrigger.exact(trigger))
     }
@@ -907,6 +1122,14 @@ public class Context {
             return None<ShippingQueryContext>
         }
         Some(ShippingQueryContext(this, this.shippingQuery, this.`match`))
+    }
+
+    public func refineShippingQuery(trigger: Regex): Option<ShippingQueryContext> {
+        this.refineShippingQuery(TextTrigger.regex(trigger))
+    }
+
+    public func refineShippingQuery(triggers: Array<Regex>): Option<ShippingQueryContext> {
+        this.refineShippingQuery(TextTrigger.regex(triggers))
     }
 
     public func refineReaction(reaction: String): Option<ReactionContext> {
@@ -2370,6 +2593,14 @@ public func triggerFn(trigger: TextTrigger): TextTrigger {
     trigger
 }
 
+public func triggerFn(trigger: Regex): TextTrigger {
+    TextTrigger.regex(trigger)
+}
+
+public func triggerFn(triggers: Array<Regex>): TextTrigger {
+    TextTrigger.regex(triggers)
+}
+
 private func validateCommandNames(commands: Array<String>): Unit {
     for (command in commands) {
         if (command.startsWith("/")) {
@@ -2431,12 +2662,20 @@ private func matchesText(ctx: Context, trigger: TextTrigger): Bool {
 }
 
 private func matchAndStore(ctx: Context, content: String, trigger: TextTrigger): Bool {
-    let result = trigger.matchValue(content)
-    if (!result.isEmpty()) {
-        ctx.`match` = result
-        return true
+    match (trigger.matchResult(content)) {
+        case Some(result) =>
+            ctx.`match` = result
+            return true
+        case None => false
     }
-    false
+}
+
+private func firstRegexMatch(regex: Regex, content: String): Option<String> {
+    for (md in regex.findAll(content, group: true)) {
+        let pos = md.matchPosition()
+        return Some(content[pos.start..pos.end])
+    }
+    None<String>
 }
 
 private func matchesCommand(ctx: Context, commands: Array<String>): Bool {

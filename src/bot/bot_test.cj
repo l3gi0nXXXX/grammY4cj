@@ -128,6 +128,10 @@ private class BlockingGetMeRuntime <: BotRuntime {
         signal.throwIfCancelled()
         []
     }
+
+    override public func shouldStopPolling(): Bool {
+        true
+    }
 }
 
 private class CancelOnSleepClock <: BotClock {
@@ -249,6 +253,15 @@ public class BotTest {
         @Expect(fake.requests[2].body.contains("\"allowed_updates\":[\"message\"]"), true)
         @Expect(handler.contexts.size, 1)
         @Expect(handler.contexts[0].update.updateId, 91)
+    }
+
+    @TestCase
+    public func pollingOptionsDefaultToInfiniteLoopAndExplicitCycleLimitStopsFixtures(): Unit {
+        let defaults = PollingOptions()
+        let limited = PollingOptions(maxFetchCycles: 2)
+
+        @Expect(defaults.maxFetchCycles, 0)
+        @Expect(limited.maxFetchCycles, 2)
     }
 
     @TestCase

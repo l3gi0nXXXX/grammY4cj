@@ -23,12 +23,12 @@ public class SessionPropertyContract {
 
     public init() {
         this.upstreamProperty = "ctx.session"
-        this.strictRead = "SessionContext.session"
-        this.strictWrite = "SessionContext.session = value"
-        this.strictDelete = "SessionContext.deleteSession()"
-        this.lazyRead = "LazySessionMiddleware + SessionContext.session"
-        this.multiDelete = "MultiSessionContext2.session slots or deleteSession()"
-        this.contextIntegration = "typed session wrapper exposes ctx.session property"
+        this.strictRead = "SessionFlavorContext.session"
+        this.strictWrite = "SessionFlavorContext.session = value"
+        this.strictDelete = "SessionFlavorContext.deleteSession() or setOptionalSession(None)"
+        this.lazyRead = "LazySessionMiddleware + SessionFlavorContext.session"
+        this.multiDelete = "MultiSessionFlavorContext2.session slots or deleteSession()"
+        this.contextIntegration = "typed session flavor context exposes ctx.session property"
     }
 }
 
@@ -321,6 +321,7 @@ private class PropertySession<T> {
     private var readRequested: Bool = false
     private var wrote: Bool = false
     private var deleted: Bool = false
+    private var pending: Option<SessionTask<Option<T>>> = None<SessionTask<Option<T>>>
 
     public init(key: Option<String>, storage: StorageAdapter<T>, initial: Option<SessionInitializer<T>>, lazy: Bool, custom: Bool) {
         this.key = sessionKeyValue(key)
@@ -338,6 +339,7 @@ private class PropertySession<T> {
     public func get(): T {
         this.requireKey("access")
         this.readRequested = true
+        this.resolvePending()
         if (!this.lazy || this.wrote) {
             ()
         } else {
@@ -352,6 +354,7 @@ private class PropertySession<T> {
     public func maybeSession(): Option<T> {
         this.requireKey("access")
         this.readRequested = true
+        this.resolvePending()
         if (!this.lazy || this.wrote) {
             ()
         } else {
@@ -367,6 +370,28 @@ private class PropertySession<T> {
         this.wrote = true
         this.deleted = false
         this.fetching = false
+        this.pending = None<SessionTask<Option<T>>>
+    }
+
+    public func setOptional(value: Option<T>): Unit {
+        match (value) {
+            case Some(v) => this.set(v)
+            case None => this.delete()
+        }
+    }
+
+    public func setTask(task: SessionTask<T>): Unit {
+        this.setOptionalTask(SessionTask<Option<T>>({ => Some(task.get()) }))
+    }
+
+    public func setOptionalTask(task: SessionTask<Option<T>>): Unit {
+        this.requireKey("assign")
+        this.pending = Some(task)
+        this.value = None<T>
+        this.loaded = true
+        this.wrote = true
+        this.deleted = false
+        this.fetching = false
     }
 
     public func delete(): Unit {
@@ -376,6 +401,7 @@ private class PropertySession<T> {
         this.wrote = true
         this.deleted = true
         this.fetching = false
+        this.pending = None<SessionTask<Option<T>>>
     }
 
     public func deleteIfKeyPresent(): Unit {
@@ -408,6 +434,7 @@ private class PropertySession<T> {
         if (!this.hasKey) {
             return
         }
+        this.resolvePending()
         if (this.readRequested) {
             this.load()
         }
@@ -420,6 +447,26 @@ private class PropertySession<T> {
                 case Some(value) => this.storage.write(this.key, value)
                 case None => this.storage.delete(this.key)
             }
+        }
+    }
+
+    private func resolvePending(): Unit {
+        match (this.pending) {
+            case Some(task) =>
+                let resolved = task.get()
+                this.pending = None<SessionTask<Option<T>>>
+                match (resolved) {
+                    case Some(value) =>
+                        this.value = Some(value)
+                        this.deleted = false
+                    case None =>
+                        this.value = None<T>
+                        this.deleted = true
+                }
+                this.loaded = true
+                this.wrote = true
+                this.fetching = false
+            case None => ()
         }
     }
 
@@ -495,6 +542,18 @@ public class SessionContext<T> {
         this.session = value
     }
 
+    public func setOptionalSession(value: Option<T>): Unit {
+        this.property.setOptional(value)
+    }
+
+    public func setSessionTask(task: SessionTask<T>): Unit {
+        this.property.setTask(task)
+    }
+
+    public func setOptionalSessionTask(task: SessionTask<Option<T>>): Unit {
+        this.property.setOptionalTask(task)
+    }
+
     public func deleteSession(): Unit {
         this.property.delete()
     }
@@ -528,6 +587,81 @@ public class SessionContext<T> {
     }
 }
 
+public class SessionFlavorContext<T> {
+    public let ctx: Context
+    private let sessionContext: SessionContext<T>
+
+    public init(sessionContext: SessionContext<T>) {
+        this.ctx = sessionContext.ctx
+        this.sessionContext = sessionContext
+    }
+
+    public mut prop session: T {
+        get() {
+            this.sessionContext.session
+        }
+        set(value) {
+            this.sessionContext.session = value
+        }
+    }
+
+    public prop chatId: Int64 {
+        get() { this.ctx.chatId }
+    }
+
+    public func updateId(): Int64 {
+        this.ctx.updateId()
+    }
+
+    public func botInfoUsername(): String {
+        this.ctx.botInfoUsername()
+    }
+
+    public func maybeSession(): Option<T> {
+        this.sessionContext.maybeSession()
+    }
+
+    public func setSession(value: T): Unit {
+        this.session = value
+    }
+
+    public func setOptionalSession(value: Option<T>): Unit {
+        this.sessionContext.setOptionalSession(value)
+    }
+
+    public func setSessionTask(task: SessionTask<T>): Unit {
+        this.sessionContext.setSessionTask(task)
+    }
+
+    public func setOptionalSessionTask(task: SessionTask<Option<T>>): Unit {
+        this.sessionContext.setOptionalSessionTask(task)
+    }
+
+    public func deleteSession(): Unit {
+        this.sessionContext.deleteSession()
+    }
+
+    public func isLoaded(): Bool {
+        this.sessionContext.isLoaded()
+    }
+
+    public func hasSessionKey(): Bool {
+        this.sessionContext.hasSessionKey()
+    }
+
+    public func wasRead(): Bool {
+        this.sessionContext.wasRead()
+    }
+
+    public func wasWritten(): Bool {
+        this.sessionContext.wasWritten()
+    }
+
+    public func isFetching(): Bool {
+        this.sessionContext.isFetching()
+    }
+}
+
 public class SessionMiddleware<T> {
     private let options: SessionOptions<T>
 
@@ -542,10 +676,24 @@ public class SessionMiddleware<T> {
         sessionContext.finish()
     }
 
+    public func handle(ctx: Context, handler: (SessionFlavorContext<T>) -> Unit): Unit {
+        this.handle(ctx, { sessionContext: SessionContext<T> =>
+            handler(SessionFlavorContext<T>(sessionContext))
+        })
+    }
+
     public func middleware(handler: (SessionContext<T>, NextFunction) -> Unit): MiddlewareFn {
         { ctx: Context, next: NextFunction =>
             this.handle(ctx, { sessionContext: SessionContext<T> =>
                 handler(sessionContext, next)
+            })
+        }
+    }
+
+    public func middleware(handler: (SessionFlavorContext<T>, NextFunction) -> Unit): MiddlewareFn {
+        { ctx: Context, next: NextFunction =>
+            this.handle(ctx, { sessionContext: SessionContext<T> =>
+                handler(SessionFlavorContext<T>(sessionContext), next)
             })
         }
     }
@@ -571,10 +719,24 @@ public class LazySessionMiddleware<T> {
         sessionContext.finish()
     }
 
+    public func handle(ctx: Context, handler: (SessionFlavorContext<T>) -> Unit): Unit {
+        this.handle(ctx, { sessionContext: SessionContext<T> =>
+            handler(SessionFlavorContext<T>(sessionContext))
+        })
+    }
+
     public func middleware(handler: (SessionContext<T>, NextFunction) -> Unit): MiddlewareFn {
         { ctx: Context, next: NextFunction =>
             this.handle(ctx, { sessionContext: SessionContext<T> =>
                 handler(sessionContext, next)
+            })
+        }
+    }
+
+    public func middleware(handler: (SessionFlavorContext<T>, NextFunction) -> Unit): MiddlewareFn {
+        { ctx: Context, next: NextFunction =>
+            this.handle(ctx, { sessionContext: SessionContext<T> =>
+                handler(SessionFlavorContext<T>(sessionContext), next)
             })
         }
     }
@@ -624,6 +786,81 @@ public class MultiSessionContext2<A, B> {
     }
 }
 
+public class MultiSessionData2<A, B> {
+    private let firstContext: SessionContext<A>
+    private let secondContext: SessionContext<B>
+
+    public init(first: SessionContext<A>, second: SessionContext<B>) {
+        this.firstContext = first
+        this.secondContext = second
+    }
+
+    public mut prop first: A {
+        get() {
+            this.firstContext.session
+        }
+        set(value) {
+            this.firstContext.session = value
+        }
+    }
+
+    public mut prop second: B {
+        get() {
+            this.secondContext.session
+        }
+        set(value) {
+            this.secondContext.session = value
+        }
+    }
+
+    public func deleteFirst(): Unit {
+        this.firstContext.deleteSession()
+    }
+
+    public func deleteSecond(): Unit {
+        this.secondContext.deleteSession()
+    }
+
+    public func setOptionalFirst(value: Option<A>): Unit {
+        this.firstContext.setOptionalSession(value)
+    }
+
+    public func setOptionalSecond(value: Option<B>): Unit {
+        this.secondContext.setOptionalSession(value)
+    }
+}
+
+public class MultiSessionFlavorContext2<A, B> {
+    public let ctx: Context
+    public let session: MultiSessionData2<A, B>
+    private let sessionContext: MultiSessionContext2<A, B>
+
+    public init(sessionContext: MultiSessionContext2<A, B>) {
+        this.ctx = sessionContext.ctx
+        this.sessionContext = sessionContext
+        this.session = MultiSessionData2<A, B>(sessionContext.first, sessionContext.second)
+    }
+
+    public prop chatId: Int64 {
+        get() { this.ctx.chatId }
+    }
+
+    public func updateId(): Int64 {
+        this.ctx.updateId()
+    }
+
+    public func deleteSession(): Unit {
+        this.sessionContext.deleteSession()
+    }
+
+    public func setOptionalSession(value: Option<MultiSessionData2<A, B>>): Unit {
+        match (value) {
+            case Some(_) => ()
+            case None => this.deleteSession()
+        }
+    }
+}
+
 public class MultiSessionMiddleware2<A, B> {
     private let options: MultiSessionOptions2<A, B>
 
@@ -636,6 +873,12 @@ public class MultiSessionMiddleware2<A, B> {
         sessionContext.preload()
         handler(sessionContext)
         sessionContext.finish()
+    }
+
+    public func handle(ctx: Context, handler: (MultiSessionFlavorContext2<A, B>) -> Unit): Unit {
+        this.handle(ctx, { sessionContext: MultiSessionContext2<A, B> =>
+            handler(MultiSessionFlavorContext2<A, B>(sessionContext))
+        })
     }
 
     private func createContext(ctx: Context): MultiSessionContext2<A, B> {

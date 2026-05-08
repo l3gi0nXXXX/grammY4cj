@@ -11,3 +11,18 @@
   target-dir = ""
   version = "0.1.0"
   package-configuration = {}
+
+[target.x86_64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${MAGIC_PATH}/libs/cangjie-stdx-linux-x64-1.0.0.1/linux_x86_64_llvm/dynamic/stdx"]
+
+[target.x86_64-unknown-windows-gnu.bin-dependencies]
+  path-option = ["${MAGIC_PATH}/libs/cangjie-stdx-windows-x64-1.0.0.1/windows_x86_64_llvm/dynamic/stdx"]
+
+[target.x86_64-w64-mingw32.bin-dependencies]
+  path-option = ["${MAGIC_PATH}/libs/cangjie-stdx-windows-x64-1.0.0.1/windows_x86_64_llvm/dynamic/stdx"]
+
+[target.aarch64-unknown-linux-gnu.bin-dependencies]
+  path-option = ["${MAGIC_PATH}/libs/cangjie-stdx-linux-aarch64-1.0.0.1/linux_aarch64_llvm/dynamic/stdx"]
+
+[target.aarch64-apple-darwin.bin-dependencies]
+  path-option = ["${MAGIC_PATH}/libs/cangjie-stdx-mac-aarch64-1.0.0.1/darwin_aarch64_llvm/dynamic/stdx"]

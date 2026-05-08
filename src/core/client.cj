@@ -1,6 +1,10 @@
 package grammy4cj.core
 
 import std.collection.ArrayList
+import std.io.StringReader
+import stdx.encoding.url.URL
+import stdx.net.http.*
+import stdx.net.tls.TlsClientConfig
 
 import grammy4cj.types.ApiResponse
 import grammy4cj.types.ResponseParameters
@@ -157,8 +161,83 @@ public class NativeHttpCoreFetch <: CoreFetch {
 
     public func fetch(request: CoreHttpRequest, signal: CancelSignal): CoreFetchResponse {
         signal.throwIfCancelled()
-        CoreFetchResponse.networkError("Native HTTP fetch adapter failed for " + request.method + " " + request.url)
+        try {
+            let client = nativeHttpClient(request.url)
+            try {
+                let response = client.send(nativeHttpRequest(request))
+                signal.throwIfCancelled()
+                CoreFetchResponse(Int64(response.status), "", nativeHttpBody(response))
+            } finally {
+                client.close()
+            }
+        } catch (err: Exception) {
+            CoreFetchResponse.networkError(err.message)
+        }
     }
+}
+
+private func nativeHttpClient(url: String): Client {
+    let builder = ClientBuilder()
+    if (url.startsWith("https://")) {
+        var tlsConfig = TlsClientConfig()
+        tlsConfig.domain = URL.parse(url).hostName
+        builder.tlsConfig(tlsConfig)
+    }
+    builder.build()
+}
+
+private func nativeHttpRequest(request: CoreHttpRequest): HttpRequest {
+    let builder = HttpRequestBuilder().url(request.url)
+    if (request.method == "GET") {
+        builder.get()
+    } else {
+        builder.post()
+    }
+    builder.body(request.body)
+    nativeAppendHeaderArgs(builder, request.headers)
+    builder.build()
+}
+
+private func nativeAppendHeaderArgs(builder: HttpRequestBuilder, headers: String): Unit {
+    let contentType = nativeHeaderContentType(headers)
+    if (!contentType.isEmpty()) {
+        builder.header("content-type", contentType)
+    }
+    if (headers.contains("connection=keep-alive")) {
+        builder.header("connection", "keep-alive")
+    }
+}
+
+private func nativeHeaderContentType(headers: String): String {
+    let prefix = "content-type="
+    if (!headers.startsWith(prefix)) {
+        return ""
+    }
+    var value = headers[prefix.size..]
+    let connectionIndex = nativeIndexOfFrom(value, ";connection=", 0)
+    if (connectionIndex >= 0) {
+        value = value[0..connectionIndex]
+    }
+    value
+}
+
+private func nativeHttpBody(response: HttpResponse): String {
+    let reader = StringReader(response.body)
+    reader.readToEnd()
+}
+
+private func nativeIndexOfFrom(value: String, needle: String, startIndex: Int64): Int64 {
+    if (needle.isEmpty()) {
+        return startIndex
+    }
+    var i = startIndex
+    while (i + needle.size <= value.size) {
+        if (value[i..i + needle.size] == needle) {
+            return i
+        }
+        i += 1
+    }
+    -1
 }
 
 public class WebhookReplyEnvelope {

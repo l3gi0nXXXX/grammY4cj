@@ -1,5 +1,6 @@
 package grammy4cj.context
 
+import std.regex.Regex
 import std.unittest.*
 
 import grammy4cj.core.Api
@@ -36,7 +37,7 @@ private func testBotInfo(): UserFromGetMe {
 }
 
 private func testContext(update: Update): Context {
-    Context(update, Api("token"), testBotInfo())
+    Context(update, Api.trace("token"), testBotInfo())
 }
 
 private func methodName(payload: Payload): String {
@@ -455,6 +456,65 @@ public class ContextHasTest {
     }
 
     @TestCase
+    public func regexpTriggersMirrorUpstreamContextHasAndInstancePredicates(): Unit {
+        let chat = Chat(127, "private")
+        let user = User(460, false, "Margaret", "margaret")
+
+        let textCtx = testContext(Update.withMessage(166, Message(466, chat, "hello regex", user)))
+        @Expect(Context.has.text(Regex("^hello")).matches(textCtx), true)
+        @Expect(textCtx.`match`, "hello")
+        @Expect(textCtx.hasText(Regex("regex$")), true)
+        @Expect(textCtx.`match`, "regex")
+        @Expect(textCtx.hasText([Regex("^missing"), Regex("llo")]), true)
+        @Expect(textCtx.`match`, "llo")
+        @Expect(textCtx.hasText(Regex("^missing")), false)
+        @Expect(textCtx.`match`, "llo")
+
+        let callbackCtx = testContext(Update.withCallbackQuery(167, CallbackQuery(user, "clicked", Message(467, chat, "button", user))))
+        @Expect(Context.has.callbackQuery(Regex("^cl.ck")).matches(callbackCtx), true)
+        @Expect(callbackCtx.`match`, "click")
+        @Expect(callbackCtx.hasCallbackQuery(Regex("ked$")), true)
+        @Expect(callbackCtx.`match`, "ked")
+        @Expect(callbackCtx.hasCallbackQuery([Regex("^missing"), Regex("ick")]), true)
+        @Expect(callbackCtx.`match`, "ick")
+
+        let gameCtx = testContext(Update.withCallbackQuery(168, CallbackQuery(user, "", "game-a", Message(468, chat, "game", user), "")))
+        @Expect(Context.has.gameQuery(Regex("^game")).matches(gameCtx), true)
+        @Expect(gameCtx.`match`, "game")
+        @Expect(gameCtx.hasGameQuery([Regex("^missing"), Regex("a$")]), true)
+        @Expect(gameCtx.`match`, "a")
+
+        let inlineCtx = testContext(Update.withInlineQuery(169, InlineQuery(user, "inline-a")))
+        @Expect(Context.has.inlineQuery(Regex("^in")).matches(inlineCtx), true)
+        @Expect(inlineCtx.`match`, "in")
+        @Expect(inlineCtx.hasInlineQuery([Regex("^missing"), Regex("line")]), true)
+        @Expect(inlineCtx.`match`, "line")
+
+        let chosenCtx = testContext(Update.withChosenInlineResult(170, ChosenInlineResult(user, "chosen-a", "inline-message")))
+        @Expect(Context.has.chosenInlineResult(Regex("^cho")).matches(chosenCtx), true)
+        @Expect(chosenCtx.`match`, "cho")
+        @Expect(chosenCtx.hasChosenInlineResult([Regex("^missing"), Regex("sen")]), true)
+        @Expect(chosenCtx.`match`, "sen")
+
+        let preCheckoutCtx = testContext(Update.withPreCheckoutQuery(171, PreCheckoutQuery(user, "pre-a")))
+        @Expect(Context.has.preCheckoutQuery(Regex("^pre")).matches(preCheckoutCtx), true)
+        @Expect(preCheckoutCtx.`match`, "pre")
+        @Expect(preCheckoutCtx.hasPreCheckoutQuery([Regex("^missing"), Regex("e-a$")]), true)
+        @Expect(preCheckoutCtx.`match`, "e-a")
+
+        let shippingCtx = testContext(Update.withShippingQuery(172, ShippingQuery(user, "ship-a")))
+        @Expect(Context.has.shippingQuery(Regex("^ship")).matches(shippingCtx), true)
+        @Expect(shippingCtx.`match`, "ship")
+        @Expect(shippingCtx.hasShippingQuery([Regex("^missing"), Regex("ip-a$")]), true)
+        @Expect(shippingCtx.`match`, "ip-a")
+
+        match (callbackCtx.refineCallbackQuery(Regex("^cli"))) {
+            case Some(narrowed) => @Expect(narrowed.`match`, "cli")
+            case None => @Expect(false, true)
+        }
+    }
+
+    @TestCase
     public func textTriggerObjectsAreRegexpFunctionAlternative(): Unit {
         let chat = Chat(128, "private")
         let user = User(461, false, "Alonzo", "alonzo")
@@ -476,6 +536,8 @@ public class ContextHasTest {
         @Expect(triggerFn("exact").matchValue("exact"), "exact")
         @Expect(triggerFn(["missing", "array"]).matchValue("array"), "array")
         @Expect(triggerFn(TextTrigger.prefix("pre")).matchValue("prefix"), "pre")
+        @Expect(triggerFn(Regex("^ex")).matchValue("exact"), "ex")
+        @Expect(triggerFn([Regex("^missing"), Regex("act$")]).matchValue("exact"), "act")
         @Expect(toArray("single").size, 1)
         @Expect(toArray(["one", "two"]).size, 2)
     }
