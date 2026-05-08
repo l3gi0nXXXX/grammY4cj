@@ -23,7 +23,7 @@ private class TestClock {
     }
 }
 
-private class CountingStorage<T> <: StorageAdapter<T> {
+private class CountingStorage<T> <: StorageEnumerableAdapter<T> {
     public let inner: MemorySessionStorage<T> = MemorySessionStorage<T>()
     public var readCount: Int64 = 0
     public var writeCount: Int64 = 0
@@ -71,7 +71,7 @@ private class CountingStorage<T> <: StorageAdapter<T> {
     }
 }
 
-private class AsyncCountingStorage<T> <: AsyncStorageAdapter<T> {
+private class AsyncCountingStorage<T> <: AsyncStorageEnumerableAdapter<T> {
     public let inner: CountingStorage<T> = CountingStorage<T>()
 
     public init() {}
@@ -106,6 +106,48 @@ private class AsyncCountingStorage<T> <: AsyncStorageAdapter<T> {
 
     public func readAllEntries(): SessionTask<Array<StorageEntry<T>>> {
         SessionTask<Array<StorageEntry<T>>>({ => this.inner.readAllEntries() })
+    }
+}
+
+private class AsyncMinimalStorage<T> <: AsyncStorageAdapter<T> {
+    public let inner: MinimalStorage<T> = MinimalStorage<T>()
+
+    public init() {}
+
+    public func read(key: String): SessionTask<Option<T>> {
+        SessionTask<Option<T>>({ => this.inner.read(key) })
+    }
+
+    public func write(key: String, value: T): SessionTask<Unit> {
+        SessionTask<Unit>({ => this.inner.write(key, value) })
+    }
+
+    public func delete(key: String): SessionTask<Unit> {
+        SessionTask<Unit>({ => this.inner.delete(key) })
+    }
+}
+
+private class MinimalStorage<T> <: StorageAdapter<T> {
+    public let inner: MemorySessionStorage<T> = MemorySessionStorage<T>()
+    public var readCount: Int64 = 0
+    public var writeCount: Int64 = 0
+    public var deleteCount: Int64 = 0
+
+    public init() {}
+
+    public func read(key: String): Option<T> {
+        this.readCount += 1
+        this.inner.read(key)
+    }
+
+    public func write(key: String, value: T): Unit {
+        this.writeCount += 1
+        this.inner.write(key, value)
+    }
+
+    public func delete(key: String): Unit {
+        this.deleteCount += 1
+        this.inner.delete(key)
     }
 }
 
@@ -433,7 +475,7 @@ public class SessionMiddlewareTest {
         @Expect(contract.strictWrite, "SessionFlavorContext<T>.session = value")
         @Expect(contract.strictDelete, "SessionFlavorContext<T>.deleteSession() or setOptionalSession(None)")
         @Expect(contract.lazyRead, "LazySessionMiddleware + SessionFlavorContext<T>.session")
-        @Expect(contract.multiDelete, "MultiSessionFlavorContext2<A,B>.session slots or deleteSession()")
+        @Expect(contract.multiDelete, "MultiSessionFlavorContext<T>.session named slots or deleteSession()")
         @Expect(contract.contextIntegration, "typed session flavor context exposes ctx.session property")
         @Expect(stringValue(defaultGetSessionKey(testCtx(7))), "7")
         @Expect(stringValue(defaultGetSessionKey(noChatCtx(8))), "")
@@ -537,13 +579,47 @@ public class SessionMiddlewareTest {
     }
 
     @TestCase
-    public func sessionWritesInitialEvenWhenHandlerDoesNotRead(): Unit {
-        let storage = MemorySessionStorage<CounterSession>()
+    public func sessionAcceptsTaskBackedReadWriteDeleteOnlyStorage(): Unit {
+        let storage = AsyncMinimalStorage<Int64>()
+        storage.inner.inner.write("89", 4)
+
+        session<Int64>(SessionOptions<Int64>(storage)).handle(testCtx(89), { ctx: SessionContext<Int64> =>
+            ctx.session = ctx.session + 6
+        })
+
+        @Expect(storage.inner.readCount, 1)
+        @Expect(storage.inner.writeCount, 1)
+        @Expect(storage.inner.deleteCount, 0)
+        @Expect(intValue(storage.inner.inner.read("89")), 10)
+    }
+
+    @TestCase
+    public func sessionDoesNotReadOrWriteWhenHandlerDoesNotAccessSession(): Unit {
+        let storage = CountingStorage<CounterSession>()
         let options = SessionOptions<CounterSession>({ => CounterSession(4) }, storage)
 
         session<CounterSession>(options).handle(testCtx(17), { _ctx: SessionContext<CounterSession> => () })
 
-        @Expect(counterValue(storage.read("17")), 4)
+        @Expect(storage.readCount, 0)
+        @Expect(storage.writeCount, 0)
+        @Expect(storage.deleteCount, 0)
+        @Expect(counterValue(storage.inner.read("17")), -1)
+    }
+
+    @TestCase
+    public func sessionAcceptsReadWriteDeleteOnlyStorage(): Unit {
+        let storage = MinimalStorage<CounterSession>()
+        storage.inner.write("90", CounterSession(2))
+        let options = SessionOptions<CounterSession>(storage)
+
+        session<CounterSession>(options).handle(testCtx(90), { ctx: SessionContext<CounterSession> =>
+            ctx.session.count += 3
+        })
+
+        @Expect(storage.readCount, 1)
+        @Expect(storage.writeCount, 1)
+        @Expect(storage.deleteCount, 0)
+        @Expect(counterValue(storage.inner.read("90")), 5)
     }
 
     @TestCase
@@ -599,7 +675,7 @@ public class SessionMiddlewareTest {
         let message = exceptionMessage({ =>
             session<CounterSession>(SessionOptions<CounterSession>(storage)).handle(
                 testCtx(83),
-                { _ctx: SessionContext<CounterSession> => () },
+                { ctx: SessionContext<CounterSession> => ctx.maybeSession() },
             )
         })
 
@@ -744,6 +820,108 @@ public class SessionMiddlewareTest {
 
 @Test
 public class MultiSessionMiddlewareTest {
+    @TestCase
+    public func arbitraryMultiSessionSupportsOneKey(): Unit {
+        let storage = CountingStorage<CounterSession>()
+        let options = MultiSessionOptions<CounterSession>()
+        options.add("profile", SessionOptions<CounterSession>({ => CounterSession(1) }, storage))
+
+        multiSession<CounterSession>(options).handle(testCtx(91), { ctx: MultiSessionContext<CounterSession> =>
+            @Expect(ctx.size(), 1)
+            ctx.session("profile").count += 4
+        })
+
+        @Expect(storage.readCount, 1)
+        @Expect(storage.writeCount, 1)
+        @Expect(counterValue(storage.inner.read("91")), 5)
+    }
+
+    @TestCase
+    public func arbitraryMultiSessionSupportsTwoAndThreeNamedKeysIndependently(): Unit {
+        let first = CountingStorage<CounterSession>()
+        let second = CountingStorage<CounterSession>()
+        let third = CountingStorage<CounterSession>()
+        let options = MultiSessionOptions<CounterSession>()
+        options.add("one", SessionOptions<CounterSession>({ => CounterSession(1) }, first))
+        options.add("two", SessionOptions<CounterSession>({ => CounterSession(2) }, second))
+        options.add("three", SessionOptions<CounterSession>({ => CounterSession(3) }, third))
+
+        multiSession<CounterSession>(options).handle(testCtx(92), { ctx: MultiSessionFlavorContext<CounterSession> =>
+            @Expect(ctx.chatId, 92)
+            ctx.session.get("one").count += 10
+            ctx.session.set("two", CounterSession(20))
+            ctx.session.delete("three")
+        })
+
+        @Expect(first.readCount, 1)
+        @Expect(second.readCount, 0)
+        @Expect(third.readCount, 0)
+        @Expect(first.writeCount, 1)
+        @Expect(second.writeCount, 1)
+        @Expect(third.deleteCount, 1)
+        @Expect(counterValue(first.inner.read("92")), 11)
+        @Expect(counterValue(second.inner.read("92")), 20)
+        @Expect(third.inner.has("92"), false)
+    }
+
+    @TestCase
+    public func arbitraryMultiSessionSupportsNKeysAndDeleteAll(): Unit {
+        let a = CountingStorage<CounterSession>()
+        let b = CountingStorage<CounterSession>()
+        let c = CountingStorage<CounterSession>()
+        let d = CountingStorage<CounterSession>()
+        a.write("93", CounterSession(1))
+        b.write("93", CounterSession(2))
+        c.write("93", CounterSession(3))
+        d.write("93", CounterSession(4))
+        a.readCount = 0
+        b.readCount = 0
+        c.readCount = 0
+        d.readCount = 0
+        let options = MultiSessionOptions<CounterSession>()
+        options.add("alpha", SessionOptions<CounterSession>(a))
+        options.add("beta", SessionOptions<CounterSession>(b))
+        options.add("gamma", SessionOptions<CounterSession>(c))
+        options.add("delta", SessionOptions<CounterSession>(d))
+
+        multiSession<CounterSession>(options).handle(testCtx(93), { ctx: MultiSessionContext<CounterSession> =>
+            @Expect(ctx.size(), 4)
+            @Expect(ctx.session("alpha").count, 1)
+            @Expect(ctx.session("delta").count, 4)
+            ctx.deleteSession()
+        })
+
+        @Expect(a.readCount, 1)
+        @Expect(b.readCount, 0)
+        @Expect(c.readCount, 0)
+        @Expect(d.readCount, 1)
+        @Expect(a.deleteCount, 1)
+        @Expect(b.deleteCount, 1)
+        @Expect(c.deleteCount, 1)
+        @Expect(d.deleteCount, 1)
+        @Expect(a.inner.has("93"), false)
+        @Expect(b.inner.has("93"), false)
+        @Expect(c.inner.has("93"), false)
+        @Expect(d.inner.has("93"), false)
+    }
+
+    @TestCase
+    public func arbitraryMultiSessionRejectsDuplicateAndUnknownKeys(): Unit {
+        let options = MultiSessionOptions<CounterSession>()
+        options.add("same", SessionOptions<CounterSession>())
+        let duplicate = throwsException({ =>
+            options.add("same", SessionOptions<CounterSession>())
+        })
+        let unknown = throwsException({ =>
+            multiSession<CounterSession>(options).handle(testCtx(94), { ctx: MultiSessionContext<CounterSession> =>
+                ctx.session("missing").count += 1
+            })
+        })
+
+        @Expect(duplicate, true)
+        @Expect(unknown, true)
+    }
+
     @TestCase
     public func multiSessionReadsWritesAndDeletesBothSlots(): Unit {
         let first = MemorySessionStorage<CounterSession>()
@@ -954,6 +1132,18 @@ public class LazySessionMiddlewareTest {
 
         let threw = throwsException({ =>
             let _middleware = lazySession<CounterSession, CounterSession>(options)
+        })
+
+        @Expect(threw, true)
+    }
+
+    @TestCase
+    public func lazySessionRejectsArbitraryMultiSessionOptions(): Unit {
+        let options = MultiSessionOptions<CounterSession>()
+        options.add("one", SessionOptions<CounterSession>({ => CounterSession(0) }))
+
+        let threw = throwsException({ =>
+            let _middleware = lazySession<CounterSession>(options)
         })
 
         @Expect(threw, true)

@@ -27,7 +27,7 @@ public class SessionPropertyContract {
         this.strictWrite = "SessionFlavorContext<T>.session = value"
         this.strictDelete = "SessionFlavorContext<T>.deleteSession() or setOptionalSession(None)"
         this.lazyRead = "LazySessionMiddleware + SessionFlavorContext<T>.session"
-        this.multiDelete = "MultiSessionFlavorContext2<A,B>.session slots or deleteSession()"
+        this.multiDelete = "MultiSessionFlavorContext<T>.session named slots or deleteSession()"
         this.contextIntegration = "typed session flavor context exposes ctx.session property"
     }
 }
@@ -66,6 +66,9 @@ public interface StorageAdapter<T> {
     func read(key: String): Option<T>
     func write(key: String, value: T): Unit
     func delete(key: String): Unit
+}
+
+public interface StorageEnumerableAdapter<T> <: StorageAdapter<T> {
     func has(key: String): Bool
     func readAll(): Array<T>
     func readAllKeys(): Array<String>
@@ -77,6 +80,9 @@ public interface AsyncStorageAdapter<T> {
     func read(key: String): SessionTask<Option<T>>
     func write(key: String, value: T): SessionTask<Unit>
     func delete(key: String): SessionTask<Unit>
+}
+
+public interface AsyncStorageEnumerableAdapter<T> <: AsyncStorageAdapter<T> {
     func has(key: String): SessionTask<Bool>
     func readAll(): SessionTask<Array<T>>
     func readAllKeys(): SessionTask<Array<String>>
@@ -88,6 +94,26 @@ public class AsyncStorageAdapterShim<T> <: StorageAdapter<T> {
     private let storage: AsyncStorageAdapter<T>
 
     public init(storage: AsyncStorageAdapter<T>) {
+        this.storage = storage
+    }
+
+    public func read(key: String): Option<T> {
+        this.storage.read(key).get()
+    }
+
+    public func write(key: String, value: T): Unit {
+        this.storage.write(key, value).get()
+    }
+
+    public func delete(key: String): Unit {
+        this.storage.delete(key).get()
+    }
+}
+
+public class AsyncStorageEnumerableAdapterShim<T> <: StorageEnumerableAdapter<T> {
+    private let storage: AsyncStorageEnumerableAdapter<T>
+
+    public init(storage: AsyncStorageEnumerableAdapter<T>) {
         this.storage = storage
     }
 
@@ -142,7 +168,7 @@ public class MemorySessionRecord<T> {
     }
 }
 
-public class MemorySessionStorage<T> <: StorageAdapter<T> {
+public class MemorySessionStorage<T> <: StorageEnumerableAdapter<T> {
     private let storage: HashMap<String, MemorySessionRecord<T>> = HashMap<String, MemorySessionRecord<T>>()
     private let timeToLiveMillis: Int64
     private let nowMillis: SessionNowMillis
@@ -275,6 +301,14 @@ public class SessionOptions<T> {
         this.customGetSessionKey = false
     }
 
+    public init(storage: AsyncStorageEnumerableAdapter<T>) {
+        this.initial = None
+        this.prefix = ""
+        this.getSessionKey = defaultGetSessionKey
+        this.storage = AsyncStorageEnumerableAdapterShim<T>(storage)
+        this.customGetSessionKey = false
+    }
+
     public init(initial: SessionInitializer<T>, storage: StorageAdapter<T>) {
         this.initial = Some(initial)
         this.prefix = ""
@@ -291,6 +325,14 @@ public class SessionOptions<T> {
         this.customGetSessionKey = false
     }
 
+    public init(initial: SessionInitializer<T>, storage: AsyncStorageEnumerableAdapter<T>) {
+        this.initial = Some(initial)
+        this.prefix = ""
+        this.getSessionKey = defaultGetSessionKey
+        this.storage = AsyncStorageEnumerableAdapterShim<T>(storage)
+        this.customGetSessionKey = false
+    }
+
     public init(prefix: String, initial: Option<SessionInitializer<T>>, storage: StorageAdapter<T>, getSessionKey: SessionKeyResolver) {
         this.initial = initial
         this.prefix = prefix
@@ -304,6 +346,14 @@ public class SessionOptions<T> {
         this.prefix = prefix
         this.getSessionKey = getSessionKey
         this.storage = AsyncStorageAdapterShim<T>(storage)
+        this.customGetSessionKey = true
+    }
+
+    public init(prefix: String, initial: Option<SessionInitializer<T>>, storage: AsyncStorageEnumerableAdapter<T>, getSessionKey: SessionKeyResolver) {
+        this.initial = initial
+        this.prefix = prefix
+        this.getSessionKey = getSessionKey
+        this.storage = AsyncStorageEnumerableAdapterShim<T>(storage)
         this.customGetSessionKey = true
     }
 }
@@ -340,9 +390,7 @@ private class PropertySession<T> {
         this.requireKey("access")
         this.readRequested = true
         this.resolvePending()
-        if (!this.lazy || this.wrote) {
-            ()
-        } else {
+        if (!this.wrote) {
             this.load()
         }
         match (this.value) {
@@ -355,9 +403,7 @@ private class PropertySession<T> {
         this.requireKey("access")
         this.readRequested = true
         this.resolvePending()
-        if (!this.lazy || this.wrote) {
-            ()
-        } else {
+        if (!this.wrote) {
             this.load()
         }
         this.value
@@ -671,7 +717,6 @@ public class SessionMiddleware<T> {
 
     public func handle(ctx: Context, handler: (SessionContext<T>) -> Unit): Unit {
         let sessionContext = this.createContext(ctx)
-        sessionContext.preload()
         handler(sessionContext)
         sessionContext.finish()
     }
@@ -699,10 +744,7 @@ public class SessionMiddleware<T> {
     }
 
     private func createContext(ctx: Context): SessionContext<T> {
-        match (this.options.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, false, this.options.customGetSessionKey)
-            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, false, this.options.customGetSessionKey)
-        }
+        createSessionContext<T>(ctx, this.options, false)
     }
 }
 
@@ -742,10 +784,214 @@ public class LazySessionMiddleware<T> {
     }
 
     private func createContext(ctx: Context): SessionContext<T> {
-        match (this.options.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<T>(ctx, Some(this.options.prefix + key), this.options.storage, this.options.initial, true, this.options.customGetSessionKey)
-            case None => SessionContext<T>(ctx, None<String>, this.options.storage, this.options.initial, true, this.options.customGetSessionKey)
+        createSessionContext<T>(ctx, this.options, true)
+    }
+}
+
+public class MultiSessionSlot<T> {
+    public let name: String
+    public let options: SessionOptions<T>
+
+    public init(name: String, options: SessionOptions<T>) {
+        this.name = name
+        this.options = options
+    }
+}
+
+public class MultiSessionOptions<T> {
+    public let slots: ArrayList<MultiSessionSlot<T>> = ArrayList<MultiSessionSlot<T>>()
+
+    public init() {}
+
+    public init(slot: MultiSessionSlot<T>) {
+        this.add(slot)
+    }
+
+    public init(slots: Array<MultiSessionSlot<T>>) {
+        for (slot in slots) {
+            this.add(slot)
         }
+    }
+
+    public func add(name: String, options: SessionOptions<T>): Unit {
+        this.add(MultiSessionSlot<T>(name, options))
+    }
+
+    public func add(slot: MultiSessionSlot<T>): Unit {
+        if (this.hasSlot(slot.name)) {
+            throw Exception("Duplicate multi-session key: " + slot.name)
+        }
+        this.slots.add(slot)
+    }
+
+    public func hasSlot(name: String): Bool {
+        for (slot in this.slots) {
+            if (slot.name == name) {
+                return true
+            }
+        }
+        false
+    }
+
+    public func size(): Int64 {
+        this.slots.size
+    }
+}
+
+public class NamedSessionContext<T> {
+    public let name: String
+    public let session: SessionContext<T>
+
+    public init(name: String, session: SessionContext<T>) {
+        this.name = name
+        this.session = session
+    }
+}
+
+public class MultiSessionContext<T> {
+    public let ctx: Context
+    public let slots: ArrayList<NamedSessionContext<T>> = ArrayList<NamedSessionContext<T>>()
+    private let byName: HashMap<String, SessionContext<T>> = HashMap<String, SessionContext<T>>()
+
+    public init(ctx: Context) {
+        this.ctx = ctx
+    }
+
+    public func add(name: String, session: SessionContext<T>): Unit {
+        if (this.has(name)) {
+            throw Exception("Duplicate multi-session key: " + name)
+        }
+        this.slots.add(NamedSessionContext<T>(name, session))
+        this.byName[name] = session
+    }
+
+    public func has(name: String): Bool {
+        match (this.byName.get(name)) {
+            case Some(_) => true
+            case None => false
+        }
+    }
+
+    public func get(name: String): SessionContext<T> {
+        match (this.byName.get(name)) {
+            case Some(session) => session
+            case None => throw Exception("Unknown multi-session key: " + name)
+        }
+    }
+
+    public func session(name: String): T {
+        this.get(name).session
+    }
+
+    public func setSession(name: String, value: T): Unit {
+        this.get(name).session = value
+    }
+
+    public func setOptionalSession(name: String, value: Option<T>): Unit {
+        this.get(name).setOptionalSession(value)
+    }
+
+    public func deleteSession(name: String): Unit {
+        this.get(name).deleteSession()
+    }
+
+    public func deleteSession(): Unit {
+        for (slot in this.slots) {
+            slot.session.deleteSessionIfKeyPresent()
+        }
+    }
+
+    public func finish(): Unit {
+        for (slot in this.slots) {
+            slot.session.finish()
+        }
+    }
+
+    public func size(): Int64 {
+        this.slots.size
+    }
+}
+
+public class MultiSessionData<T> {
+    private let sessionContext: MultiSessionContext<T>
+
+    public init(sessionContext: MultiSessionContext<T>) {
+        this.sessionContext = sessionContext
+    }
+
+    public func get(name: String): T {
+        this.sessionContext.session(name)
+    }
+
+    public func set(name: String, value: T): Unit {
+        this.sessionContext.setSession(name, value)
+    }
+
+    public func setOptional(name: String, value: Option<T>): Unit {
+        this.sessionContext.setOptionalSession(name, value)
+    }
+
+    public func delete(name: String): Unit {
+        this.sessionContext.deleteSession(name)
+    }
+}
+
+public class MultiSessionFlavorContext<T> {
+    public let ctx: Context
+    public let session: MultiSessionData<T>
+    private let sessionContext: MultiSessionContext<T>
+
+    public init(sessionContext: MultiSessionContext<T>) {
+        this.ctx = sessionContext.ctx
+        this.sessionContext = sessionContext
+        this.session = MultiSessionData<T>(sessionContext)
+    }
+
+    public prop chatId: Int64 {
+        get() { this.ctx.chatId }
+    }
+
+    public func updateId(): Int64 {
+        this.ctx.updateId()
+    }
+
+    public func deleteSession(): Unit {
+        this.sessionContext.deleteSession()
+    }
+
+    public func setOptionalSession(value: Option<MultiSessionData<T>>): Unit {
+        match (value) {
+            case Some(_) => ()
+            case None => this.deleteSession()
+        }
+    }
+}
+
+public class MultiSessionMiddleware<T> {
+    private let options: MultiSessionOptions<T>
+
+    public init(options: MultiSessionOptions<T>) {
+        this.options = options
+    }
+
+    public func handle(ctx: Context, handler: (MultiSessionContext<T>) -> Unit): Unit {
+        let sessionContext = this.createContext(ctx)
+        handler(sessionContext)
+        sessionContext.finish()
+    }
+
+    public func handle(ctx: Context, handler: (MultiSessionFlavorContext<T>) -> Unit): Unit {
+        this.handle(ctx, { sessionContext: MultiSessionContext<T> =>
+            handler(MultiSessionFlavorContext<T>(sessionContext))
+        })
+    }
+
+    private func createContext(ctx: Context): MultiSessionContext<T> {
+        let sessionContext = MultiSessionContext<T>(ctx)
+        for (slot in this.options.slots) {
+            sessionContext.add(slot.name, createSessionContext<T>(ctx, slot.options, false))
+        }
+        sessionContext
     }
 }
 
@@ -870,7 +1116,6 @@ public class MultiSessionMiddleware2<A, B> {
 
     public func handle(ctx: Context, handler: (MultiSessionContext2<A, B>) -> Unit): Unit {
         let sessionContext = this.createContext(ctx)
-        sessionContext.preload()
         handler(sessionContext)
         sessionContext.finish()
     }
@@ -890,17 +1135,11 @@ public class MultiSessionMiddleware2<A, B> {
     }
 
     private func createFirstContext(ctx: Context): SessionContext<A> {
-        match (this.options.first.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<A>(ctx, Some(this.options.first.prefix + key), this.options.first.storage, this.options.first.initial, false, this.options.first.customGetSessionKey)
-            case None => SessionContext<A>(ctx, None<String>, this.options.first.storage, this.options.first.initial, false, this.options.first.customGetSessionKey)
-        }
+        createSessionContext<A>(ctx, this.options.first, false)
     }
 
     private func createSecondContext(ctx: Context): SessionContext<B> {
-        match (this.options.second.getSessionKey(ctx)) {
-            case Some(key) => SessionContext<B>(ctx, Some(this.options.second.prefix + key), this.options.second.storage, this.options.second.initial, false, this.options.second.customGetSessionKey)
-            case None => SessionContext<B>(ctx, None<String>, this.options.second.storage, this.options.second.initial, false, this.options.second.customGetSessionKey)
-        }
+        createSessionContext<B>(ctx, this.options.second, false)
     }
 }
 
@@ -912,8 +1151,16 @@ public func session<T>(options: SessionOptions<T>): SessionMiddleware<T> {
     SessionMiddleware<T>(options)
 }
 
+public func session<T>(options: MultiSessionOptions<T>): MultiSessionMiddleware<T> {
+    MultiSessionMiddleware<T>(options)
+}
+
 public func session<A, B>(options: MultiSessionOptions2<A, B>): MultiSessionMiddleware2<A, B> {
     MultiSessionMiddleware2<A, B>(options)
+}
+
+public func multiSession<T>(options: MultiSessionOptions<T>): MultiSessionMiddleware<T> {
+    MultiSessionMiddleware<T>(options)
 }
 
 public func multiSession<A, B>(options: MultiSessionOptions2<A, B>): MultiSessionMiddleware2<A, B> {
@@ -926,6 +1173,10 @@ public func lazySession<T>(): LazySessionMiddleware<T> {
 
 public func lazySession<T>(options: SessionOptions<T>): LazySessionMiddleware<T> {
     LazySessionMiddleware<T>(options)
+}
+
+public func lazySession<T>(options: MultiSessionOptions<T>): LazySessionMiddleware<T> {
+    throw Exception("Cannot use lazy multi sessions!")
 }
 
 public func lazySession<A, B>(options: MultiSessionOptions2<A, B>): LazySessionMiddleware<A> {
@@ -950,6 +1201,13 @@ private func sessionKeyPresent(key: Option<String>): Bool {
     match (key) {
         case Some(_) => true
         case None => false
+    }
+}
+
+private func createSessionContext<T>(ctx: Context, options: SessionOptions<T>, lazy: Bool): SessionContext<T> {
+    match (options.getSessionKey(ctx)) {
+        case Some(key) => SessionContext<T>(ctx, Some(options.prefix + key), options.storage, options.initial, lazy, options.customGetSessionKey)
+        case None => SessionContext<T>(ctx, None<String>, options.storage, options.initial, lazy, options.customGetSessionKey)
     }
 }
 
@@ -1051,11 +1309,11 @@ public class MigrationOptions<T> {
     }
 }
 
-public func enhanceStorage<T>(options: MigrationOptions<T>): StorageAdapter<T> {
+public func enhanceStorage<T>(options: MigrationOptions<T>): StorageEnumerableAdapter<T> {
     EnhancedStorage<T>(options)
 }
 
-private class EnhancedStorage<T> <: StorageAdapter<T> {
+private class EnhancedStorage<T> <: StorageEnumerableAdapter<T> {
     private let backing: StorageAdapter<SessionEnvelope<T>>
     private let migrations: HashMap<Int64, (T) -> T>
     private let hasMigrations: Bool
@@ -1143,7 +1401,7 @@ private class EnhancedStorage<T> <: StorageAdapter<T> {
 
     public func readAllKeys(): Array<String> {
         let live = ArrayList<String>()
-        for (key in this.backing.readAllKeys()) {
+        for (key in storageReadAllKeys(this.backing)) {
             match (this.read(key)) {
                 case Some(_) => live.add(key)
                 case None => ()
@@ -1172,6 +1430,13 @@ private class EnhancedStorage<T> <: StorageAdapter<T> {
             }
         }
         entries.toArray()
+    }
+}
+
+private func storageReadAllKeys<T>(storage: StorageAdapter<T>): Array<String> {
+    match (storage as StorageEnumerableAdapter<T>) {
+        case Some(enumerable) => enumerable.readAllKeys()
+        case None => []
     }
 }
 
