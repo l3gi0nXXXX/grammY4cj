@@ -29,6 +29,7 @@ done
 SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
 PARITY_LEDGER="$REPO_DIR/src/architecture/upstream_test_parity_ledger.tsv"
+FORMAL_LEDGER="$REPO_DIR/src/architecture/formal_substitute_ledger.tsv"
 PHASE_STATUS_SOURCE="$REPO_DIR/src/architecture/phase_status.tsv"
 GATE_STATUS_SOURCE="$REPO_DIR/src/architecture/gate_status.tsv"
 
@@ -104,6 +105,23 @@ check_ge() {
     printf 'FAIL %s minimum=%s actual=%s\n' "$name" "$minimum" "$actual"
     record_failure
   fi
+}
+
+check_file_contains() {
+  name="$1"
+  file="$2"
+  needle="$3"
+  if grep -F "$needle" "$file" >/dev/null 2>&1; then
+    printf 'ok %s\n' "$name"
+  else
+    printf 'FAIL %s missing pattern: %s\n' "$name" "$needle"
+    record_failure
+  fi
+}
+
+ledger_status_for() {
+  key="$1"
+  awk -F '\t' -v k="$key" 'NR > 1 && $1 == k {print $2; found = 1} END {if (!found) print "MISSING"}' "$FORMAL_LEDGER"
 }
 
 extract_bot_api_badge_version() {
@@ -287,6 +305,70 @@ write_phase_status_artifact() {
     printf 'phase status artifact: %s rows=%s\n' "$phase_artifact" "$phase_rows"
     printf 'gate status artifact: %s rows=%s\n' "$gate_artifact" "$gate_rows"
   fi
+}
+
+check_closed_multipart_payload_contract() {
+  payload_test="$REPO_DIR/src/core/payload_test.cj"
+  payload_impl="$REPO_DIR/src/core/payload.cj"
+  source_matrix="$REPO_DIR/src/architecture/source_evidence_matrix.tsv"
+  trace_script="$SCRIPT_DIR/check_source_trace_matrix.sh"
+
+  section "G2.1 Closed multipart payload contract"
+  if [ ! -f "$FORMAL_LEDGER" ]; then
+    printf 'FAIL missing formal substitute ledger: %s\n' "$FORMAL_LEDGER"
+    record_failure
+    return
+  fi
+
+  formal_rows="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$FORMAL_LEDGER")"
+  formal_open="$(awk -F '\t' 'NR > 1 && $2 == "open" {count += 1} END {print count + 0}' "$FORMAL_LEDGER")"
+  formal_closed="$(awk -F '\t' 'NR > 1 && $2 == "closed" {count += 1} END {print count + 0}' "$FORMAL_LEDGER")"
+  formal_language_boundary="$(awk -F '\t' 'NR > 1 && $2 == "language-boundary" {count += 1} END {print count + 0}' "$FORMAL_LEDGER")"
+  formal_test_only="$(awk -F '\t' 'NR > 1 && $2 == "test-only" {count += 1} END {print count + 0}' "$FORMAL_LEDGER")"
+  multipart_status="$(ledger_status_for multipart_byte_stream_payload_contract)"
+  printf 'formal substitute ledger rows=%s open=%s closed=%s language_boundary=%s test_only=%s\n' \
+    "$formal_rows" "$formal_open" "$formal_closed" "$formal_language_boundary" "$formal_test_only"
+  check_eq "multipart_byte_stream_payload_contract status" "$multipart_status" "closed"
+  check_eq "formal substitute open status count" "$formal_open" "0"
+
+  payload_test_count="$(rg -n '@TestCase' "$payload_test" | wc -l | tr -d ' ')"
+  check_eq "payload @TestCase declarations" "$payload_test_count" "28"
+  for test_name in \
+    multipartPayloadKeepsFieldsBeforeFilesInInsertionOrder \
+    multipartPayloadDefersSingleUseRawUntilStreamDrain \
+    multipartPayloadPreservesRawChunkOrder \
+    multipartPayloadUsesInputFileRawFilenameInference \
+    multipartPayloadUsesUrlAndAsyncIterableRawSources \
+    multipartPayloadUsesDefaultExtensions \
+    recursiveMultipartPayloadFindsNestedFiles \
+    recursiveMultipartPayloadFindsFilesInNestedArraysAndObjects \
+    multipartNestedInputFilesUseAttachPlaceholdersAndAppendFilesAfterValues \
+    multipartNestedInputFilesDoNotConsumeRawUntilDrain \
+    recursiveMultipartPayloadFindsFilesInBuilderObjects \
+    multipartRequestPayloadDrainsNativeBytesWithoutTextBodyFallback \
+    multipartPayloadRejectsCrLfFilenamesWithOriginInMessage \
+    multipartPayloadRejectsCarriageReturnFilenamesWithOriginInMessage \
+    multipartPayloadRejectsCrLfOriginsFromMediaType \
+    multipartPayloadCanBeBuiltRepeatedly \
+    multipartStreamInvokesErrorCallbackWhenDrained \
+    multipartStreamInvokesErrorCallbackForDeferredToRawFailure
+  do
+    check_file_contains "payload test declares $test_name" "$payload_test" "public func $test_name()"
+  done
+
+  check_file_contains "payload source evidence row" "$source_matrix" "runtime	src/core/payload.ts"
+  check_file_contains "payload upstream test evidence row" "$source_matrix" "test	test/core/payload.test.ts"
+  check_file_contains "payload runtime trace row" "$trace_script" 'trace_row runtime "src/core/payload.ts" "src/core/payload.cj src/core/payload_test.cj" "G2"'
+  check_file_contains "payload test trace row" "$trace_script" 'trace_row test "test/core/payload.test.ts" "src/core/payload_test.cj" "G2"'
+
+  to_raw_count="$(rg -n 'toRaw\(adapter\)' "$payload_impl" | wc -l | tr -d ' ')"
+  check_eq "payload InputFile.toRaw adapter callsites" "$to_raw_count" "1"
+  check_file_contains "payload stream collectChunks drain path" "$payload_impl" "public func collectChunks()"
+  check_file_contains "payload deferred raw read implementation" "$payload_impl" "let raw = file.toRaw(adapter)"
+  check_file_contains "payload drain timing golden pre-drain" "$payload_test" "@Expect(file.consumed, false)"
+  check_file_contains "payload drain timing golden empty request body" "$payload_test" "@Expect(req.body, \"\")"
+  check_file_contains "payload drain timing golden drain call" "$payload_test" "let body = req.stream.drain()"
+  check_file_contains "payload drain timing golden post-drain" "$payload_test" "@Expect(file.consumed, true)"
 }
 
 classify_test_parity_mismatches() {
@@ -659,6 +741,8 @@ fi
 
 section "G9.1 Source evidence matrix"
 GRAMMY_DIR="$GRAMMY_DIR" sh "$SCRIPT_DIR/check_source_evidence_matrix.sh"
+
+check_closed_multipart_payload_contract
 
 section "G9.3 Upstream diff workflow"
 if [ -n "${GRAMMY4CJ_UPSTREAM_DIFF_BASE:-}" ] || [ -n "${GRAMMY4CJ_UPSTREAM_DIFF_HEAD:-}" ]; then

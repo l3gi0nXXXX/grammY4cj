@@ -45,7 +45,7 @@ if [ -f "$LEDGER" ]; then
     END {print bad + 0}
   ' "$LEDGER")"
   bad_status="$(awk -F '\t' '
-    NR > 1 && $1 != "" && $2 != "open" && $2 != "test-only" && $2 != "language-boundary" && $2 != "removed" {bad += 1}
+    NR > 1 && $1 != "" && $2 != "open" && $2 != "closed" && $2 != "test-only" && $2 != "language-boundary" && $2 != "removed" {bad += 1}
     END {print bad + 0}
   ' "$LEDGER")"
   duplicate_keys="$(awk -F '\t' '
@@ -61,10 +61,11 @@ if [ -f "$LEDGER" ]; then
     END {print bad + 0}
   ' "$GATE_STATUS" "$LEDGER")"
   open_count="$(awk -F '\t' 'NR > 1 && $2 == "open" {count += 1} END {print count + 0}' "$LEDGER")"
+  closed_count="$(awk -F '\t' 'NR > 1 && $2 == "closed" {count += 1} END {print count + 0}' "$LEDGER")"
   language_boundary_count="$(awk -F '\t' 'NR > 1 && $2 == "language-boundary" {count += 1} END {print count + 0}' "$LEDGER")"
   test_only_count="$(awk -F '\t' 'NR > 1 && $2 == "test-only" {count += 1} END {print count + 0}' "$LEDGER")"
 
-  printf 'formal substitute ledger rows=%s open=%s language_boundary=%s test_only=%s\n' "$row_count" "$open_count" "$language_boundary_count" "$test_only_count"
+  printf 'formal substitute ledger rows=%s open=%s closed=%s language_boundary=%s test_only=%s\n' "$row_count" "$open_count" "$closed_count" "$language_boundary_count" "$test_only_count"
   if [ "$row_count" -lt 7 ]; then
     fail "formal substitute ledger must contain at least 7 rows"
   fi

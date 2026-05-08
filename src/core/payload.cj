@@ -216,6 +216,9 @@ public class MultipartChunk {
     public let raw: Option<InputFileRaw>
     public let inputFile: Option<InputFile>
     public let rawAdapter: Option<InputFileRawAdapter>
+    public let attachId: String
+    public let origin: String
+    public let filename: String
 
     public init(kind: String, data: String, sourceKind: String) {
         this.kind = kind
@@ -225,6 +228,9 @@ public class MultipartChunk {
         this.raw = None<InputFileRaw>
         this.inputFile = None<InputFile>
         this.rawAdapter = None<InputFileRawAdapter>
+        this.attachId = ""
+        this.origin = ""
+        this.filename = ""
     }
 
     public init(kind: String, bytes: Array<Byte>, sourceKind: String) {
@@ -235,6 +241,9 @@ public class MultipartChunk {
         this.raw = None<InputFileRaw>
         this.inputFile = None<InputFile>
         this.rawAdapter = None<InputFileRawAdapter>
+        this.attachId = ""
+        this.origin = ""
+        this.filename = ""
     }
 
     public init(kind: String, raw: InputFileRaw) {
@@ -245,6 +254,9 @@ public class MultipartChunk {
         this.raw = Some(raw)
         this.inputFile = None<InputFile>
         this.rawAdapter = None<InputFileRawAdapter>
+        this.attachId = ""
+        this.origin = ""
+        this.filename = ""
     }
 
     public init(kind: String, file: InputFile, adapter: InputFileRawAdapter) {
@@ -255,6 +267,22 @@ public class MultipartChunk {
         this.raw = None<InputFileRaw>
         this.inputFile = Some(file)
         this.rawAdapter = Some(adapter)
+        this.attachId = ""
+        this.origin = ""
+        this.filename = ""
+    }
+
+    public init(kind: String, attachId: String, origin: String, filename: String) {
+        this.kind = kind
+        this.data = ""
+        this.bytes = []
+        this.sourceKind = ""
+        this.raw = None<InputFileRaw>
+        this.inputFile = None<InputFile>
+        this.rawAdapter = None<InputFileRawAdapter>
+        this.attachId = attachId
+        this.origin = origin
+        this.filename = filename
     }
 }
 
@@ -295,6 +323,16 @@ public class MultipartByteStream {
 
     public func addInputFile(file: InputFile, adapter: InputFileRawAdapter): MultipartByteStream {
         this.chunks.add(MultipartChunk("file", file, adapter))
+        this
+    }
+
+    public func addFileHeader(attachId: String, origin: String, filename: String): MultipartByteStream {
+        this.chunks.add(MultipartChunk("file_header", attachId, origin, filename))
+        this
+    }
+
+    public func addDeferredError(message: String): MultipartByteStream {
+        this.chunks.add(MultipartChunk("error", message, ""))
         this
     }
 
@@ -350,6 +388,13 @@ public class MultipartByteStream {
         let chunks = ArrayList<Array<Byte>>()
         try {
             for (chunk in this.chunks) {
+                if (chunk.kind == "file_header") {
+                    chunks.add(filePartHeader(chunk.attachId, chunk.origin, chunk.filename).toArray())
+                    continue
+                }
+                if (chunk.kind == "error") {
+                    throw Exception(chunk.data)
+                }
                 match (chunk.raw) {
                     case Some(raw) =>
                         for (rawChunk in raw.collectChunks()) {
@@ -785,13 +830,13 @@ public func filePart(attachId: String, origin: String, filename: String, body: S
 }
 
 private func appendFilePart(stream: MultipartByteStream, part: CollectedFile, adapter: InputFileRawAdapter): Unit {
-    stream.addText(filePartHeader(part.id, part.origin, part.file.filename))
+    stream.addFileHeader(part.id, part.origin, part.file.filename)
     if (part.file.sourceKind == "stream_error_after") {
         stream.fail(part.file.value, 100)
         return
     }
     if (part.file.sourceKind == "stream_error") {
-        stream.fail(part.file.value, 0)
+        stream.fail(part.file.value)
         return
     }
     appendInputFileBytes(stream, part.file, adapter)

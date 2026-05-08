@@ -313,6 +313,68 @@ public class PayloadTest {
     }
 
     @TestCase
+    public func multipartNestedInputFilesUseAttachPlaceholdersAndAppendFilesAfterValues(): Unit {
+        let payload = Payload("")
+        payload.addInt("chat_id", 42)
+        let media = payload.addArray("media")
+        let photo = media.addObjectItem()
+        photo.addValue("type", "photo")
+        photo.addFile("media", InputFile.fromBytes("photo-bytes", ""))
+        photo.addFile("thumbnail", InputFile.fromBytes("thumb-bytes", ""))
+        let animation = media.addObjectItem()
+        animation.addValue("type", "animation")
+        animation.addFile("media", InputFile.fromBytes("anim-bytes", ""))
+        payload.addValue("caption", "nested")
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
+        let expected = "--boundary\r\n" +
+            "content-disposition:form-data;name=\"chat_id\"\r\n\r\n42\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"media\"\r\n\r\n" +
+            "[{\"type\":\"photo\",\"media\":\"attach://attach0\",\"thumbnail\":\"attach://attach1\"},{\"type\":\"animation\",\"media\":\"attach://attach2\"}]\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"caption\"\r\n\r\nnested\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"attach0\";filename=photo.jpg\r\ncontent-type:application/octet-stream\r\n\r\n" +
+            "photo-bytes\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"attach1\";filename=thumbnail.jpg\r\ncontent-type:application/octet-stream\r\n\r\n" +
+            "thumb-bytes\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"attach2\";filename=animation.mp4\r\ncontent-type:application/octet-stream\r\n\r\n" +
+            "anim-bytes\r\n--boundary--\r\n"
+
+        @Expect(body, expected)
+    }
+
+    @TestCase
+    public func multipartNestedInputFilesDoNotConsumeRawUntilDrain(): Unit {
+        let streamFile = InputFile.fromStream("AA|BB", "")
+        let asyncFile = InputFile.fromAsyncIterable("CC|DD", "")
+        let payload = Payload("")
+        let media = payload.addArray("media")
+        let item = media.addObjectItem()
+        item.addValue("type", "video")
+        item.addFile("media", streamFile)
+        item.addFile("thumbnail", asyncFile)
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+
+        @Expect(streamFile.consumed, false)
+        @Expect(asyncFile.consumed, false)
+        @Expect(req.body, "")
+        @Expect(req.stream.previewBody().contains("AA"), false)
+        @Expect(req.stream.previewBody().contains("CC"), false)
+
+        let body = req.stream.drain()
+
+        @Expect(streamFile.consumed, true)
+        @Expect(asyncFile.consumed, true)
+        @Expect(body.contains("\"media\":\"attach://attach0\""), true)
+        @Expect(body.contains("\"thumbnail\":\"attach://attach1\""), true)
+        @Expect(body.contains("name=\"attach0\";filename=video.mp4"), true)
+        @Expect(body.contains("AABB\r\n--boundary"), true)
+        @Expect(body.contains("name=\"attach1\";filename=thumbnail.jpg"), true)
+        @Expect(body.contains("CCDD\r\n--boundary--"), true)
+    }
+
+    @TestCase
     public func recursiveMultipartPayloadFindsFilesInBuilderObjects(): Unit {
         let payload = Payload("")
         let options = payload.addObject("options")
@@ -386,13 +448,30 @@ public class PayloadTest {
         let payload = Payload("")
         payload.addFile("document", InputFile.fromBytes("abc", "bad\nname.txt"))
 
+        let req = createFormDataPayload(payload, "boundary", "attach")
         try {
-            createFormDataPayload(payload, "boundary", "attach")
+            req.stream.drain()
             @Expect(true, false)
         } catch (err: Exception) {
             @Expect(err.message.contains("File paths cannot contain carriage-return (\\r) or newline (\\n) characters!"), true)
             @Expect(err.message.contains("Filename for property 'document' was:"), true)
             @Expect(err.message.contains("bad\nname.txt"), true)
+        }
+    }
+
+    @TestCase
+    public func multipartPayloadRejectsCarriageReturnFilenamesWithOriginInMessage(): Unit {
+        let payload = Payload("")
+        payload.addFile("document", InputFile.fromBytes("abc", "bad\rname.txt"))
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+        try {
+            req.stream.drain()
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message.contains("File paths cannot contain carriage-return (\\r) or newline (\\n) characters!"), true)
+            @Expect(err.message.contains("Filename for property 'document' was:"), true)
+            @Expect(err.message.contains("bad\rname.txt"), true)
         }
     }
 
@@ -404,8 +483,9 @@ public class PayloadTest {
         item.addValue("type", "bad\nphoto")
         item.addFile("media", InputFile.fromBytes("abc", ""))
 
+        let req = createFormDataPayload(payload, "boundary", "attach")
         try {
-            createFormDataPayload(payload, "boundary", "attach")
+            req.stream.drain()
             @Expect(true, false)
         } catch (err: Exception) {
             @Expect(err.message.contains("File paths cannot contain carriage-return (\\r) or newline (\\n) characters!"), true)
@@ -435,6 +515,7 @@ public class PayloadTest {
             errors.add(err.message)
         })
 
+        @Expect(errors.size, 0)
         try {
             req.stream.drain()
             @Expect(true, false)
@@ -456,6 +537,7 @@ public class PayloadTest {
         })
 
         @Expect(req.body, "")
+        @Expect(errors.size, 0)
         try {
             req.stream.drain()
             @Expect(true, false)
