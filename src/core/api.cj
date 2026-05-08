@@ -741,14 +741,6 @@ public class Api {
         this.raw.call(method, payload, signal)
     }
 
-    public func callPublic(publicMethodName: String, payload: Payload): Payload {
-        this.call(apiWrapperSchemaTraceFor(publicMethodName).rawMethodName, payload)
-    }
-
-    public func callPublic(publicMethodName: String, payload: Payload, signal: CancelSignal): Payload {
-        this.call(apiWrapperSchemaTraceFor(publicMethodName).rawMethodName, payload, signal)
-    }
-
     private func zeroArgResult(method: String, typeTrace: String): ApiResult<String> {
         if (this.traceCompatibilityMode) {
             return tracedApiResult<String>(tracePayload(method, Payload("{}")), "", typeTrace)

@@ -571,9 +571,11 @@ public class ApiWrapperTest {
         @Expect(methodName(api.getMyStarBalance()), "getMyStarBalance")
         @Expect(methodName(api.removeMyProfilePhoto()), "removeMyProfilePhoto")
 
-        let publicAlias = api.callPublic("kickChatMember", Payload("").addInt("chat_id", 42).addInt("user_id", 7))
-        @Expect(methodName(publicAlias), "banChatMember")
-        @Expect(payloadBody(publicAlias), "{\"chat_id\":42,\"user_id\":7}")
+        let fake = ApiTestFakeFetch("{}")
+        let liveApi = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        @Expect(liveApi.raw.callPublic("kickChatMember", Payload("").addInt("chat_id", 42).addInt("user_id", 7)), "{}")
+        @Expect(fake.url, "https://api.telegram.org/bottoken/banChatMember")
+        @Expect(fake.body, "{\"chat_id\":42,\"user_id\":7}")
     }
 
     @TestCase
