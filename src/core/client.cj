@@ -2,6 +2,8 @@ package grammy4cj.core
 
 import std.collection.ArrayList
 import std.io.StringReader
+import std.sync.{Condition, Mutex}
+import std.time.DateTime
 import stdx.encoding.url.URL
 import stdx.net.http.*
 import stdx.net.tls.TlsClientConfig
@@ -129,6 +131,16 @@ public class CoreFetchResponse {
         this.delayMillis = delayMillis
         this
     }
+}
+
+private class TransportRaceState {
+    public var completed: Bool = false
+    public var fetchStarted: Bool = false
+    public var branch: String = ""
+    public var response: CoreFetchResponse = CoreFetchResponse.success("")
+    public var failure: Option<Exception> = None<Exception>
+
+    public init() {}
 }
 
 public interface CoreFetch {
@@ -392,44 +404,63 @@ public class ApiClient {
         }
         let request = CoreHttpRequest(this.endpoint(token, method), requestPayload, this.config.baseFetchConfig)
 
-        if (requestPayload.stream.hasError && requestPayload.stream.errorAfterMillis == 0) {
-            try {
-                requestPayload.stream.raiseError()
-            } catch (err: Exception) {
-                throw toHttpError(method, this.config.sensitiveLogs, request.url, token, err)
-            }
-        }
-
-        var response = CoreFetchResponse.success("")
-        try {
-            response = this.fetcher.fetch(request, signal)
-        } catch (err: Exception) {
-            throw toHttpError(method, this.config.sensitiveLogs, request.url, token, err)
-        }
-        this.resolveTransportRace(method, token, request.url, requestPayload, response, signal)
+        let response = this.runTransportRace(method, token, request, requestPayload, signal)
+        this.resolveTransportResponse(method, token, request.url, response)
     }
 
-    private func resolveTransportRace(method: String, token: String, url: String, requestPayload: RequestPayload, response: CoreFetchResponse, signal: CancelSignal): ApiResponse {
-        signal.throwIfCancelled()
+    private func runTransportRace(method: String, token: String, request: CoreHttpRequest, requestPayload: RequestPayload, parentSignal: CancelSignal): CoreFetchResponse {
+        let transportSignal = CancelSignal(parentSignal)
+        let race = TransportRaceState()
+        let mutex = Mutex()
+        let condition: Condition = synchronized(mutex) { mutex.condition() }
+        let startedAt = clientNowMillis()
         let timeoutMillis = this.timeoutConfig().timeoutMillis
-        let streamFails = requestPayload.stream.hasError
-        let streamMillis = requestPayload.stream.errorAfterMillis
+        let timeoutMessage = "Request to '" + method + "' timed out after " + this.config.timeoutSeconds.toString() + " seconds"
 
-        if (streamFails && streamMillis > 0 && response.delayMillis > 0 && streamMillis <= response.delayMillis && (timeoutMillis <= 0 || streamMillis <= timeoutMillis)) {
+        spawn { =>
+            markTransportRaceFetchStarted(race, mutex, condition)
             try {
-                requestPayload.stream.raiseError()
+                let response = this.fetcher.fetch(request, transportSignal)
+                completeTransportRaceResponse(race, mutex, condition, "success", response)
             } catch (err: Exception) {
-                throw toHttpError(method, this.config.sensitiveLogs, url, token, err)
+                completeTransportRaceFailure(race, mutex, condition, "success", err)
             }
         }
 
-        if (timeoutMillis > 0 && response.delayMillis > timeoutMillis) {
-            let seconds = this.config.timeoutSeconds.toString()
-            signal.cancelled = true
-            signal.reason = "Request to '" + method + "' timed out after " + seconds + " seconds"
-            throw toHttpError(method, this.config.sensitiveLogs, url, token, Exception(signal.reason))
+        synchronized(mutex) {
+            condition.waitUntil({ => race.fetchStarted })
         }
 
+        spawn { =>
+            if (requestPayload.stream.hasError) {
+                if (waitUntilRaceDeadline(startedAt + requestPayload.stream.errorAfterMillis, race, mutex)) {
+                    try {
+                        requestPayload.stream.raiseError()
+                    } catch (err: Exception) {
+                        transportSignal.cancel(err.message)
+                        completeTransportRaceFailure(race, mutex, condition, "stream", err)
+                    }
+                }
+            }
+        }
+
+        spawn { =>
+            if (waitUntilRaceDeadline(startedAt + timeoutMillis, race, mutex)) {
+                transportSignal.cancel(timeoutMessage)
+                completeTransportRaceFailure(race, mutex, condition, "timeout", Exception(timeoutMessage))
+            }
+        }
+
+        synchronized(mutex) {
+            condition.waitUntil({ => race.completed })
+        }
+        match (race.failure) {
+            case Some(err) => throw toHttpError(method, this.config.sensitiveLogs, request.url, token, err)
+            case None => race.response
+        }
+    }
+
+    private func resolveTransportResponse(method: String, token: String, url: String, response: CoreFetchResponse): ApiResponse {
         if (response.hasTransportError) {
             throw toHttpError(method, this.config.sensitiveLogs, url, token, response.status, response.statusText, response.transportErrorMessage)
         }
@@ -445,6 +476,54 @@ public class ApiClient {
             return parseTelegramApiResponse(response.body)
         } catch (err: Exception) {
             throw toHttpError(method, this.config.sensitiveLogs, url, token, err)
+        }
+    }
+}
+
+private func markTransportRaceFetchStarted(state: TransportRaceState, mutex: Mutex, condition: Condition): Unit {
+    synchronized(mutex) {
+        state.fetchStarted = true
+        condition.notifyAll()
+    }
+}
+
+private func clientNowMillis(): Int64 {
+    DateTime.now().toUnixTimeStamp().toMilliseconds()
+}
+
+private func isTransportRaceCompleted(state: TransportRaceState, mutex: Mutex): Bool {
+    synchronized(mutex) {
+        state.completed
+    }
+}
+
+private func waitUntilRaceDeadline(deadlineMillis: Int64, state: TransportRaceState, mutex: Mutex): Bool {
+    while (clientNowMillis() < deadlineMillis) {
+        if (isTransportRaceCompleted(state, mutex)) {
+            return false
+        }
+    }
+    !isTransportRaceCompleted(state, mutex)
+}
+
+private func completeTransportRaceResponse(state: TransportRaceState, mutex: Mutex, condition: Condition, branch: String, response: CoreFetchResponse): Unit {
+    synchronized(mutex) {
+        if (!state.completed) {
+            state.completed = true
+            state.branch = branch
+            state.response = response
+            condition.notifyAll()
+        }
+    }
+}
+
+private func completeTransportRaceFailure(state: TransportRaceState, mutex: Mutex, condition: Condition, branch: String, err: Exception): Unit {
+    synchronized(mutex) {
+        if (!state.completed) {
+            state.completed = true
+            state.branch = branch
+            state.failure = Some(err)
+            condition.notifyAll()
         }
     }
 }

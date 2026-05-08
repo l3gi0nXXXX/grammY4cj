@@ -12,6 +12,12 @@ private class CoreTestFakeHttp <: CoreFetch {
     public var headers: String = ""
     public var body: String = ""
     public var baseFetchConfigSummary: String = ""
+    public var bodyKind: String = ""
+    public var streamChunkCount: Int64 = 0
+    public var signalCancelledOnReturn: Bool = false
+    public var signalReasonOnReturn: String = ""
+    public var waitUntilCancelled: Bool = false
+    public var completedBlockingFetch: Bool = false
     public var throwOnFetch: Bool = false
     public var throwMessage: String = ""
     private let responses: ArrayList<CoreFetchResponse> = ArrayList<CoreFetchResponse>()
@@ -29,6 +35,22 @@ private class CoreTestFakeHttp <: CoreFetch {
 
     public func fetch(request: CoreHttpRequest, signal: CancelSignal): CoreFetchResponse {
         signal.throwIfCancelled()
+        if (this.waitUntilCancelled) {
+            while (!signal.isCancelled()) {
+                ()
+            }
+            this.called = true
+            this.url = request.url
+            this.headers = request.headers
+            this.body = request.body
+            this.baseFetchConfigSummary = request.baseFetchConfigSummary
+            this.bodyKind = request.payload.bodyKind
+            this.streamChunkCount = request.payload.stream.chunkCount()
+            this.signalCancelledOnReturn = signal.isCancelled()
+            this.signalReasonOnReturn = signal.cancellationReason()
+            this.completedBlockingFetch = true
+            throw Exception("fetch observed cancel: " + this.signalReasonOnReturn)
+        }
         if (this.throwOnFetch) {
             throw Exception(this.throwMessage)
         }
@@ -41,6 +63,10 @@ private class CoreTestFakeHttp <: CoreFetch {
             request.body
         }
         this.baseFetchConfigSummary = request.baseFetchConfigSummary
+        this.bodyKind = request.payload.bodyKind
+        this.streamChunkCount = request.payload.stream.chunkCount()
+        this.signalCancelledOnReturn = signal.isCancelled()
+        this.signalReasonOnReturn = signal.cancellationReason()
         if (this.responses.size == 0) {
             return CoreFetchResponse.success("{}")
         }
@@ -56,6 +82,14 @@ private func coreTestFailingStreamFile(message: String, filename: String): Input
 
 private func coreTestDelayedFailingStreamFile(message: String, filename: String): InputFile {
     InputFile("stream_error_after", message, filename)
+}
+
+private func coreTestWaitUntil(value: () -> Bool): Unit {
+    var spins: Int64 = 0
+    while (!value() && spins < 10000000) {
+        spins += 1
+    }
+    @Expect(value(), true)
 }
 
 private class MethodPredicateProbe {
@@ -114,7 +148,7 @@ public class ApiClientTest {
     }
 
     @TestCase
-    public func customBuildUrlFetchSeamAndBaseFetchConfigAreUsed(): Unit {
+    public func customFetchObservesRequestOptionsSignalStreamAndBaseFetchConfig(): Unit {
         let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("{\"ok\":true}"))
         let base = BaseFetchConfig("custom-root", "custom-agent", false, true, false)
         let options = ApiClientOptions(
@@ -129,10 +163,16 @@ public class ApiClientTest {
             base
         )
         let client = ApiClient(options, fake)
+        let payload = Payload("").addValue("chat_id", "42").addFile("document", InputFile.fromBytes("abc", "a.txt"))
 
-        @Expect(client.callApi("secret-token", "getMe", Payload("{}")), "{\"ok\":true}")
+        @Expect(client.callApi("secret-token", "sendDocument", payload), "{\"ok\":true}")
         @Expect(fake.called, true)
-        @Expect(fake.url, "my-api-root::test::secret-token::getMe")
+        @Expect(fake.url, "my-api-root::test::secret-token::sendDocument")
+        @Expect(fake.headers.contains("multipart/form-data"), true)
+        @Expect(fake.body.contains("filename=a.txt"), true)
+        @Expect(fake.bodyKind, "stream")
+        @Expect(fake.streamChunkCount > 0, true)
+        @Expect(fake.signalCancelledOnReturn, false)
         @Expect(fake.baseFetchConfigSummary, "custom-agent:keepAlive=false:compress=true")
     }
 
@@ -586,8 +626,9 @@ public class ApiClientTest {
 
     @TestCase
     public func timeoutWinsTransportRaceAndCancelsSignal(): Unit {
-        let fake = CoreTestFakeHttp().enqueue(CoreFetchResponse.success("{}").withDelay(3000))
-        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 2, false, false), fake)
+        let fake = CoreTestFakeHttp()
+        fake.waitUntilCancelled = true
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 0, false, false), fake)
         let signal = CancelSignal()
 
         try {
@@ -595,13 +636,17 @@ public class ApiClientTest {
             @Expect(true, false)
         } catch (err: HttpError) {
             @Expect(err.message, "Network request for 'getMe' failed!")
-            @Expect(signal.cancelled, true)
+            coreTestWaitUntil({ => fake.completedBlockingFetch })
+            @Expect(fake.signalCancelledOnReturn, true)
+            @Expect(fake.signalReasonOnReturn, "Request to 'getMe' timed out after 0 seconds")
+            @Expect(signal.cancelled, false)
         }
     }
 
     @TestCase
-    public func streamErrorsWinBeforeFetchStarts(): Unit {
-        let fake = CoreTestFakeHttp().enqueue(CoreFetchResponse.success("{}").withDelay(1000))
+    public func streamErrorsWinTransportRaceAndCancelFetchSignal(): Unit {
+        let fake = CoreTestFakeHttp()
+        fake.waitUntilCancelled = true
         let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false), fake)
         let payload = Payload("").addFile("document", coreTestFailingStreamFile("stream exploded", "a.txt"))
 
@@ -610,12 +655,16 @@ public class ApiClientTest {
             @Expect(true, false)
         } catch (err: HttpError) {
             @Expect(err.message.contains("stream exploded"), true)
+            coreTestWaitUntil({ => fake.completedBlockingFetch })
+            @Expect(fake.signalCancelledOnReturn, true)
+            @Expect(fake.signalReasonOnReturn, "stream exploded")
         }
     }
 
     @TestCase
     public func delayedStreamErrorsWinBeforeDelayedFetch(): Unit {
-        let fake = CoreTestFakeHttp().enqueue(CoreFetchResponse.success("{}").withDelay(1000))
+        let fake = CoreTestFakeHttp()
+        fake.waitUntilCancelled = true
         let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod", 500, true, false), fake)
         let payload = Payload("").addFile("document", coreTestDelayedFailingStreamFile("delayed stream exploded", "a.txt"))
 
@@ -624,6 +673,9 @@ public class ApiClientTest {
             @Expect(true, false)
         } catch (err: HttpError) {
             @Expect(err.message.contains("delayed stream exploded"), true)
+            coreTestWaitUntil({ => fake.completedBlockingFetch })
+            @Expect(fake.signalCancelledOnReturn, true)
+            @Expect(fake.signalReasonOnReturn, "delayed stream exploded")
         }
     }
 
