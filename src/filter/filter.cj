@@ -2,11 +2,15 @@ package grammy4cj.filter
 
 import std.collection.{ArrayList, HashMap}
 
-import grammy4cj.context.Context
-import grammy4cj.types.{CallbackQuery, ChatMemberUpdated, Message, MessageEntity, ReactionType, Update, User}
+import grammy4cj.types.{CallbackQuery, ChatMemberUpdated, Message, MessageEntity, ReactionType, Update, User, UserFromGetMe}
 
 public type FilterQuery = String
-public type FilterPredicate = (Context) -> Bool
+public type FilterPredicate = (FilterContextView) -> Bool
+
+public interface FilterContextView {
+    func filterUpdate(): Update
+    func filterBotUser(): UserFromGetMe
+}
 
 private class CompiledFilter {
     public let contextPredicate: FilterPredicate
@@ -52,11 +56,11 @@ public func matchFilter(queries: Array<FilterQuery>): FilterPredicate {
     cachedFilter(queries).contextPredicate
 }
 
-public func matchFilter(query: FilterQuery, ctx: Context): Bool {
+public func matchFilter(query: FilterQuery, ctx: FilterContextView): Bool {
     cachedFilter([query]).contextPredicate(ctx)
 }
 
-public func matchFilter(queries: Array<FilterQuery>, ctx: Context): Bool {
+public func matchFilter(queries: Array<FilterQuery>, ctx: FilterContextView): Bool {
     cachedFilter(queries).contextPredicate(ctx)
 }
 
@@ -355,7 +359,7 @@ private func arborist(tree: FilterTree): FilterPredicate {
     if (tree.l1Nodes.size == 0) {
         throw Exception("Cannot create filter function for empty query")
     }
-    { ctx: Context =>
+    { ctx: FilterContextView =>
         for (node in tree.l1Nodes) {
             if (matchesL1Node(ctx, node)) {
                 return true
@@ -365,8 +369,8 @@ private func arborist(tree: FilterTree): FilterPredicate {
     }
 }
 
-private func matchesL1Node(ctx: Context, node: L1Node): Bool {
-    if (!l1Present(ctx.update, node.key)) {
+private func matchesL1Node(ctx: FilterContextView, node: L1Node): Bool {
+    if (!l1Present(ctx.filterUpdate(), node.key)) {
         return false
     }
     if (node.l2Nodes.size == 0) {
@@ -380,8 +384,8 @@ private func matchesL1Node(ctx: Context, node: L1Node): Bool {
     false
 }
 
-private func matchesL2Node(ctx: Context, l1: String, node: L2Node): Bool {
-    if (!l2Present(ctx.update, l1, node.key)) {
+private func matchesL2Node(ctx: FilterContextView, l1: String, node: L2Node): Bool {
+    if (!l2Present(ctx.filterUpdate(), l1, node.key)) {
         return false
     }
     if (node.l3Keys.size == 0) {
@@ -454,12 +458,13 @@ private func l2Present(update: Update, l1: String, l2: String): Bool {
     false
 }
 
-private func l3Present(ctx: Context, l1: String, l2: String, l3: String): Bool {
-    if (kindMatches(l1 + ":" + l2 + ":" + l3, ctx.update.kind)) {
+private func l3Present(ctx: FilterContextView, l1: String, l2: String, l3: String): Bool {
+    let update = ctx.filterUpdate()
+    if (kindMatches(l1 + ":" + l2 + ":" + l3, update.kind)) {
         return true
     }
     if (isMessageLike(l1)) {
-        let message = messageFor(ctx.update, l1)
+        let message = messageFor(update, l1)
         if (l2 == "entities") {
             return entitiesHaveKind(message.entities.toArray(), l3)
         }
@@ -472,21 +477,21 @@ private func l3Present(ctx: Context, l1: String, l2: String, l3: String): Bool {
         return false
     }
     if (l1 == "my_chat_member" && l2 == "from") {
-        return userL3Present(ctx, ctx.update.myChatMember.user, l3)
+        return userL3Present(ctx, update.myChatMember.user, l3)
     }
     if (l1 == "chat_member" && l2 == "from") {
-        return userL3Present(ctx, ctx.update.chatMember.user, l3)
+        return userL3Present(ctx, update.chatMember.user, l3)
     }
     if (l1 == "message_reaction") {
         if (l2 == "old_reaction") {
-            return reactionsHaveKind(ctx.update.messageReaction.oldReaction, l3)
+            return reactionsHaveKind(update.messageReaction.oldReaction, l3)
         }
         if (l2 == "new_reaction") {
-            return reactionsHaveKind(ctx.update.messageReaction.newReaction, l3)
+            return reactionsHaveKind(update.messageReaction.newReaction, l3)
         }
     }
     if (l1 == "message_reaction_count" && l2 == "reactions") {
-        return kindMatches(l1 + ":" + l2 + ":" + l3, ctx.update.kind)
+        return kindMatches(l1 + ":" + l2 + ":" + l3, update.kind)
     }
     false
 }
@@ -505,7 +510,7 @@ private func messageL2Present(message: Message, l2: String): Bool {
     if (!message.isPresent) {
         return false
     }
-    if (l2 == "text") { return true }
+    if (l2 == "text") { return !message.text.isEmpty() }
     if (l2 == "caption") { return !message.caption.isEmpty() }
     if (l2 == "entities") { return message.entities.size > 0 }
     if (l2 == "caption_entities") { return message.captionEntities.size > 0 }
@@ -529,12 +534,12 @@ private func chatMemberL2Present(chatMember: ChatMemberUpdated, l2: String): Boo
     chatMember.isPresent && l2 == "from" && chatMember.user.isPresent
 }
 
-private func userL3Present(ctx: Context, user: User, l3: String): Bool {
+private func userL3Present(ctx: FilterContextView, user: User, l3: String): Bool {
     if (!user.isPresent) {
         return false
     }
     if (l3 == "me") {
-        return user.id == ctx.me.id
+        return user.id == ctx.filterBotUser().id
     }
     if (l3 == "is_bot") {
         return user.isBot
