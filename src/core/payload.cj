@@ -5,7 +5,7 @@ import std.time.DateTime
 
 import grammy4cj.types.InputFile
 import grammy4cj.types.InputFileRawAdapter
-import grammy4cj.types.InputFileRawData
+import grammy4cj.types.InputFileRaw
 
 public type MultipartStreamErrorCallback = (Exception) -> Unit
 
@@ -213,7 +213,7 @@ public class MultipartChunk {
     public let data: String
     public let bytes: Array<Byte>
     public let sourceKind: String
-    public let raw: Option<InputFileRawData>
+    public let raw: Option<InputFileRaw>
     public let inputFile: Option<InputFile>
     public let rawAdapter: Option<InputFileRawAdapter>
 
@@ -222,7 +222,7 @@ public class MultipartChunk {
         this.data = data
         this.bytes = data.toArray()
         this.sourceKind = sourceKind
-        this.raw = None<InputFileRawData>
+        this.raw = None<InputFileRaw>
         this.inputFile = None<InputFile>
         this.rawAdapter = None<InputFileRawAdapter>
     }
@@ -232,12 +232,12 @@ public class MultipartChunk {
         this.data = String.fromUtf8(bytes)
         this.bytes = bytes
         this.sourceKind = sourceKind
-        this.raw = None<InputFileRawData>
+        this.raw = None<InputFileRaw>
         this.inputFile = None<InputFile>
         this.rawAdapter = None<InputFileRawAdapter>
     }
 
-    public init(kind: String, raw: InputFileRawData) {
+    public init(kind: String, raw: InputFileRaw) {
         this.kind = kind
         this.data = raw.previewString()
         this.bytes = []
@@ -256,7 +256,7 @@ public class MultipartChunk {
         }
         this.bytes = []
         this.sourceKind = file.sourceKind
-        this.raw = None<InputFileRawData>
+        this.raw = None<InputFileRaw>
         this.inputFile = Some(file)
         this.rawAdapter = Some(adapter)
     }
@@ -292,7 +292,7 @@ public class MultipartByteStream {
         this
     }
 
-    public func addRaw(raw: InputFileRawData): MultipartByteStream {
+    public func addRaw(raw: InputFileRaw): MultipartByteStream {
         this.chunks.add(MultipartChunk("file", raw))
         this
     }

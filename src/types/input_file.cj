@@ -306,6 +306,10 @@ public class InputFileSource {
         InputFileSource("url_like", url, inferUrlFilename(url), "deferred-fetch", true, false, true, true, true, true, true)
     }
 
+    public static func fileUrl(url: String): InputFileSource {
+        InputFileSource("file_url", fileUrlPath(url), inferUrlFilename(url), "file-url-read", true, true, false, true, false, true, false)
+    }
+
     public static func bytes(label: String, filename: String): InputFileSource {
         InputFileSource("bytes", label, filename, "bytes-as-is", true, false, false, true, true, true, true)
     }
@@ -385,7 +389,7 @@ public class InputFileSource {
     }
 }
 
-public class InputFileRawData {
+public class InputFileRaw {
     public let sourceKind: String
     public let sourceValue: String
     public let filename: String
@@ -529,6 +533,8 @@ public class InputFileRawData {
     }
 }
 
+public type InputFileRawData = InputFileRaw
+
 public class InputFileRawBody {
     public let sourceKind: String
     public let sourceValue: String
@@ -580,7 +586,7 @@ public class InputFileRawBody {
         if (this.sourceKind == "stream_error" || this.sourceKind == "stream_error_after") {
             throw Exception(this.sourceValue)
         }
-        if (this.sourceKind == "path") {
+        if (this.sourceKind == "path" || this.sourceKind == "file_url") {
             return this.adapter.readPath(this.sourceValue)
         }
         if (this.sourceKind == "url" || this.sourceKind == "url_like") {
@@ -598,7 +604,7 @@ public class InputFileRawBody {
         if (this.sourceKind == "stream_error" || this.sourceKind == "stream_error_after") {
             throw Exception(this.sourceValue)
         }
-        if (this.sourceKind == "path") {
+        if (this.sourceKind == "path" || this.sourceKind == "file_url") {
             return [this.adapter.readPath(this.sourceValue)]
         }
         if (this.sourceKind == "url" || this.sourceKind == "url_like") {
@@ -612,7 +618,7 @@ public class InputFileRawBody {
     }
 
     public func previewString(): String {
-        if (this.sourceKind == "path" || this.sourceKind == "url" || this.sourceKind == "url_like") {
+        if (this.sourceKind == "path" || this.sourceKind == "file_url" || this.sourceKind == "url" || this.sourceKind == "url_like") {
             return ""
         }
         String.fromUtf8(flattenByteChunks(this.chunks))
@@ -676,6 +682,10 @@ public class InputFile {
         InputFile(InputFileSource.urlLike(url))
     }
 
+    public static func fromFileUrl(url: String): InputFile {
+        InputFile(InputFileSource.fileUrl(url))
+    }
+
     public static func fromBytes(bytesLabel: String, filename: String): InputFile {
         InputFile(InputFileSource.bytes(bytesLabel, filename))
     }
@@ -723,19 +733,19 @@ public class InputFile {
         this.consumed = true
     }
 
-    public func toRaw(): InputFileRawData {
+    public func toRaw(): InputFileRaw {
         this.toRaw("deno")
     }
 
-    public func toRaw(adapter: InputFileRawAdapter): InputFileRawData {
+    public func toRaw(adapter: InputFileRawAdapter): InputFileRaw {
         this.toRaw("deno", adapter)
     }
 
-    public func toRaw(runtime: String): InputFileRawData {
+    public func toRaw(runtime: String): InputFileRaw {
         this.toRaw(runtime, defaultInputFileRawAdapter())
     }
 
-    public func toRaw(runtime: String, adapter: InputFileRawAdapter): InputFileRawData {
+    public func toRaw(runtime: String, adapter: InputFileRawAdapter): InputFileRaw {
         if (this.consumed) {
             throw Exception("Cannot reuse InputFile data source!")
         }
@@ -754,7 +764,7 @@ public class InputFile {
                 if (!this.source.supplierSourceHasBody) {
                     throw Exception("No response body!")
                 }
-                return InputFileRawData(
+                return InputFileRaw(
                     this.source.kind,
                     this.source.supplierSourceValue,
                     this.filename,
@@ -774,7 +784,7 @@ public class InputFile {
         if (!this.source.hasBody) {
             throw Exception("No response body!")
         }
-        let raw = InputFileRawData(
+        let raw = InputFileRaw(
             this.sourceKind,
             this.sourceValue,
             this.filename,
@@ -847,7 +857,7 @@ public func inputFileSourceKindNames(): Array<String> {
 }
 
 public func inputFileSourceKindCount(): Int64 {
-    10
+    11
 }
 
 public class InputFileSourceMatrixRow {
@@ -883,6 +893,7 @@ public func inputFileSourceMatrix(): Array<InputFileSourceMatrixRow> {
         InputFileSourceMatrixRow("path", true, true, false, "deferred-file-read", "basename(path)", false),
         InputFileSourceMatrixRow("url", true, true, true, "deferred-fetch", "basename(pathname) or hostname", false),
         InputFileSourceMatrixRow("url_like", true, true, true, "deferred-fetch", "basename(url)", false),
+        InputFileSourceMatrixRow("file_url", false, true, false, "file-url-read", "basename(pathname)", false),
         InputFileSourceMatrixRow("bytes", true, true, true, "bytes-as-is", "explicit filename", false),
         InputFileSourceMatrixRow("blob", true, false, true, "blob-stream", "explicit filename", false),
         InputFileSourceMatrixRow("response", true, false, false, "response-body", "explicit filename", false),
@@ -894,7 +905,7 @@ public func inputFileSourceMatrix(): Array<InputFileSourceMatrixRow> {
 }
 
 public func inputFileSourceMatrixCount(): Int64 {
-    10
+    11
 }
 
 public func inputFileSourceMatrixFor(sourceKind: String): InputFileSourceMatrixRow {
@@ -944,6 +955,9 @@ private func legacySource(sourceKind: String, sourceValue: String, filename: Str
     if (sourceKind == "url_like") {
         return InputFileSource.urlLike(sourceValue)
     }
+    if (sourceKind == "file_url") {
+        return InputFileSource.fileUrl(sourceValue)
+    }
     if (sourceKind == "bytes") {
         return InputFileSource.bytes(sourceValue, filename)
     }
@@ -985,6 +999,24 @@ private func basename(path: String): String {
 private func stripQueryAndHash(value: String): String {
     let withoutHash = value.split("#")[0]
     withoutHash.split("?")[0]
+}
+
+private func fileUrlPath(url: String): String {
+    if (!url.startsWith("file://")) {
+        return url
+    }
+    let rest = url[7..]
+    if (rest.startsWith("localhost/")) {
+        return "/" + rest[10..]
+    }
+    if (rest.startsWith("/")) {
+        return rest
+    }
+    let slash = rest.indexOf("/")
+    if (slash.isSome()) {
+        return rest[slash.getOrThrow()..]
+    }
+    rest
 }
 
 private func defaultRawChunks(sourceKind: String, sourceValue: String): Array<Array<Byte>> {

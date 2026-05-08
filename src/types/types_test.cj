@@ -1,5 +1,6 @@
 package grammy4cj.types
 
+import std.fs.*
 import std.unittest.*
 
 private class FakeInputFileRawAdapter {
@@ -10,7 +11,7 @@ private class FakeInputFileRawAdapter {
 
     public init() {}
 
-    public func consume(raw: InputFileRawData): String {
+    public func consume(raw: InputFileRaw): String {
         if (raw.requiresFileAdapter) {
             this.fileReadCount += 1
         }
@@ -35,6 +36,14 @@ private class FakeFileAdapter <: InputFileFileAdapter {
         this.readCount += 1
         this.lastPath = path
         ("file:" + path).toArray()
+    }
+}
+
+private class PermissionDeniedFileAdapter <: InputFileFileAdapter {
+    public init() {}
+
+    public func read(_path: String): Array<Byte> {
+        throw Exception("permission denied")
     }
 }
 
@@ -86,7 +95,7 @@ private func toRawErrorMessage(file: InputFile, runtime: String): String {
     message
 }
 
-private func rawConsumeErrorMessage(raw: InputFileRawData): String {
+private func rawConsumeErrorMessage(raw: InputFileRaw): String {
     var message = ""
     try {
         raw.consume()
@@ -96,7 +105,7 @@ private func rawConsumeErrorMessage(raw: InputFileRawData): String {
     message
 }
 
-private func rawCollectErrorMessage(raw: InputFileRawData): String {
+private func rawCollectErrorMessage(raw: InputFileRaw): String {
     var message = ""
     try {
         raw.collectBytes()
@@ -104,6 +113,14 @@ private func rawCollectErrorMessage(raw: InputFileRawData): String {
         message = e.message
     }
     message
+}
+
+private func cleanupInputFileTemp(path: String): Unit {
+    try {
+        if (exists(path)) {
+            remove(path)
+        }
+    } catch (e: Exception) {}
 }
 
 @Test
@@ -475,6 +492,7 @@ public class InputFileTest {
         let pathFile = InputFile.fromPath("/tmp/photo.png")
         let urlFile = InputFile.fromUrl("https://example.test/files/report.pdf")
         let urlLikeFile = InputFile.fromUrlLike("https://grammy.dev")
+        let fileUrlFile = InputFile.fromFileUrl("file:///tmp/archive.tar")
         let bytesFile = InputFile.fromBytes("bytes:3", "data.bin")
         let blobFile = InputFile.fromBlob("blob:1", "blob.txt")
         let responseFile = InputFile.fromResponse("response:1", "download.bin")
@@ -492,6 +510,9 @@ public class InputFileTest {
         @Expect(urlFile.source.requiresFetchAdapter, true)
         @Expect(urlLikeFile.sourceKind, "url_like")
         @Expect(urlLikeFile.filename, "grammy.dev")
+        @Expect(fileUrlFile.sourceKind, "file_url")
+        @Expect(fileUrlFile.filename, "archive.tar")
+        @Expect(fileUrlFile.source.requiresFileAdapter, true)
         @Expect(bytesFile.sourceValue, "bytes:3")
         @Expect(bytesFile.source.reusable, true)
         @Expect(blobFile.source.rawContract, "blob-stream")
@@ -506,19 +527,24 @@ public class InputFileTest {
 
     @TestCase
     public func inputFileSourceKindsAndRuntimeSupportMirrorUpstreamFacades(): Unit {
-        @Expect(inputFileSourceKindCount(), 10)
-        @Expect(inputFileSourceMatrixCount(), 10)
+        @Expect(inputFileSourceKindCount(), 11)
+        @Expect(inputFileSourceMatrixCount(), 11)
         @Expect(inputFileRuntimeNames().size, 3)
         @Expect(inputFileRuntimeNames()[0], "deno")
         @Expect(inputFileSourceKindNames()[0], "path")
-        @Expect(inputFileSourceKindNames()[9], "supplier")
+        @Expect(inputFileSourceKindNames()[10], "supplier")
         @Expect(inputFileSourceMatrixFor("path").upstreamDeno, true)
         @Expect(inputFileSourceMatrixFor("path").upstreamWeb, false)
+        @Expect(inputFileSourceMatrixFor("file_url").upstreamNode, true)
+        @Expect(inputFileSourceMatrixFor("file_url").upstreamDeno, false)
         @Expect(inputFileSourceMatrixFor("stream").singleUse, true)
         @Expect(inputFileSourceMatrixFor("bytes").filenameInference, "explicit filename")
         @Expect(inputFileSourceSupportedOnRuntime("path", "deno"), true)
         @Expect(inputFileSourceSupportedOnRuntime("path", "node"), true)
         @Expect(inputFileSourceSupportedOnRuntime("path", "web"), false)
+        @Expect(inputFileSourceSupportedOnRuntime("file_url", "node"), true)
+        @Expect(inputFileSourceSupportedOnRuntime("file_url", "deno"), false)
+        @Expect(inputFileSourceSupportedOnRuntime("file_url", "web"), false)
         @Expect(inputFileSourceSupportedOnRuntime("blob", "deno"), true)
         @Expect(inputFileSourceSupportedOnRuntime("blob", "node"), false)
         @Expect(inputFileSourceSupportedOnRuntime("blob", "web"), true)
@@ -587,6 +613,37 @@ public class InputFileTest {
         @Expect(urlRaw.collectString(), "fetch-body")
         @Expect(fetchAdapter.fetchCount, 1)
         @Expect(fetchAdapter.lastUrl, "https://example.test/files/report.pdf")
+    }
+
+    @TestCase
+    public func inputFileReadsRealTemporaryFileAndNodeFileUrl(): Unit {
+        let path = ".tmp_input_file_raw_test.bin"
+        cleanupInputFileTemp(path)
+        File.writeTo(path, "real-temp-bytes".toArray())
+        try {
+            let pathRaw = InputFile.fromPath(path).toRaw("node")
+            let fileUrlRaw = InputFile.fromFileUrl("file://" + path).toRaw("node")
+
+            @Expect(pathRaw.collectString(), "real-temp-bytes")
+            @Expect(fileUrlRaw.rawSourceKind, "file_url")
+            @Expect(fileUrlRaw.platformContract, "node-file-url-create-read-stream")
+            @Expect(fileUrlRaw.filename, ".tmp_input_file_raw_test.bin")
+            @Expect(fileUrlRaw.collectString(), "real-temp-bytes")
+        } finally {
+            cleanupInputFileTemp(path)
+        }
+    }
+
+    @TestCase
+    public func inputFileRealFileReadErrorsPropagateWithoutNetwork(): Unit {
+        let missing = InputFile.fromPath(".tmp_missing_input_file.bin").toRaw("node")
+        let directory = InputFile.fromPath(".").toRaw("node")
+        let permissionAdapter = InputFileRawAdapter(PermissionDeniedFileAdapter(), FakeFetchAdapter())
+        let permission = InputFile.fromPath(".tmp_denied_input_file.bin").toRaw("node", permissionAdapter)
+
+        @Expect(rawCollectErrorMessage(missing).isEmpty(), false)
+        @Expect(rawCollectErrorMessage(directory).isEmpty(), false)
+        @Expect(rawCollectErrorMessage(permission), "permission denied")
     }
 
     @TestCase
@@ -719,6 +776,8 @@ public class InputFileTest {
     @TestCase
     public func inputFileRejectsUnsupportedRuntimeSources(): Unit {
         @Expect(toRawErrorMessage(InputFile.fromPath("/tmp/photo.png"), "web"), "InputFile source kind 'path' is not supported on web")
+        @Expect(toRawErrorMessage(InputFile.fromFileUrl("file:///tmp/photo.png"), "deno"), "InputFile source kind 'file_url' is not supported on deno")
+        @Expect(toRawErrorMessage(InputFile.fromFileUrl("file:///tmp/photo.png"), "web"), "InputFile source kind 'file_url' is not supported on web")
         @Expect(toRawErrorMessage(InputFile.fromBlob("blob:1", "a.txt"), "node"), "InputFile source kind 'blob' is not supported on node")
         @Expect(toRawErrorMessage(InputFile.fromResponse("response:1", "a.bin"), "node"), "InputFile source kind 'response' is not supported on node")
         @Expect(toRawErrorMessage(InputFile.fromSupplier("lazy", "a.txt"), "web"), "InputFile source kind 'supplier' is not supported on web")
@@ -731,14 +790,26 @@ public class InputFileTest {
     @TestCase
     public func inputFileToRawMarksSingleUseSources(): Unit {
         let streamFile = InputFile.fromStream("stream:1", "video.mp4")
+        let iterableFile = InputFile.fromIterable("iter:1", "chunks.bin")
+        let asyncIterableFile = InputFile.fromAsyncIterable("async:1", "async.bin")
 
         @Expect(streamFile.consumed, false)
         let raw = streamFile.toRaw()
+        let iterableRaw = iterableFile.toRaw("deno")
+        let asyncIterableRaw = asyncIterableFile.toRaw("web")
         @Expect(raw.contract, "stream-as-is")
         @Expect(streamFile.consumed, true)
         @Expect(raw.collectString(), "stream:1")
+        @Expect(iterableFile.consumed, true)
+        @Expect(iterableRaw.collectString(), "iter:1")
+        @Expect(asyncIterableFile.consumed, true)
+        @Expect(asyncIterableRaw.collectString(), "async:1")
         @Expect(rawCollectErrorMessage(raw), "Cannot reuse InputFile data source!")
+        @Expect(rawCollectErrorMessage(iterableRaw), "Cannot reuse InputFile data source!")
+        @Expect(rawCollectErrorMessage(asyncIterableRaw), "Cannot reuse InputFile data source!")
         @Expect(toRawErrorMessage(streamFile), "Cannot reuse InputFile data source!")
+        @Expect(toRawErrorMessage(iterableFile), "Cannot reuse InputFile data source!")
+        @Expect(toRawErrorMessage(asyncIterableFile), "Cannot reuse InputFile data source!")
     }
 
     @TestCase
@@ -767,10 +838,12 @@ public class InputFileTest {
     @TestCase
     public func inferFilenameMatchesUpstreamUrlAndPathRules(): Unit {
         let explicit = InputFile(InputFileSource.path("/tmp/photo.png"), "explicit.jpg")
+        let explicitFileUrl = InputFile(InputFileSource.fileUrl("file:///tmp/photo.png"), "explicit-url.jpg")
         let explicitRaw = explicit.toRaw("node")
 
         @Expect(explicit.filename, "explicit.jpg")
         @Expect(explicitRaw.filename, "explicit.jpg")
+        @Expect(explicitFileUrl.filename, "explicit-url.jpg")
         @Expect(inferFilename("file.txt"), "file.txt")
         @Expect(inferFilename("/tmp/file.txt"), "file.txt")
         @Expect(inferFilename("/tmp/"), "tmp")
@@ -778,6 +851,7 @@ public class InputFileTest {
         @Expect(inferFilename("https://grammy.dev/file.txt?download=1"), "file.txt")
         @Expect(inferFilename("https://grammy.dev"), "grammy.dev")
         @Expect(inferFilename("https://grammy.dev/"), "grammy.dev")
+        @Expect(InputFile.fromFileUrl("file:///tmp/file.txt").filename, "file.txt")
         @Expect(inputFilePathLooksLikeRemoteUrlWarning("https://grammy.dev").contains("local file path"), true)
         @Expect(inputFilePathLooksLikeRemoteUrlWarning("/tmp/file.txt"), "")
     }

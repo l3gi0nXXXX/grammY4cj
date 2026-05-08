@@ -5,7 +5,7 @@ public func platformInputFileRuntimeNames(): Array<String> {
 }
 
 public func platformInputFileSourceKindNames(): Array<String> {
-    ["path", "url", "url_like", "bytes", "blob", "response", "stream", "iterable", "async_iterable", "supplier"]
+    ["path", "url", "url_like", "file_url", "bytes", "blob", "response", "stream", "iterable", "async_iterable", "supplier"]
 }
 
 public func platformNormalizeInputFileRuntime(runtime: String): String {
@@ -22,6 +22,9 @@ public func platformSupportsInputFileSourceKind(sourceKind: String, runtime: Str
     let normalizedRuntime = platformNormalizeInputFileRuntime(runtime)
     if (sourceKind == "path") {
         return normalizedRuntime == "deno" || normalizedRuntime == "node"
+    }
+    if (sourceKind == "file_url") {
+        return normalizedRuntime == "node"
     }
     if (sourceKind == "blob") {
         return normalizedRuntime == "deno" || normalizedRuntime == "web"
@@ -44,6 +47,12 @@ public func platformInputFileRawContractFor(sourceKind: String, runtime: String,
         if (normalizedRuntime == "node") {
             return "node-create-read-stream"
         }
+    }
+    if (sourceKind == "file_url") {
+        if (normalizedRuntime == "node") {
+            return "node-file-url-create-read-stream"
+        }
+        return "file-url-unsupported"
     }
     if (sourceKind == "url" || sourceKind == "url_like") {
         return "fetch-body-async-iterable"
