@@ -193,7 +193,7 @@ private func nativeHttpRequest(request: CoreHttpRequest): HttpRequest {
     } else {
         builder.post()
     }
-    builder.body(request.body)
+    builder.body(request.payload.drainBody())
     nativeAppendHeaderArgs(builder, request.headers)
     builder.build()
 }

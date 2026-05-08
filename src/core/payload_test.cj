@@ -122,7 +122,27 @@ public class PayloadTest {
         @Expect(body.contains("name=\"attach0\";filename=my-file"), true)
         @Expect(body.contains("abc\r\n--boundary--"), true)
         @Expect(req.bodyKind, "stream")
+        @Expect(req.body, "")
         @Expect(req.stream.chunkCount() > 0, true)
+    }
+
+    @TestCase
+    public func multipartPayloadKeepsFieldsBeforeFilesInInsertionOrder(): Unit {
+        let payload = Payload("")
+        payload.addInt("chat_id", 42)
+        payload.addFile("document", InputFile.fromBytes("abc", "a.txt"))
+        payload.addValue("caption", "hello")
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
+        let expected = "--boundary\r\n" +
+            "content-disposition:form-data;name=\"chat_id\"\r\n\r\n42\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"document\"\r\n\r\nattach://attach0\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"caption\"\r\n\r\nhello\r\n--boundary\r\n" +
+            "content-disposition:form-data;name=\"attach0\";filename=a.txt\r\ncontent-type:application/octet-stream\r\n\r\n" +
+            "abc\r\n--boundary--\r\n"
+
+        @Expect(body, expected)
     }
 
     @TestCase
@@ -141,6 +161,7 @@ public class PayloadTest {
         @Expect(body.contains("filename=my-file"), true)
         @Expect(body.contains("abc\r\n--"), true)
         @Expect(req.bodyKind, "stream")
+        @Expect(req.body, "")
     }
 
     @TestCase
@@ -165,6 +186,7 @@ public class PayloadTest {
 
         @Expect(file.consumed, false)
         @Expect(req.body.contains("AA"), false)
+        @Expect(req.body, "")
         let body = req.stream.drain()
         @Expect(file.consumed, true)
         @Expect(body.contains("name=\"attach0\";filename=clip.mp4"), true)
@@ -288,6 +310,35 @@ public class PayloadTest {
         @Expect(body.contains("name=\"attach0\";filename=photo.jpg"), true)
         @Expect(body.contains("name=\"attach1\";filename=thumbnail.jpg"), true)
         @Expect(body.contains("name=\"attach2\";filename=doc.txt"), true)
+    }
+
+    @TestCase
+    public func recursiveMultipartPayloadFindsFilesInBuilderObjects(): Unit {
+        let payload = Payload("")
+        let options = payload.addObject("options")
+        options.addValue("type", "document")
+        let nested = options.addObject("builder_object")
+        nested.addFile("thumbnail", InputFile.fromBytes("thumb-bytes", ""))
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+        let body = req.stream.drain()
+
+        @Expect(requiresFormDataUpload(payload), true)
+        @Expect(body.contains("\"builder_object\":{\"thumbnail\":\"attach://attach0\"}"), true)
+        @Expect(body.contains("name=\"attach0\";filename=thumbnail.jpg"), true)
+        @Expect(body.contains("thumb-bytes\r\n--boundary--"), true)
+    }
+
+    @TestCase
+    public func multipartRequestPayloadExposesNativeStreamDrainShape(): Unit {
+        let payload = Payload("")
+        payload.addFile("document", InputFile.fromBytes("abc", "a.txt"))
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+
+        @Expect(req.bodyKind, "stream")
+        @Expect(req.body, "")
+        @Expect(req.drainBody().contains("name=\"attach0\";filename=a.txt"), true)
     }
 
     @TestCase

@@ -249,11 +249,7 @@ public class MultipartChunk {
 
     public init(kind: String, file: InputFile, adapter: InputFileRawAdapter) {
         this.kind = kind
-        this.data = if (file.source.reusable && !file.source.requiresFileAdapter && !file.source.requiresFetchAdapter) {
-            file.sourceValue
-        } else {
-            ""
-        }
+        this.data = ""
         this.bytes = []
         this.sourceKind = file.sourceKind
         this.raw = None<InputFileRaw>
@@ -411,9 +407,23 @@ public class RequestPayload {
     public init(method: String, headers: String, body: String, stream: MultipartByteStream) {
         this.method = method
         this.headers = headers
-        this.body = body
+        this.body = ""
         this.bodyKind = "stream"
         this.stream = stream
+    }
+
+    public func drainBody(): String {
+        if (this.bodyKind == "stream") {
+            return this.stream.drain()
+        }
+        this.body
+    }
+
+    public func drainBodyBytes(): Array<Byte> {
+        if (this.bodyKind == "stream") {
+            return this.stream.drainBytes()
+        }
+        this.body.toArray()
     }
 }
 
@@ -655,8 +665,7 @@ public func createFormDataPayload(
         first = false
     }
     stream.addText("\r\n--" + boundary + "--\r\n")
-    let body = stream.previewBody()
-    RequestPayload("POST", "content-type=multipart/form-data; boundary=" + boundary + ";connection=keep-alive", body, stream)
+    RequestPayload("POST", "content-type=multipart/form-data; boundary=" + boundary + ";connection=keep-alive", "", stream)
 }
 
 private func createBoundary(): String {

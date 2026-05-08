@@ -24,7 +24,11 @@ private class ApiTestFakeFetch <: CoreFetch {
         this.method = request.method
         this.url = request.url
         this.headers = request.headers
-        this.body = request.body
+        this.body = if (request.payload.bodyKind == "stream" && !request.payload.stream.hasError) {
+            request.payload.drainBody()
+        } else {
+            request.body
+        }
         CoreFetchResponse.api(ApiResponse.success(this.result))
     }
 }

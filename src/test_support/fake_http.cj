@@ -66,7 +66,11 @@ public class FakeHttp <: CoreFetch {
         this.method = request.method
         this.url = request.url
         this.headers = request.headers
-        this.body = request.body
+        this.body = if (request.payload.bodyKind == "stream" && !request.payload.stream.hasError) {
+            request.payload.drainBody()
+        } else {
+            request.body
+        }
         this.baseFetchConfigSummary = request.baseFetchConfigSummary
         this.requests.add(request)
         if (this.responses.size == 0) {

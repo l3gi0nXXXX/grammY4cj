@@ -35,7 +35,11 @@ private class CoreTestFakeHttp <: CoreFetch {
         this.called = true
         this.url = request.url
         this.headers = request.headers
-        this.body = request.body
+        this.body = if (request.payload.bodyKind == "stream" && !request.payload.stream.hasError) {
+            request.payload.drainBody()
+        } else {
+            request.body
+        }
         this.baseFetchConfigSummary = request.baseFetchConfigSummary
         if (this.responses.size == 0) {
             return CoreFetchResponse.success("{}")
