@@ -18,6 +18,7 @@ public class SessionPropertyContract {
     public let strictWrite: String
     public let strictDelete: String
     public let lazyRead: String
+    public let storageMaybePromise: String
     public let multiDelete: String
     public let contextIntegration: String
 
@@ -27,6 +28,7 @@ public class SessionPropertyContract {
         this.strictWrite = "SessionFlavorContext<T>.session = value"
         this.strictDelete = "SessionFlavorContext<T>.deleteSession() or setOptionalSession(None)"
         this.lazyRead = "LazySessionMiddleware + SessionFlavorContext<T>.session"
+        this.storageMaybePromise = "StorageAdapter<T> plus AsyncStorageAdapter<T>/SessionTask<T> shims"
         this.multiDelete = "MultiSessionFlavorContext<T>.session named slots or deleteSession()"
         this.contextIntegration = "typed session flavor context exposes ctx.session property"
     }
@@ -744,7 +746,9 @@ public class SessionMiddleware<T> {
     }
 
     private func createContext(ctx: Context): SessionContext<T> {
-        createSessionContext<T>(ctx, this.options, false)
+        let sessionContext = createSessionContext<T>(ctx, this.options, false)
+        sessionContext.preload()
+        sessionContext
     }
 }
 
@@ -989,7 +993,9 @@ public class MultiSessionMiddleware<T> {
     private func createContext(ctx: Context): MultiSessionContext<T> {
         let sessionContext = MultiSessionContext<T>(ctx)
         for (slot in this.options.slots) {
-            sessionContext.add(slot.name, createSessionContext<T>(ctx, slot.options, false))
+            let slotContext = createSessionContext<T>(ctx, slot.options, false)
+            slotContext.preload()
+            sessionContext.add(slot.name, slotContext)
         }
         sessionContext
     }
@@ -1135,11 +1141,15 @@ public class MultiSessionMiddleware2<A, B> {
     }
 
     private func createFirstContext(ctx: Context): SessionContext<A> {
-        createSessionContext<A>(ctx, this.options.first, false)
+        let sessionContext = createSessionContext<A>(ctx, this.options.first, false)
+        sessionContext.preload()
+        sessionContext
     }
 
     private func createSecondContext(ctx: Context): SessionContext<B> {
-        createSessionContext<B>(ctx, this.options.second, false)
+        let sessionContext = createSessionContext<B>(ctx, this.options.second, false)
+        sessionContext.preload()
+        sessionContext
     }
 }
 

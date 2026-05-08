@@ -475,6 +475,7 @@ public class SessionMiddlewareTest {
         @Expect(contract.strictWrite, "SessionFlavorContext<T>.session = value")
         @Expect(contract.strictDelete, "SessionFlavorContext<T>.deleteSession() or setOptionalSession(None)")
         @Expect(contract.lazyRead, "LazySessionMiddleware + SessionFlavorContext<T>.session")
+        @Expect(contract.storageMaybePromise, "StorageAdapter<T> plus AsyncStorageAdapter<T>/SessionTask<T> shims")
         @Expect(contract.multiDelete, "MultiSessionFlavorContext<T>.session named slots or deleteSession()")
         @Expect(contract.contextIntegration, "typed session flavor context exposes ctx.session property")
         @Expect(stringValue(defaultGetSessionKey(testCtx(7))), "7")
@@ -594,16 +595,16 @@ public class SessionMiddlewareTest {
     }
 
     @TestCase
-    public func sessionDoesNotReadOrWriteWhenHandlerDoesNotAccessSession(): Unit {
+    public func strictSessionPreloadsAndWritesInitialEvenWhenHandlerDoesNotAccessSession(): Unit {
         let storage = CountingStorage<CounterSession>()
         let options = SessionOptions<CounterSession>({ => CounterSession(4) }, storage)
 
         session<CounterSession>(options).handle(testCtx(17), { _ctx: SessionContext<CounterSession> => () })
 
-        @Expect(storage.readCount, 0)
-        @Expect(storage.writeCount, 0)
+        @Expect(storage.readCount, 1)
+        @Expect(storage.writeCount, 1)
         @Expect(storage.deleteCount, 0)
-        @Expect(counterValue(storage.inner.read("17")), -1)
+        @Expect(counterValue(storage.inner.read("17")), 4)
     }
 
     @TestCase
@@ -854,8 +855,8 @@ public class MultiSessionMiddlewareTest {
         })
 
         @Expect(first.readCount, 1)
-        @Expect(second.readCount, 0)
-        @Expect(third.readCount, 0)
+        @Expect(second.readCount, 1)
+        @Expect(third.readCount, 1)
         @Expect(first.writeCount, 1)
         @Expect(second.writeCount, 1)
         @Expect(third.deleteCount, 1)
@@ -892,8 +893,8 @@ public class MultiSessionMiddlewareTest {
         })
 
         @Expect(a.readCount, 1)
-        @Expect(b.readCount, 0)
-        @Expect(c.readCount, 0)
+        @Expect(b.readCount, 1)
+        @Expect(c.readCount, 1)
         @Expect(d.readCount, 1)
         @Expect(a.deleteCount, 1)
         @Expect(b.deleteCount, 1)
