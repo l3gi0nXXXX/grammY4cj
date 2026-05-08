@@ -48,6 +48,7 @@ public class FrameworkAdaptersTest {
     public func registryContainsExactlyUpstreamTwentyOneAdapters(): Unit {
         @Expect(upstreamFrameworkAdapterCount(), 21)
         @Expect(registeredFrameworkAdapterCount(), 21)
+        @Expect(frameworkAdapterPublicShapeCount(), 21)
         @Expect(adapterStatus("callback").supported, false)
         @Expect(adapterStatus("unknown").supported, false)
 
@@ -56,7 +57,29 @@ public class FrameworkAdaptersTest {
             @Expect(adapterStatus(contract.name).supported, true)
             @Expect(adapterStatus(contract.name).name, contract.name)
             @Expect(adapterStatus(contract.name).reason.isEmpty(), false)
+            @Expect(contract.cangjiePublicSignature, frameworkAdapterPublicShape(contract.name).cangjieSignature)
+            @Expect(contract.fakeProtocolEntry, frameworkAdapterPublicShape(contract.name).fakeProtocolEntry)
         }
+    }
+
+    @TestCase
+    public func adapterPublicShapesMirrorUpstreamSignaturesWithoutUsingFakeRequestAsPublicShape(): Unit {
+        for (shape in frameworkAdapterPublicShapes()) {
+            @Expect(hasAdapterStatus(shape.name), true)
+            @Expect(shape.upstreamSignature.isEmpty(), false)
+            @Expect(shape.cangjieSignature.isEmpty(), false)
+            @Expect(shape.requestShape.isEmpty(), false)
+            @Expect(shape.responseShape.isEmpty(), false)
+            @Expect(shape.fakeProtocolEntry.isEmpty(), false)
+            @Expect(shape.usesWebhookRequestAsPublicShape(), false)
+        }
+
+        @Expect(frameworkAdapterPublicShape("aws-lambda").upstreamSignature, "(event, context, callback) -> ReqResHandler")
+        @Expect(frameworkAdapterPublicShape("azure").requestShape, "request.body plus request.headers")
+        @Expect(frameworkAdapterPublicShape("bun").responseShape, "handlerReturn Response")
+        @Expect(frameworkAdapterPublicShape("http").requestShape, "Node raw JSON stream plus lowercase headers")
+        @Expect(frameworkAdapterPublicShape("std/http").cangjieSignature, "StdHttpAdapter(req)")
+        @Expect(frameworkAdapterPublicShape("unknown").cangjieSignature, "unsupported")
     }
 
     @TestCase
