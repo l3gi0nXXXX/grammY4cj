@@ -144,7 +144,7 @@ public class KeyboardBuilderTest {
 
     @TestCase
     public func keyboardButtonsExposeMutuallyExclusiveActionFields(): Unit {
-        let contact = Keyboard.requestContactButton("contact")
+        let contact: KeyboardButtonRequestContactButton = Keyboard.requestContactButton("contact")
         let location = Keyboard.requestLocationButton("location")
         let poll = Keyboard.requestPollButton("poll", "quiz")
         let users = Keyboard.requestUsersButton("users", 10)
@@ -215,6 +215,17 @@ public class KeyboardBuilderTest {
             keyboard.toJSON(),
             "{\"keyboard\":[[{\"text\":\"a\"},{\"text\":\"b\"}],[{\"text\":\"contact\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_contact\":true},{\"text\":\"users\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_users\":{\"request_id\":12,\"user_is_bot\":true}},{\"text\":\"chat\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_chat\":{\"request_id\":42,\"chat_is_channel\":true}}],[{\"text\":\"poll\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_poll\":{\"type\":\"regular\"}},{\"text\":\"bot\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"request_managed_bot\":{\"request_id\":96}},{\"text\":\"web\",\"style\":\"primary\",\"icon_custom_emoji_id\":\"emoji-id\",\"web_app\":{\"url\":\"https://grammy.dev\"}}]]}"
         )
+    }
+
+    @TestCase
+    public func keyboardButtonBuildersReturnConcreteTypedModels(): Unit {
+        let common: KeyboardButtonCommonButton = Keyboard.textButton("typed", "primary")
+        let contact: KeyboardButtonRequestContactButton = Keyboard.requestContactButton(common)
+        let web: KeyboardButtonWebAppButton = Keyboard.webAppButton(common, "https://grammy.dev")
+
+        @Expect(common.toJSON(), "{\"text\":\"typed\",\"style\":\"primary\"}")
+        @Expect(contact.toJSON(), "{\"text\":\"typed\",\"style\":\"primary\",\"request_contact\":true}")
+        @Expect(web.toJSON(), "{\"text\":\"typed\",\"style\":\"primary\",\"web_app\":{\"url\":\"https://grammy.dev\"}}")
     }
 }
 
@@ -440,5 +451,16 @@ public class InlineKeyboardBuilderTest {
             keyboard.toJSON(),
             "{\"inline_keyboard\":[[{\"text\":\"url\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"url\":\"https://grammy.dev\"},{\"text\":\"callback\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"callback_data\":\"callback\"},{\"text\":\"web\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"web_app\":{\"url\":\"https://grammy.dev/app\"}},{\"text\":\"login\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"login_url\":{\"url\":\"https://grammy.dev/login\",\"forward_text\":\"forward\",\"request_write_access\":true}},{\"text\":\"switch\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"switch_inline_query\":\"\"},{\"text\":\"current\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"switch_inline_query_current_chat\":\"query\"},{\"text\":\"chosen\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"switch_inline_query_chosen_chat\":{\"allow_bot_chats\":true}},{\"text\":\"copy\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"copy_text\":{\"text\":\"copy-value\"}},{\"text\":\"game\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"callback_game\":{}},{\"text\":\"pay\",\"style\":\"danger\",\"icon_custom_emoji_id\":\"emoji-id\",\"pay\":true}]]}"
         )
+    }
+
+    @TestCase
+    public func inlineKeyboardButtonBuildersReturnConcreteTypedModels(): Unit {
+        let url: InlineKeyboardButtonUrlButton = InlineKeyboard.urlButton("url", "https://grammy.dev")
+        let callback: InlineKeyboardButtonCallbackButton = InlineKeyboard.textButton("callback", "data")
+        let web: InlineKeyboardButtonWebAppButton = InlineKeyboard.webAppButton("web", "https://grammy.dev/app")
+
+        @Expect(url.toJSON(), "{\"text\":\"url\",\"url\":\"https://grammy.dev\"}")
+        @Expect(callback.toJSON(), "{\"text\":\"callback\",\"callback_data\":\"data\"}")
+        @Expect(web.toJSON(), "{\"text\":\"web\",\"web_app\":{\"url\":\"https://grammy.dev/app\"}}")
     }
 }

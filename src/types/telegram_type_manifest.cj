@@ -352,6 +352,35 @@ public class TelegramTypeApiMapping {
     }
 }
 
+public class TelegramTypeBuilderMapping {
+    public let builderName: String
+    public let methodName: String
+    public let returnTypeName: String
+    public let requiredFields: String
+    public let optionalFields: String
+    public let inputFileFields: String
+
+    public init(
+        builderName: String,
+        methodName: String,
+        returnTypeName: String,
+        requiredFields: String,
+        optionalFields: String,
+        inputFileFields: String
+    ) {
+        this.builderName = builderName
+        this.methodName = methodName
+        this.returnTypeName = returnTypeName
+        this.requiredFields = requiredFields
+        this.optionalFields = optionalFields
+        this.inputFileFields = inputFileFields
+    }
+
+    public func usesInputFile(): Bool {
+        !this.inputFileFields.isEmpty()
+    }
+}
+
 public class TelegramTypeContextMapping {
     public let updateFieldName: String
     public let contextPropertyName: String
@@ -866,6 +895,63 @@ public func telegramTypeApiMappingFor(methodName: String): TelegramTypeApiMappin
         apiModel.hasPayload,
         stringArrayContains(telegramTypeApiWrapperIntegrationNames(), methodName)
     )
+}
+
+public func telegramTypeBuilderMappingManifest(): Array<TelegramTypeBuilderMapping> {
+    [
+        TelegramTypeBuilderMapping("Keyboard", "textButton", "KeyboardButton.CommonButton", "text", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("Keyboard", "requestContactButton", "KeyboardButton.RequestContactButton", "text|request_contact", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("Keyboard", "webAppButton", "KeyboardButton.WebAppButton", "text|web_app", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "urlButton", "InlineKeyboardButton.UrlButton", "text|url", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "textButton", "InlineKeyboardButton.CallbackButton", "text|callback_data", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "webAppButton", "InlineKeyboardButton.WebAppButton", "text|web_app", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "article", "InlineQueryResultArticle", "type|id|title|input_message_content", "description|reply_markup|url|hide_url", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "audio", "InlineQueryResultAudio", "type|id|audio_url|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "photo", "InlineQueryResultPhoto", "type|id|photo_url|thumbnail_url", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "videoMp4", "InlineQueryResultVideo", "type|id|video_url|mime_type|thumbnail_url|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InputMediaBuilder", "photo", "InputMediaPhoto", "type|media", "caption|parse_mode|caption_entities|show_caption_above_media|has_spoiler", "media"),
+        TelegramTypeBuilderMapping("InputMediaBuilder", "video", "InputMediaVideo", "type|media", "caption|parse_mode|thumbnail|cover|start_timestamp|supports_streaming", "media|thumbnail|cover"),
+        TelegramTypeBuilderMapping("InputMediaBuilder", "animation", "InputMediaAnimation", "type|media", "caption|parse_mode|thumbnail|show_caption_above_media|has_spoiler", "media|thumbnail"),
+        TelegramTypeBuilderMapping("InputMediaBuilder", "audio", "InputMediaAudio", "type|media", "caption|parse_mode|thumbnail|performer|title", "media|thumbnail"),
+        TelegramTypeBuilderMapping("InputMediaBuilder", "document", "InputMediaDocument", "type|media", "caption|parse_mode|thumbnail|disable_content_type_detection", "media|thumbnail")
+    ]
+}
+
+public func telegramTypeBuilderMappingCount(): Int64 {
+    telegramTypeBuilderMappingManifest().size
+}
+
+public func telegramTypeBuilderMappingFor(builderName: String, methodName: String): TelegramTypeBuilderMapping {
+    for (mapping in telegramTypeBuilderMappingManifest()) {
+        if (mapping.builderName == builderName && mapping.methodName == methodName) {
+            return mapping
+        }
+    }
+    TelegramTypeBuilderMapping(builderName, methodName, "", "", "", "")
+}
+
+public func telegramTypeDryRunImpactReport(diffs: Array<TelegramTypeDryRunDiff>): String {
+    let base = telegramTypeDryRunReport(diffs)
+    var report = base
+    for (diff in diffs) {
+        if (!report.isEmpty()) {
+            report += "\n"
+        }
+        report += "impact:type." + diff.objectName
+        let api = firstApiImpactForType(diff.objectName)
+        if (!api.isEmpty()) {
+            report += "\nimpact:api." + api
+        }
+        let builder = firstBuilderImpactForType(diff.objectName)
+        if (!builder.isEmpty()) {
+            report += "\nimpact:builder." + builder
+        }
+        let context = firstContextImpactForType(diff.objectName)
+        if (!context.isEmpty()) {
+            report += "\nimpact:context." + context
+        }
+    }
+    report
 }
 
 public func telegramTypeContextGetterTrace(): Array<TelegramTypeFieldModel> {
@@ -1422,6 +1508,35 @@ private func contextTypeNameForUpdateField(fieldName: String): String {
     if (fieldName == "chat_boost") { return "ChatBoostUpdated" }
     if (fieldName == "removed_chat_boost") { return "ChatBoostRemoved" }
     if (fieldName == "purchased_paid_media") { return "PurchasedPaidMedia" }
+    ""
+}
+
+private func firstApiImpactForType(typeName: String): String {
+    let descriptor = telegramTypeModelDescriptorFor(typeName)
+    if (descriptor.associatedApiMethods.isEmpty()) {
+        return ""
+    }
+    descriptor.associatedApiMethods.split(",")[0]
+}
+
+private func firstBuilderImpactForType(typeName: String): String {
+    for (mapping in telegramTypeBuilderMappingManifest()) {
+        if (mapping.returnTypeName == typeName || mapping.returnTypeName.endsWith("." + typeName)) {
+            return mapping.builderName + "." + mapping.methodName
+        }
+    }
+    ""
+}
+
+private func firstContextImpactForType(typeName: String): String {
+    if (typeName == "Update") {
+        return "updateId()"
+    }
+    for (mapping in telegramTypeContextMappingManifest()) {
+        if (mapping.resultTypeName == typeName) {
+            return mapping.contextAccessorName
+        }
+    }
     ""
 }
 

@@ -335,6 +335,25 @@ public class TelegramTypesTest {
     }
 
     @TestCase
+    public func telegramTypeBusExposesTypedBuilderMappings(): Unit {
+        let keyboardText = telegramTypeBuilderMappingFor("Keyboard", "textButton")
+        let inlineUrl = telegramTypeBuilderMappingFor("InlineKeyboard", "urlButton")
+        let inlinePhoto = telegramTypeBuilderMappingFor("InlineQueryResultBuilder", "photo")
+        let mediaVideo = telegramTypeBuilderMappingFor("InputMediaBuilder", "video")
+
+        @Expect(telegramTypeBuilderMappingCount(), 15)
+        @Expect(keyboardText.returnTypeName, "KeyboardButton.CommonButton")
+        @Expect(keyboardText.requiredFields, "text")
+        @Expect(inlineUrl.returnTypeName, "InlineKeyboardButton.UrlButton")
+        @Expect(inlinePhoto.returnTypeName, "InlineQueryResultPhoto")
+        @Expect(inlinePhoto.requiredFields.contains("thumbnail_url"), true)
+        @Expect(mediaVideo.returnTypeName, "InputMediaVideo")
+        @Expect(mediaVideo.inputFileFields, "media|thumbnail|cover")
+        @Expect(mediaVideo.usesInputFile(), true)
+        @Expect(telegramTypeBuilderMappingFor("Missing", "missing").returnTypeName, "")
+    }
+
+    @TestCase
     public func telegramTypeDryRunDiffReportsFieldAndUnionChanges(): Unit {
         let oldFields = [
             TelegramTypeFieldModel("Fixture", "id", "id", true, "0", "", "", ""),
@@ -354,6 +373,37 @@ public class TelegramTypesTest {
         @Expect(diffs[1].memberName, "username")
         @Expect(report.contains("union_member_added:union.C"), true)
         @Expect(report.contains("union_member_removed:union.B"), true)
+    }
+
+    @TestCase
+    public func telegramTypeDryRunImpactReportNamesAffectedApiBuilderAndContext(): Unit {
+        let oldFields = telegramTypeFieldManifestFor("InputMediaVideo")
+        let newFields = [
+            TelegramTypeFieldModel("InputMediaVideo", "type", "type", true, "0", "", "", ""),
+            TelegramTypeFieldModel("InputMediaVideo", "media", "media", true, "0", "", "media and thumbnail", ""),
+            TelegramTypeFieldModel("InputMediaVideo", "caption", "caption", false, "0", "", "", "")
+        ]
+        let diffs = telegramTypeDryRunDiff(oldFields, newFields, "InputMediaPhoto|InputMediaVideo", "InputMediaPhoto")
+        let report = telegramTypeDryRunImpactReport(diffs)
+
+        @Expect(report.contains("field_removed:InputMediaVideo.thumbnail"), true)
+        @Expect(report.contains("union_member_removed:union.InputMediaVideo"), true)
+        @Expect(report.contains("impact:type.InputMediaVideo"), true)
+        @Expect(report.contains("impact:api.sendMediaGroup"), true)
+        @Expect(report.contains("impact:builder.InputMediaBuilder.video"), true)
+    }
+
+    @TestCase
+    public func telegramTypeDryRunImpactReportNamesContextForUpdateChanges(): Unit {
+        let oldFields = telegramTypeFieldManifestFor("Update")
+        let newFields = [
+            TelegramTypeFieldModel("Update", "update_id", "update_id", true, "0", "", "", "")
+        ]
+        let report = telegramTypeDryRunImpactReport(telegramTypeDryRunDiff(oldFields, newFields, "", ""))
+
+        @Expect(report.contains("field_removed:Update.message"), true)
+        @Expect(report.contains("impact:api.getUpdates"), true)
+        @Expect(report.contains("impact:context.updateId()"), true)
     }
 
     @TestCase

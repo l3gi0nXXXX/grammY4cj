@@ -64,7 +64,7 @@ private func horizontalAccuracy(): TelegramObject {
 public class InlineQueryResultBuilderTest {
     @TestCase
     public func upstream001ArticleFromStringGolden(): Unit {
-        let missingContent = InlineQueryResultBuilder.article("id", "title")
+        let missingContent: InlineQueryResultArticle = InlineQueryResultBuilder.article("id", "title")
         let result = InlineQueryResultBuilder.article("id", "title", optionString("description", "description")).text("text")
         @Expect(missingContent.schemaIsValid(), false)
         @Expect(
@@ -77,7 +77,7 @@ public class InlineQueryResultBuilderTest {
 
     @TestCase
     public func upstream002AudioFromStringGolden(): Unit {
-        let result = InlineQueryResultBuilder.audio("id", "title", "https://grammy.dev/", caption("cap"))
+        let result: InlineQueryResultAudio = InlineQueryResultBuilder.audio("id", "title", "https://grammy.dev/", caption("cap"))
         @Expect(
             result.toJSON(),
             "{\"type\":\"audio\",\"id\":\"id\",\"title\":\"title\",\"audio_url\":\"https://grammy.dev/\",\"caption\":\"cap\"}"
@@ -136,13 +136,25 @@ public class InlineQueryResultBuilderTest {
 
     @TestCase
     public func upstream009CachedAudioGolden(): Unit {
-        let result = InlineQueryResultBuilder.audioCached("id", "file_id", caption("my cached audio"))
+        let result: InlineQueryResultCachedAudio = InlineQueryResultBuilder.audioCached("id", "file_id", caption("my cached audio"))
         @Expect(
             result.toJSON(),
             "{\"type\":\"audio\",\"id\":\"id\",\"audio_file_id\":\"file_id\",\"caption\":\"my cached audio\"}"
         )
         @Expect(result.schemaIsValid(), true)
         @Expect(result.toTelegramObject().hasField("audio_file_id"), true)
+    }
+
+    @TestCase
+    public func inlineQueryBuildersReturnConcreteTypedModels(): Unit {
+        let photo: InlineQueryResultPhoto = InlineQueryResultBuilder.photo("id", "https://grammy.dev/")
+        let video: InlineQueryResultVideo = InlineQueryResultBuilder.videoMp4("id", "title", "https://grammy.dev/video", "https://grammy.dev/thumb")
+        let cached: InlineQueryResultCachedSticker = InlineQueryResultBuilder.stickerCached("id", "sticker-id")
+
+        @Expect(photo.toTelegramObject().stringField("type"), "photo")
+        @Expect(photo.toTelegramObject().stringField("thumbnail_url"), "https://grammy.dev/")
+        @Expect(video.toTelegramObject().stringField("mime_type"), "video/mp4")
+        @Expect(cached.toTelegramObject().stringField("sticker_file_id"), "sticker-id")
     }
 
     @TestCase

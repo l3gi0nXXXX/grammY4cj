@@ -2,7 +2,7 @@ package grammy4cj.convenience
 
 import std.collection.ArrayList
 
-public class KeyboardButton {
+public open class KeyboardButton {
     public let text: String
     public var style: String
     public var iconCustomEmojiId: String
@@ -85,7 +85,35 @@ public class KeyboardButton {
     }
 }
 
-public class InlineKeyboardButton {
+public class KeyboardButtonCommonButton <: KeyboardButton {
+    public init(text: String) { super(text) }
+    public init(text: String, style: String) { super(text, style) }
+    public init(text: String, options: TelegramObject) { super(text, options) }
+}
+
+public class KeyboardButtonRequestContactButton <: KeyboardButton {
+    public init(button: KeyboardButton) {
+        super(button.text)
+        this.style = button.style
+        this.iconCustomEmojiId = button.iconCustomEmojiId
+        this.actionName = "request_contact"
+        this.actionValue = rawValue("true")
+    }
+}
+
+public class KeyboardButtonWebAppButton <: KeyboardButton {
+    public init(button: KeyboardButton, url: String) {
+        super(button.text)
+        this.style = button.style
+        this.iconCustomEmojiId = button.iconCustomEmojiId
+        let webApp = TelegramObject()
+        webApp.addString("url", url)
+        this.actionName = "web_app"
+        this.actionValue = objectValue(webApp)
+    }
+}
+
+public open class InlineKeyboardButton {
     public let text: String
     public var style: String
     public var iconCustomEmojiId: String
@@ -168,6 +196,36 @@ public class InlineKeyboardButton {
     }
 }
 
+public class InlineKeyboardButtonUrlButton <: InlineKeyboardButton {
+    public init(button: InlineKeyboardButton, url: String) {
+        super(button.text)
+        this.style = button.style
+        this.iconCustomEmojiId = button.iconCustomEmojiId
+        this.actionName = "url"
+        this.actionValue = stringValue(url)
+    }
+}
+
+public class InlineKeyboardButtonCallbackButton <: InlineKeyboardButton {
+    public init(button: InlineKeyboardButton, data: String) {
+        super(button.text)
+        this.style = button.style
+        this.iconCustomEmojiId = button.iconCustomEmojiId
+        this.actionName = "callback_data"
+        this.actionValue = stringValue(data)
+    }
+}
+
+public class InlineKeyboardButtonWebAppButton <: InlineKeyboardButton {
+    public init(button: InlineKeyboardButton, webApp: TelegramObject) {
+        super(button.text)
+        this.style = button.style
+        this.iconCustomEmojiId = button.iconCustomEmojiId
+        this.actionName = "web_app"
+        this.actionValue = objectValue(webApp)
+    }
+}
+
 public class Keyboard {
     public var keyboard: ArrayList<ArrayList<KeyboardButton>> = ArrayList<ArrayList<KeyboardButton>>()
     public var buttonCount: Int64 = 0
@@ -247,16 +305,16 @@ public class Keyboard {
         this.add(Keyboard.textButton(text, options))
     }
 
-    public static func textButton(text: String): KeyboardButton {
-        KeyboardButton(text)
+    public static func textButton(text: String): KeyboardButtonCommonButton {
+        KeyboardButtonCommonButton(text)
     }
 
-    public static func textButton(text: String, style: String): KeyboardButton {
-        KeyboardButton(text, style)
+    public static func textButton(text: String, style: String): KeyboardButtonCommonButton {
+        KeyboardButtonCommonButton(text, style)
     }
 
-    public static func textButton(text: String, options: TelegramObject): KeyboardButton {
-        KeyboardButton(text, options)
+    public static func textButton(text: String, options: TelegramObject): KeyboardButtonCommonButton {
+        KeyboardButtonCommonButton(text, options)
     }
 
     public func requestContact(text: String): Keyboard {
@@ -267,12 +325,12 @@ public class Keyboard {
         this.add(Keyboard.requestContactButton(button))
     }
 
-    public static func requestContactButton(text: String): KeyboardButton {
-        Keyboard.textButton(text).withAction("request_contact", rawValue("true"))
+    public static func requestContactButton(text: String): KeyboardButtonRequestContactButton {
+        KeyboardButtonRequestContactButton(Keyboard.textButton(text))
     }
 
-    public static func requestContactButton(button: KeyboardButton): KeyboardButton {
-        button.withAction("request_contact", rawValue("true"))
+    public static func requestContactButton(button: KeyboardButton): KeyboardButtonRequestContactButton {
+        KeyboardButtonRequestContactButton(button)
     }
 
     public func requestLocation(text: String): Keyboard {
@@ -453,16 +511,12 @@ public class Keyboard {
         this.add(Keyboard.webAppButton(button, url))
     }
 
-    public static func webAppButton(text: String, url: String): KeyboardButton {
-        let webApp = TelegramObject()
-        webApp.addString("url", url)
-        Keyboard.textButton(text).withAction("web_app", objectValue(webApp))
+    public static func webAppButton(text: String, url: String): KeyboardButtonWebAppButton {
+        KeyboardButtonWebAppButton(Keyboard.textButton(text), url)
     }
 
-    public static func webAppButton(button: KeyboardButton, url: String): KeyboardButton {
-        let webApp = TelegramObject()
-        webApp.addString("url", url)
-        button.withAction("web_app", objectValue(webApp))
+    public static func webAppButton(button: KeyboardButton, url: String): KeyboardButtonWebAppButton {
+        KeyboardButtonWebAppButton(button, url)
     }
 
     public func style(style: String): Keyboard {
@@ -733,12 +787,12 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.urlButton(button, url))
     }
 
-    public static func urlButton(text: String, url: String): InlineKeyboardButton {
-        InlineKeyboardButton(text).withAction("url", stringValue(url))
+    public static func urlButton(text: String, url: String): InlineKeyboardButtonUrlButton {
+        InlineKeyboardButtonUrlButton(InlineKeyboardButton(text), url)
     }
 
-    public static func urlButton(button: InlineKeyboardButton, url: String): InlineKeyboardButton {
-        button.withAction("url", stringValue(url))
+    public static func urlButton(button: InlineKeyboardButton, url: String): InlineKeyboardButtonUrlButton {
+        InlineKeyboardButtonUrlButton(button, url)
     }
 
     public func text(text: String): InlineKeyboard {
@@ -761,24 +815,24 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.textButton(button, data))
     }
 
-    public static func textButton(text: String): InlineKeyboardButton {
+    public static func textButton(text: String): InlineKeyboardButtonCallbackButton {
         InlineKeyboard.textButton(text, text)
     }
 
-    public static func textButton(text: String, data: String): InlineKeyboardButton {
-        InlineKeyboardButton(text).withAction("callback_data", stringValue(data))
+    public static func textButton(text: String, data: String): InlineKeyboardButtonCallbackButton {
+        InlineKeyboardButtonCallbackButton(InlineKeyboardButton(text), data)
     }
 
-    public static func textButton(text: String, options: TelegramObject): InlineKeyboardButton {
+    public static func textButton(text: String, options: TelegramObject): InlineKeyboardButtonCallbackButton {
         InlineKeyboard.textButton(InlineKeyboardButton(text, options))
     }
 
-    public static func textButton(button: InlineKeyboardButton): InlineKeyboardButton {
+    public static func textButton(button: InlineKeyboardButton): InlineKeyboardButtonCallbackButton {
         InlineKeyboard.textButton(button, button.text)
     }
 
-    public static func textButton(button: InlineKeyboardButton, data: String): InlineKeyboardButton {
-        button.withAction("callback_data", stringValue(data))
+    public static func textButton(button: InlineKeyboardButton, data: String): InlineKeyboardButtonCallbackButton {
+        InlineKeyboardButtonCallbackButton(button, data)
     }
 
     public func webApp(text: String, url: String): InlineKeyboard {
@@ -797,24 +851,24 @@ public class InlineKeyboard {
         this.add(InlineKeyboard.webAppButton(button, webApp))
     }
 
-    public static func webAppButton(text: String, url: String): InlineKeyboardButton {
+    public static func webAppButton(text: String, url: String): InlineKeyboardButtonWebAppButton {
         let webApp = TelegramObject()
         webApp.addString("url", url)
-        InlineKeyboardButton(text).withAction("web_app", objectValue(webApp))
+        InlineKeyboardButtonWebAppButton(InlineKeyboardButton(text), webApp)
     }
 
-    public static func webAppButton(text: String, webApp: TelegramObject): InlineKeyboardButton {
-        InlineKeyboardButton(text).withAction("web_app", objectValue(webApp))
+    public static func webAppButton(text: String, webApp: TelegramObject): InlineKeyboardButtonWebAppButton {
+        InlineKeyboardButtonWebAppButton(InlineKeyboardButton(text), webApp)
     }
 
-    public static func webAppButton(button: InlineKeyboardButton, url: String): InlineKeyboardButton {
+    public static func webAppButton(button: InlineKeyboardButton, url: String): InlineKeyboardButtonWebAppButton {
         let webApp = TelegramObject()
         webApp.addString("url", url)
-        button.withAction("web_app", objectValue(webApp))
+        InlineKeyboardButtonWebAppButton(button, webApp)
     }
 
-    public static func webAppButton(button: InlineKeyboardButton, webApp: TelegramObject): InlineKeyboardButton {
-        button.withAction("web_app", objectValue(webApp))
+    public static func webAppButton(button: InlineKeyboardButton, webApp: TelegramObject): InlineKeyboardButtonWebAppButton {
+        InlineKeyboardButtonWebAppButton(button, webApp)
     }
 
     public func login(text: String, url: String): InlineKeyboard {

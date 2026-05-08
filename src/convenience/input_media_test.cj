@@ -9,7 +9,7 @@ public class InputMediaBuilderTest {
     public func upstream001BuildsPhotosGolden(): Unit {
         let options = TelegramObject()
         options.addString("caption", "photo caption")
-        let photo = InputMediaBuilder.photo(InputFile.fromBytes("ABC", "photo.jpg"), options)
+        let photo: InputMediaPhoto = InputMediaBuilder.photo(InputFile.fromBytes("ABC", "photo.jpg"), options)
 
         @Expect(photo.toJSON(), "{\"type\":\"photo\",\"media\":\"attach://media\",\"caption\":\"photo caption\"}")
         @Expect(photo.hasMediaFile(), true)
@@ -25,9 +25,10 @@ public class InputMediaBuilderTest {
     public func upstream002BuildsVideosGolden(): Unit {
         let options = TelegramObject()
         options.addString("caption", "video caption")
+        let video: InputMediaVideo = InputMediaBuilder.video(InputFile.fromBytes("ABC", "video.mp4"), options)
 
         @Expect(
-            InputMediaBuilder.video(InputFile.fromBytes("ABC", "video.mp4"), options).toJSON(),
+            video.toJSON(),
             "{\"type\":\"video\",\"media\":\"attach://media\",\"caption\":\"video caption\"}"
         )
         let thumbnailOptions = TelegramObject()
@@ -41,9 +42,10 @@ public class InputMediaBuilderTest {
     public func upstream003BuildsAnimationsGolden(): Unit {
         let options = TelegramObject()
         options.addString("caption", "animation caption")
+        let animation: InputMediaAnimation = InputMediaBuilder.animation(InputFile.fromBytes("ABC", "animation.gif"), options)
 
         @Expect(
-            InputMediaBuilder.animation(InputFile.fromBytes("ABC", "animation.gif"), options).toJSON(),
+            animation.toJSON(),
             "{\"type\":\"animation\",\"media\":\"attach://media\",\"caption\":\"animation caption\"}"
         )
         @Expect(InputMediaBuilder.animation("animation-file-id", options).schemaIsValid(), true)
@@ -53,9 +55,10 @@ public class InputMediaBuilderTest {
     public func upstream004BuildsAudiosGolden(): Unit {
         let options = TelegramObject()
         options.addString("caption", "audio caption")
+        let audio: InputMediaAudio = InputMediaBuilder.audio(InputFile.fromBytes("ABC", "audio.ogg"), options)
 
         @Expect(
-            InputMediaBuilder.audio(InputFile.fromBytes("ABC", "audio.ogg"), options).toJSON(),
+            audio.toJSON(),
             "{\"type\":\"audio\",\"media\":\"attach://media\",\"caption\":\"audio caption\"}"
         )
         let audioOptions = TelegramObject()
@@ -68,13 +71,29 @@ public class InputMediaBuilderTest {
     public func upstream005BuildsDocumentsGolden(): Unit {
         let options = TelegramObject()
         options.addString("caption", "document caption")
+        let document: InputMediaDocument = InputMediaBuilder.document(InputFile.fromBytes("ABC", "document.pdf"), options)
 
         @Expect(
-            InputMediaBuilder.document(InputFile.fromBytes("ABC", "document.pdf"), options).toJSON(),
+            document.toJSON(),
             "{\"type\":\"document\",\"media\":\"attach://media\",\"caption\":\"document caption\"}"
         )
         let documentOptions = TelegramObject()
         documentOptions.addBool("disable_content_type_detection", true)
         @Expect(InputMediaBuilder.document("document-file-id", documentOptions).schemaIsValid(), true)
+    }
+
+    @TestCase
+    public func inputMediaBuildersReturnConcreteModelsAndKeepInputFileFields(): Unit {
+        let file = InputFile.fromBytes("ABC", "video.mp4")
+        let options = TelegramObject()
+        options.addString("thumbnail", "attach://thumb")
+        let video: InputMediaVideo = InputMediaBuilder.video(file, options)
+        let base: InputMedia = video
+
+        @Expect(video.kind, "video")
+        @Expect(video.hasMediaFile(), true)
+        @Expect(video.inputFile().filename, "video.mp4")
+        @Expect(video.toTelegramObject().stringField("thumbnail"), "attach://thumb")
+        @Expect(base.schemaIsValid(), true)
     }
 }

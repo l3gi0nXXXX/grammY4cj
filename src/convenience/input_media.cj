@@ -2,7 +2,7 @@ package grammy4cj.convenience
 
 import grammy4cj.types.InputFile
 
-public class InputMedia {
+public open class InputMedia {
     public let kind: String
     public let media: String
     public let isInputFile: Bool
@@ -69,85 +69,135 @@ public class InputMedia {
     }
 }
 
+public class InputMediaPhoto <: InputMedia {
+    public init(media: String, options: TelegramObject) {
+        super("photo", media, options)
+    }
+
+    public init(media: InputFile, options: TelegramObject) {
+        super("photo", media, options)
+    }
+}
+
+public class InputMediaVideo <: InputMedia {
+    public init(media: String, options: TelegramObject) {
+        super("video", media, options)
+    }
+
+    public init(media: InputFile, options: TelegramObject) {
+        super("video", media, options)
+    }
+}
+
+public class InputMediaAnimation <: InputMedia {
+    public init(media: String, options: TelegramObject) {
+        super("animation", media, options)
+    }
+
+    public init(media: InputFile, options: TelegramObject) {
+        super("animation", media, options)
+    }
+}
+
+public class InputMediaAudio <: InputMedia {
+    public init(media: String, options: TelegramObject) {
+        super("audio", media, options)
+    }
+
+    public init(media: InputFile, options: TelegramObject) {
+        super("audio", media, options)
+    }
+}
+
+public class InputMediaDocument <: InputMedia {
+    public init(media: String, options: TelegramObject) {
+        super("document", media, options)
+    }
+
+    public init(media: InputFile, options: TelegramObject) {
+        super("document", media, options)
+    }
+}
+
 public class InputMediaBuilder {
-    public static func photo(media: String): InputMedia {
-        InputMedia("photo", media, TelegramObject())
+    public static func photo(media: String): InputMediaPhoto {
+        InputMediaPhoto(media, TelegramObject())
     }
 
-    public static func photo(media: String, options: TelegramObject): InputMedia {
-        InputMedia("photo", media, options)
+    public static func photo(media: String, options: TelegramObject): InputMediaPhoto {
+        InputMediaPhoto(media, options)
     }
 
-    public static func photo(media: InputFile): InputMedia {
-        InputMedia("photo", media, TelegramObject())
+    public static func photo(media: InputFile): InputMediaPhoto {
+        InputMediaPhoto(media, TelegramObject())
     }
 
-    public static func photo(media: InputFile, options: TelegramObject): InputMedia {
-        InputMedia("photo", media, options)
+    public static func photo(media: InputFile, options: TelegramObject): InputMediaPhoto {
+        InputMediaPhoto(media, options)
     }
 
-    public static func video(media: String): InputMedia {
-        InputMedia("video", media, TelegramObject())
+    public static func video(media: String): InputMediaVideo {
+        InputMediaVideo(media, TelegramObject())
     }
 
-    public static func video(media: String, options: TelegramObject): InputMedia {
-        InputMedia("video", media, options)
+    public static func video(media: String, options: TelegramObject): InputMediaVideo {
+        InputMediaVideo(media, options)
     }
 
-    public static func video(media: InputFile): InputMedia {
-        InputMedia("video", media, TelegramObject())
+    public static func video(media: InputFile): InputMediaVideo {
+        InputMediaVideo(media, TelegramObject())
     }
 
-    public static func video(media: InputFile, options: TelegramObject): InputMedia {
-        InputMedia("video", media, options)
+    public static func video(media: InputFile, options: TelegramObject): InputMediaVideo {
+        InputMediaVideo(media, options)
     }
 
-    public static func animation(media: String): InputMedia {
-        InputMedia("animation", media, TelegramObject())
+    public static func animation(media: String): InputMediaAnimation {
+        InputMediaAnimation(media, TelegramObject())
     }
 
-    public static func animation(media: String, options: TelegramObject): InputMedia {
-        InputMedia("animation", media, options)
+    public static func animation(media: String, options: TelegramObject): InputMediaAnimation {
+        InputMediaAnimation(media, options)
     }
 
-    public static func animation(media: InputFile): InputMedia {
-        InputMedia("animation", media, TelegramObject())
+    public static func animation(media: InputFile): InputMediaAnimation {
+        InputMediaAnimation(media, TelegramObject())
     }
 
-    public static func animation(media: InputFile, options: TelegramObject): InputMedia {
-        InputMedia("animation", media, options)
+    public static func animation(media: InputFile, options: TelegramObject): InputMediaAnimation {
+        InputMediaAnimation(media, options)
     }
 
-    public static func audio(media: String): InputMedia {
-        InputMedia("audio", media, TelegramObject())
+    public static func audio(media: String): InputMediaAudio {
+        InputMediaAudio(media, TelegramObject())
     }
 
-    public static func audio(media: String, options: TelegramObject): InputMedia {
-        InputMedia("audio", media, options)
+    public static func audio(media: String, options: TelegramObject): InputMediaAudio {
+        InputMediaAudio(media, options)
     }
 
-    public static func audio(media: InputFile): InputMedia {
-        InputMedia("audio", media, TelegramObject())
+    public static func audio(media: InputFile): InputMediaAudio {
+        InputMediaAudio(media, TelegramObject())
     }
 
-    public static func audio(media: InputFile, options: TelegramObject): InputMedia {
-        InputMedia("audio", media, options)
+    public static func audio(media: InputFile, options: TelegramObject): InputMediaAudio {
+        InputMediaAudio(media, options)
     }
 
-    public static func document(media: String): InputMedia {
-        InputMedia("document", media, TelegramObject())
+    public static func document(media: String): InputMediaDocument {
+        InputMediaDocument(media, TelegramObject())
     }
 
-    public static func document(media: String, options: TelegramObject): InputMedia {
-        InputMedia("document", media, options)
+    public static func document(media: String, options: TelegramObject): InputMediaDocument {
+        InputMediaDocument(media, options)
     }
 
-    public static func document(media: InputFile): InputMedia {
-        InputMedia("document", media, TelegramObject())
+    public static func document(media: InputFile): InputMediaDocument {
+        InputMediaDocument(media, TelegramObject())
     }
 
-    public static func document(media: InputFile, options: TelegramObject): InputMedia {
-        InputMedia("document", media, options)
+    public static func document(media: InputFile, options: TelegramObject): InputMediaDocument {
+        InputMediaDocument(media, options)
     }
 
     public static func schema(kind: String): TelegramObjectSchema {
