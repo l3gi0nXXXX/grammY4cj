@@ -455,6 +455,29 @@ public class BotTest {
     }
 
     @TestCase
+    public func botApiTransformersAreCopiedToMiddlewareContextApi(): Unit {
+        let me = UserFromGetMe(199, true, "CtxApi", "ctx_api_bot")
+        let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
+        let copied = ArrayList<String>()
+
+        bot.api.use("bot-first")
+        bot.api.use("bot-second")
+        bot.use({ ctx: Context, _next: NextFunction =>
+            for (name in ctx.api.installedTransformers) {
+                copied.add(name)
+            }
+            ctx.api.use("per-update")
+        })
+
+        bot.handleUpdate(Update(1002, "message"))
+
+        @Expect(copied.size, 2)
+        @Expect(copied[0], "bot-first")
+        @Expect(copied[1], "bot-second")
+        @Expect(bot.api.installedTransformers.size, 2)
+    }
+
+    @TestCase
     public func handleUpdateRunsComposerMiddlewareWithPerUpdateContext(): Unit {
         let events = ArrayList<String>()
         let contexts = ArrayList<Context>()
