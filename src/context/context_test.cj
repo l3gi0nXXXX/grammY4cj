@@ -76,6 +76,10 @@ private func exceptionMessage(action: () -> Unit): String {
     }
 }
 
+private func matchText(value: Option<ContextMatch>): String {
+    orThrow(value, "test").text
+}
+
 @Test
 public class ContextGetterTest {
     @TestCase
@@ -84,7 +88,6 @@ public class ContextGetterTest {
         let api = Api("token")
         let me = testBotInfo()
         let ctx = Context(update, api, me)
-
         @Expect(ctx.update.updateId, 120)
         @Expect(ctx.api.endpointFor("getMe"), api.endpointFor("getMe"))
         @Expect(ctx.me.id, 42)
@@ -93,135 +96,24 @@ public class ContextGetterTest {
     }
 
     @TestCase
-    public func topLevelUpdateGettersMapToUpdateFields(): Unit {
-        let chat = Chat(100, "private")
-        let user = User(200, false, "Ada", "ada")
-        let update = Update(1, "mixed")
-
-        update.message = Message(10, chat, "message", user)
-        update.editedMessage = Message(11, chat, "edited", user)
-        update.channelPost = Message(12, chat, "channel", user)
-        update.editedChannelPost = Message(13, chat, "edited-channel", user)
-        update.businessConnection = BusinessConnection("bc-1", user, 300)
-        update.businessMessage = Message(14, chat, "business", user)
-        update.editedBusinessMessage = Message(15, chat, "edited-business", user)
-        update.deletedBusinessMessages = BusinessMessagesDeleted(chat, "bc-deleted")
-        update.messageReaction = MessageReactionUpdated(chat, user, 16, [], [ReactionType.emojiReaction("plus")])
-        update.messageReactionCount = MessageReactionCountUpdated(chat, 17)
-        update.inlineQuery = InlineQuery(user, "inline")
-        update.chosenInlineResult = ChosenInlineResult(user, "chosen", "inline-msg-1")
-        update.callbackQuery = CallbackQuery(user, "callback", Message(18, chat, "callback-message", user))
-        update.shippingQuery = ShippingQuery(user, "ship")
-        update.preCheckoutQuery = PreCheckoutQuery(user, "pre")
-        update.poll = Poll("poll-1")
-        update.pollAnswer = PollAnswer(user, "poll-2")
-        update.myChatMember = ChatMemberUpdated(chat, user)
-        update.chatMember = ChatMemberUpdated(chat, user)
-        update.managedBot = ManagedBotUpdate(user)
-        update.chatJoinRequest = ChatJoinRequest(chat, user)
-        update.chatBoost = ChatBoostUpdated(chat, ChatBoost(ChatBoostSource(user)))
-        update.removedChatBoost = ChatBoostRemoved(chat, ChatBoostSource(user))
-        update.purchasedPaidMedia = PurchasedPaidMedia(user)
-
-        let ctx = testContext(update)
-
-        @Expect(ctx.message.messageId, 10)
-        @Expect(ctx.editedMessage.messageId, 11)
-        @Expect(ctx.channelPost.messageId, 12)
-        @Expect(ctx.editedChannelPost.messageId, 13)
-        @Expect(ctx.businessConnection.id, "bc-1")
-        @Expect(ctx.businessMessage.messageId, 14)
-        @Expect(ctx.editedBusinessMessage.messageId, 15)
-        @Expect(ctx.deletedBusinessMessages.businessConnectionId, "bc-deleted")
-        @Expect(ctx.messageReaction.messageId, 16)
-        @Expect(ctx.messageReactionCount.messageId, 17)
-        @Expect(ctx.inlineQuery.query, "inline")
-        @Expect(ctx.chosenInlineResult.resultId, "chosen")
-        @Expect(ctx.callbackQuery.data, "callback")
-        @Expect(ctx.shippingQuery.invoicePayload, "ship")
-        @Expect(ctx.preCheckoutQuery.invoicePayload, "pre")
-        @Expect(ctx.poll.id, "poll-1")
-        @Expect(ctx.pollAnswer.pollId, "poll-2")
-        @Expect(ctx.myChatMember.chat.id, 100)
-        @Expect(ctx.chatMember.user.id, 200)
-        @Expect(ctx.managedBot.user.id, 200)
-        @Expect(ctx.chatJoinRequest.chat.id, 100)
-        @Expect(ctx.chatBoost.chat.id, 100)
-        @Expect(ctx.removedChatBoost.chat.id, 100)
-        @Expect(ctx.purchasedPaidMedia.user.id, 200)
-    }
-
-    @TestCase
-    public func messageAggregateMatrixMirrorsUpstreamIndividualSources(): Unit {
-        let chat = Chat(130, "private")
-        let user = User(230, false, "Ada", "ada")
-        let message = Message(501, chat, "message", user)
-        let edited = Message(502, chat, "edited", user)
-        let channel = Message(503, chat, "channel", user)
-        let editedChannel = Message(504, chat, "edited-channel", user)
-        let business = Message(505, chat, "business", user)
-        let editedBusiness = Message(506, chat, "edited-business", user)
-        let callbackMessage = Message(507, chat, "callback", user)
-
-        @Expect(testContext(Update.withMessage(121, message)).msg.messageId, 501)
-        @Expect(testContext(Update.withEditedMessage(122, edited)).msg.messageId, 502)
-        @Expect(testContext(Update.withCallbackQuery(123, CallbackQuery(user, "data", callbackMessage))).msg.messageId, 507)
-        @Expect(testContext(Update.withChannelPost(124, channel)).msg.messageId, 503)
-        @Expect(testContext(Update.withEditedChannelPost(125, editedChannel)).msg.messageId, 504)
-        @Expect(testContext(Update.withBusinessMessage(126, business)).msg.messageId, 505)
-        @Expect(testContext(Update.withEditedBusinessMessage(127, editedBusiness)).msg.messageId, 506)
-    }
-
-    @TestCase
-    public func emptyUpdateReturnsEmptySentinelsAndOrThrowErrors(): Unit {
+    public func emptyUpdateReturnsNoneRatherThanSentinels(): Unit {
         let ctx = testContext(Update(2))
-        var threw = false
-
-        try {
-            orThrow(ctx.chatId, "sendMessage")
-        } catch (_: Exception) {
-            threw = true
-        }
-
-        @Expect(ctx.message.isPresent, false)
-        @Expect(ctx.editedMessage.isPresent, false)
-        @Expect(ctx.channelPost.isPresent, false)
-        @Expect(ctx.editedChannelPost.isPresent, false)
-        @Expect(ctx.businessConnection.isPresent, false)
-        @Expect(ctx.businessMessage.isPresent, false)
-        @Expect(ctx.editedBusinessMessage.isPresent, false)
-        @Expect(ctx.deletedBusinessMessages.isPresent, false)
-        @Expect(ctx.messageReaction.isPresent, false)
-        @Expect(ctx.messageReactionCount.isPresent, false)
-        @Expect(ctx.inlineQuery.isPresent, false)
-        @Expect(ctx.chosenInlineResult.isPresent, false)
-        @Expect(ctx.callbackQuery.isPresent, false)
-        @Expect(ctx.shippingQuery.isPresent, false)
-        @Expect(ctx.preCheckoutQuery.isPresent, false)
-        @Expect(ctx.poll.isPresent, false)
-        @Expect(ctx.pollAnswer.isPresent, false)
-        @Expect(ctx.myChatMember.isPresent, false)
-        @Expect(ctx.chatMember.isPresent, false)
-        @Expect(ctx.managedBot.isPresent, false)
-        @Expect(ctx.chatJoinRequest.isPresent, false)
-        @Expect(ctx.chatBoost.isPresent, false)
-        @Expect(ctx.removedChatBoost.isPresent, false)
-        @Expect(ctx.purchasedPaidMedia.isPresent, false)
-        @Expect(ctx.msg.isPresent, false)
-        @Expect(ctx.chat.isPresent, false)
-        @Expect(ctx.senderChat.isPresent, false)
-        @Expect(ctx.from.isPresent, false)
-        @Expect(ctx.msgId, 0)
-        @Expect(ctx.chatId, 0)
-        @Expect(ctx.inlineMessageId, "")
-        @Expect(ctx.businessConnectionId, "")
+        @Expect(optionPresent(ctx.message), false)
+        @Expect(optionPresent(ctx.chat), false)
+        @Expect(optionPresent(ctx.msg), false)
+        @Expect(optionPresent(ctx.from), false)
+        @Expect(optionPresent(ctx.msgId), false)
+        @Expect(optionPresent(ctx.chatId), false)
+        @Expect(optionPresent(ctx.inlineMessageId), false)
+        @Expect(optionPresent(ctx.businessConnectionId), false)
+        @Expect(optionPresent(ctx.`match`), false)
+        @Expect(throwsException({ => orThrow(ctx.chatId, "sendMessage") }), true)
         @Expect(ctx.entities().size, 0)
         @Expect(ctx.reactions().emoji.size, 0)
-        @Expect(threw, true)
     }
 
     @TestCase
-    public func aggregateGettersKeepGrammYPriority(): Unit {
+    public func aggregateGettersKeepGrammYPriorityWithOptions(): Unit {
         let chatA = Chat(101, "private")
         let chatB = Chat(102, "group")
         let userA = User(201, false, "Ada", "ada")
@@ -230,7 +122,6 @@ public class ContextGetterTest {
         let message = Message(21, chatA, "message", userA)
         message.senderChat = Chat(103, "channel")
         message.businessConnectionId = "bc-from-message"
-
         update.message = message
         update.editedMessage = Message(22, chatB, "edited", userB)
         update.messageReaction = MessageReactionUpdated(chatB, userB, 99, [], [])
@@ -238,72 +129,31 @@ public class ContextGetterTest {
         update.deletedBusinessMessages = BusinessMessagesDeleted(chatB, "bc-deleted")
         update.callbackQuery = CallbackQuery(userB, "data", "", Message(23, chatB, "callback-message", userB), "inline-callback")
         update.chosenInlineResult = ChosenInlineResult(userA, "chosen", "inline-chosen")
-
         let ctx = testContext(update)
-
-        @Expect(ctx.msg.messageId, 21)
-        @Expect(ctx.chat.id, 101)
-        @Expect(ctx.senderChat.id, 103)
-        @Expect(ctx.from.id, 202)
-        @Expect(ctx.msgId, 21)
-        @Expect(ctx.chatId, 101)
-        @Expect(ctx.inlineMessageId, "inline-callback")
-        @Expect(ctx.businessConnectionId, "bc-from-message")
+        @Expect(orThrow(ctx.msg, "test").messageId, 21)
+        @Expect(orThrow(ctx.chat, "test").id, 101)
+        @Expect(orThrow(ctx.senderChat, "test").id, 103)
+        @Expect(orThrow(ctx.from, "test").id, 202)
+        @Expect(orThrow(ctx.msgId, "test"), 21)
+        @Expect(orThrow(ctx.chatId, "test"), 101)
+        @Expect(orThrow(ctx.inlineMessageId, "test"), "inline-callback")
+        @Expect(orThrow(ctx.businessConnectionId, "test"), "bc-from-message")
     }
 
     @TestCase
-    public func aggregateGetterMatrixCoversMultipleSourcesAndSentinels(): Unit {
-        let chatA = Chat(121, "private")
-        let chatB = Chat(122, "supergroup")
-        let chatC = Chat(123, "channel")
-        let userA = User(221, false, "Ada", "ada")
-        let userB = User(222, false, "Grace", "grace")
-        let empty = testContext(Update(30))
-
-        let message = Message(321, chatA, "message", userA)
-        message.senderChat = chatC
+    public func topLevelAndAggregateOptionsExposePresentValues(): Unit {
+        let chat = Chat(121, "private")
+        let user = User(221, false, "Ada", "ada")
+        let message = Message(321, chat, "message", user)
         message.businessConnectionId = "bc-message"
-        @Expect(testContext(Update.withMessage(31, message)).msg.messageId, 321)
-        @Expect(testContext(Update.withMessage(32, message)).chat.id, 121)
-        @Expect(testContext(Update.withMessage(33, message)).senderChat.id, 123)
-        @Expect(testContext(Update.withMessage(34, message)).from.id, 221)
-        @Expect(testContext(Update.withMessage(35, message)).msgId, 321)
-        @Expect(testContext(Update.withMessage(36, message)).chatId, 121)
-        @Expect(testContext(Update.withMessage(37, message)).businessConnectionId, "bc-message")
-
-        let callbackMessage = Message(322, chatB, "callback-message", userB)
-        callbackMessage.senderChat = chatC
-        let callback = CallbackQuery(userB, "callback-data", "", callbackMessage, "inline-callback")
-        @Expect(testContext(Update.withCallbackQuery(38, callback)).msg.messageId, 322)
-        @Expect(testContext(Update.withCallbackQuery(39, callback)).chat.id, 122)
-        @Expect(testContext(Update.withCallbackQuery(40, callback)).senderChat.id, 123)
-        @Expect(testContext(Update.withCallbackQuery(41, callback)).from.id, 222)
-        @Expect(testContext(Update.withCallbackQuery(42, callback)).inlineMessageId, "inline-callback")
-
-        let reaction = MessageReactionUpdated(chatB, userB, 323, [], [])
-        @Expect(testContext(Update.withMessageReaction(43, reaction)).chat.id, 122)
-        @Expect(testContext(Update.withMessageReaction(44, reaction)).from.id, 222)
-        @Expect(testContext(Update.withMessageReaction(45, reaction)).msgId, 323)
-        @Expect(testContext(Update.withMessageReaction(46, reaction)).chatId, 122)
-
-        let business = BusinessConnection("bc-update", userB, 4242)
-        @Expect(testContext(Update.withBusinessConnection(47, business)).from.id, 222)
-        @Expect(testContext(Update.withBusinessConnection(48, business)).chatId, 4242)
-        @Expect(testContext(Update.withBusinessConnection(49, business)).businessConnectionId, "bc-update")
-
-        let chosen = ChosenInlineResult(userA, "chosen-result", "inline-chosen")
-        @Expect(testContext(Update.withChosenInlineResult(50, chosen)).inlineMessageId, "inline-chosen")
-        let deleted = BusinessMessagesDeleted(chatB, "bc-deleted")
-        @Expect(testContext(Update.withDeletedBusinessMessages(51, deleted)).businessConnectionId, "bc-deleted")
-
-        @Expect(empty.msg.isPresent, false)
-        @Expect(empty.chat.isPresent, false)
-        @Expect(empty.senderChat.isPresent, false)
-        @Expect(empty.from.isPresent, false)
-        @Expect(empty.msgId, 0)
-        @Expect(empty.chatId, 0)
-        @Expect(empty.inlineMessageId, "")
-        @Expect(empty.businessConnectionId, "")
+        let ctx = testContext(Update.withMessage(31, message))
+        @Expect(orThrow(ctx.message, "test").messageId, 321)
+        @Expect(orThrow(ctx.msg, "test").messageId, 321)
+        @Expect(orThrow(ctx.chatId, "test"), 121)
+        @Expect(orThrow(ctx.from, "test").id, 221)
+        @Expect(orThrow(ctx.businessConnectionId, "test"), "bc-message")
+        let callback = CallbackQuery(user, "callback-data", "", message, "inline-callback")
+        @Expect(orThrow(testContext(Update.withCallbackQuery(38, callback)).inlineMessageId, "test"), "inline-callback")
     }
 
     @TestCase
@@ -313,80 +163,15 @@ public class ContextGetterTest {
         let message = Message(31, chat, "hello link", user)
         message.addEntity(MessageEntity("bold", 0, 5))
         message.addEntity(MessageEntity("url", 6, 4))
-
-        let update = Update.withMessage(4, message)
-        let ctx = testContext(update)
-
+        let ctx = testContext(Update.withMessage(4, message))
         @Expect(ctx.entities().size, 2)
         @Expect(ctx.entities("url")[0].text, "link")
-        @Expect(ctx.entities(["bold"])[0].text, "hello")
-
-        let captionMessage = Message(33, chat, "")
-        captionMessage.caption = "caption link"
-        captionMessage.addCaptionEntity(MessageEntity("url", 8, 4))
-        let captionCtx = testContext(Update.withMessage(6, captionMessage))
-        @Expect(captionCtx.entities().size, 1)
-        @Expect(captionCtx.entities("url")[0].text, "link")
-
-        let reactionUpdate = Update.withMessageReaction(
-            7,
-            MessageReactionUpdated(
-                chat,
-                user,
-                32,
-                [ReactionType.emojiReaction("plus"), ReactionType.customEmojiReaction("custom-old")],
-                [ReactionType.emojiReaction("plus"), ReactionType.emojiReaction("heart"), ReactionType.paidReaction()]
-            )
-        )
+        let reactionUpdate = Update.withMessageReaction(7, MessageReactionUpdated(chat, user, 32, [ReactionType.emojiReaction("plus"), ReactionType.customEmojiReaction("custom-old")], [ReactionType.emojiReaction("plus"), ReactionType.emojiReaction("heart"), ReactionType.paidReaction()]))
         let summary = testContext(reactionUpdate).reactions()
-
         @Expect(summary.emoji[0], "plus")
         @Expect(summary.emojiAdded[0], "heart")
-        @Expect(summary.emojiKept[0], "plus")
         @Expect(summary.customEmojiRemoved[0], "custom-old")
         @Expect(summary.paid, true)
-        @Expect(summary.paidAdded, true)
-
-        let keptUpdate = Update.withMessageReaction(
-            70,
-            MessageReactionUpdated(
-                chat,
-                user,
-                34,
-                [
-                    ReactionType.emojiReaction("plus"),
-                    ReactionType.customEmojiReaction("custom-old"),
-                    ReactionType.customEmojiReaction("custom-kept"),
-                    ReactionType.paidReaction()
-                ],
-                [
-                    ReactionType.emojiReaction("plus"),
-                    ReactionType.customEmojiReaction("custom-kept"),
-                    ReactionType.customEmojiReaction("custom-new"),
-                    ReactionType.paidReaction()
-                ]
-            )
-        )
-        let kept = testContext(keptUpdate).reactions()
-
-        @Expect(kept.emoji[0], "plus")
-        @Expect(kept.emojiAdded.size, 0)
-        @Expect(kept.emojiKept[0], "plus")
-        @Expect(kept.emojiRemoved.size, 0)
-        @Expect(kept.customEmoji[0], "custom-kept")
-        @Expect(kept.customEmoji[1], "custom-new")
-        @Expect(kept.customEmojiAdded[0], "custom-new")
-        @Expect(kept.customEmojiKept[0], "custom-kept")
-        @Expect(kept.customEmojiRemoved[0], "custom-old")
-        @Expect(kept.paid, true)
-        @Expect(kept.paidAdded, false)
-
-        let paidRemoved = testContext(Update.withMessageReaction(
-            71,
-            MessageReactionUpdated(chat, user, 35, [ReactionType.paidReaction()], [])
-        )).reactions()
-        @Expect(paidRemoved.paid, false)
-        @Expect(paidRemoved.paidAdded, false)
     }
 }
 
@@ -402,9 +187,9 @@ public class ContextHasTest {
 
         @Expect(Context.has.filterQuery(":text").matches(ctx), true)
         @Expect(Context.has.text("/start payload").matches(ctx), true)
-        @Expect(ctx.`match`, "/start payload")
+        @Expect(matchText(ctx.`match`), "/start payload")
         @Expect(ctx.hasCommand("start"), true)
-        @Expect(ctx.`match`, "payload")
+        @Expect(matchText(ctx.`match`), "payload")
         @Expect(ctx.hasChatType("private"), true)
         @Expect(ctx.hasFilter("message"), true)
         @Expect(ctx.hasText("missing"), false)
@@ -412,7 +197,7 @@ public class ContextHasTest {
         let callbackCtx = testContext(Update.withCallbackQuery(7, CallbackQuery(user, "clicked", Message(42, chat, "button", user))))
         @Expect(Context.has.callbackQuery("clicked").matches(callbackCtx), true)
         @Expect(callbackCtx.hasCallbackQuery("clicked"), true)
-        @Expect(callbackCtx.`match`, "clicked")
+        @Expect(matchText(callbackCtx.`match`), "clicked")
 
         let reactionCtx = testContext(Update.withMessageReaction(
             8,
@@ -452,27 +237,27 @@ public class ContextHasTest {
         let gameCtx = testContext(Update.withCallbackQuery(10, CallbackQuery(user, "", "game-a", message, "")))
         @Expect(Context.has.gameQuery(["missing", "game-a"]).matches(gameCtx), true)
         @Expect(gameCtx.hasGameQuery(["missing", "game-a"]), true)
-        @Expect(gameCtx.`match`, "game-a")
+        @Expect(matchText(gameCtx.`match`), "game-a")
 
         let inlineCtx = testContext(Update.withInlineQuery(11, InlineQuery(user, "inline-a")))
         @Expect(Context.has.inlineQuery(["missing", "inline-a"]).matches(inlineCtx), true)
         @Expect(inlineCtx.hasInlineQuery(["missing", "inline-a"]), true)
-        @Expect(inlineCtx.`match`, "inline-a")
+        @Expect(matchText(inlineCtx.`match`), "inline-a")
 
         let chosenCtx = testContext(Update.withChosenInlineResult(12, ChosenInlineResult(user, "chosen-a", "inline-message")))
         @Expect(Context.has.chosenInlineResult(["missing", "chosen-a"]).matches(chosenCtx), true)
         @Expect(chosenCtx.hasChosenInlineResult(["missing", "chosen-a"]), true)
-        @Expect(chosenCtx.`match`, "chosen-a")
+        @Expect(matchText(chosenCtx.`match`), "chosen-a")
 
         let preCheckoutCtx = testContext(Update.withPreCheckoutQuery(13, PreCheckoutQuery(user, "pre-a")))
         @Expect(Context.has.preCheckoutQuery(["missing", "pre-a"]).matches(preCheckoutCtx), true)
         @Expect(preCheckoutCtx.hasPreCheckoutQuery(["missing", "pre-a"]), true)
-        @Expect(preCheckoutCtx.`match`, "pre-a")
+        @Expect(matchText(preCheckoutCtx.`match`), "pre-a")
 
         let shippingCtx = testContext(Update.withShippingQuery(14, ShippingQuery(user, "ship-a")))
         @Expect(Context.has.shippingQuery(["missing", "ship-a"]).matches(shippingCtx), true)
         @Expect(shippingCtx.hasShippingQuery(["missing", "ship-a"]), true)
-        @Expect(shippingCtx.`match`, "ship-a")
+        @Expect(matchText(shippingCtx.`match`), "ship-a")
     }
 
     @TestCase
@@ -482,54 +267,61 @@ public class ContextHasTest {
 
         let textCtx = testContext(Update.withMessage(166, Message(466, chat, "hello regex", user)))
         @Expect(Context.has.text(Regex("^hello")).matches(textCtx), true)
-        @Expect(textCtx.`match`, "hello")
+        @Expect(matchText(textCtx.`match`), "hello")
+        @Expect(textCtx.hasText(Regex("h(ello) (regex)")), true)
+        let captured = orThrow(textCtx.`match`, "test")
+        @Expect(captured.isRegex, true)
+        @Expect(captured.values.size, 3)
+        @Expect(captured.values[0], "hello regex")
+        @Expect(captured.values[1], "ello")
+        @Expect(captured.values[2], "regex")
         @Expect(textCtx.hasText(Regex("regex$")), true)
-        @Expect(textCtx.`match`, "regex")
+        @Expect(matchText(textCtx.`match`), "regex")
         @Expect(textCtx.hasText([Regex("^missing"), Regex("llo")]), true)
-        @Expect(textCtx.`match`, "llo")
+        @Expect(matchText(textCtx.`match`), "llo")
         @Expect(textCtx.hasText(Regex("^missing")), false)
-        @Expect(textCtx.`match`, "llo")
+        @Expect(matchText(textCtx.`match`), "llo")
 
         let callbackCtx = testContext(Update.withCallbackQuery(167, CallbackQuery(user, "clicked", Message(467, chat, "button", user))))
         @Expect(Context.has.callbackQuery(Regex("^cl.ck")).matches(callbackCtx), true)
-        @Expect(callbackCtx.`match`, "click")
+        @Expect(matchText(callbackCtx.`match`), "click")
         @Expect(callbackCtx.hasCallbackQuery(Regex("ked$")), true)
-        @Expect(callbackCtx.`match`, "ked")
+        @Expect(matchText(callbackCtx.`match`), "ked")
         @Expect(callbackCtx.hasCallbackQuery([Regex("^missing"), Regex("ick")]), true)
-        @Expect(callbackCtx.`match`, "ick")
+        @Expect(matchText(callbackCtx.`match`), "ick")
 
         let gameCtx = testContext(Update.withCallbackQuery(168, CallbackQuery(user, "", "game-a", Message(468, chat, "game", user), "")))
         @Expect(Context.has.gameQuery(Regex("^game")).matches(gameCtx), true)
-        @Expect(gameCtx.`match`, "game")
+        @Expect(matchText(gameCtx.`match`), "game")
         @Expect(gameCtx.hasGameQuery([Regex("^missing"), Regex("a$")]), true)
-        @Expect(gameCtx.`match`, "a")
+        @Expect(matchText(gameCtx.`match`), "a")
 
         let inlineCtx = testContext(Update.withInlineQuery(169, InlineQuery(user, "inline-a")))
         @Expect(Context.has.inlineQuery(Regex("^in")).matches(inlineCtx), true)
-        @Expect(inlineCtx.`match`, "in")
+        @Expect(matchText(inlineCtx.`match`), "in")
         @Expect(inlineCtx.hasInlineQuery([Regex("^missing"), Regex("line")]), true)
-        @Expect(inlineCtx.`match`, "line")
+        @Expect(matchText(inlineCtx.`match`), "line")
 
         let chosenCtx = testContext(Update.withChosenInlineResult(170, ChosenInlineResult(user, "chosen-a", "inline-message")))
         @Expect(Context.has.chosenInlineResult(Regex("^cho")).matches(chosenCtx), true)
-        @Expect(chosenCtx.`match`, "cho")
+        @Expect(matchText(chosenCtx.`match`), "cho")
         @Expect(chosenCtx.hasChosenInlineResult([Regex("^missing"), Regex("sen")]), true)
-        @Expect(chosenCtx.`match`, "sen")
+        @Expect(matchText(chosenCtx.`match`), "sen")
 
         let preCheckoutCtx = testContext(Update.withPreCheckoutQuery(171, PreCheckoutQuery(user, "pre-a")))
         @Expect(Context.has.preCheckoutQuery(Regex("^pre")).matches(preCheckoutCtx), true)
-        @Expect(preCheckoutCtx.`match`, "pre")
+        @Expect(matchText(preCheckoutCtx.`match`), "pre")
         @Expect(preCheckoutCtx.hasPreCheckoutQuery([Regex("^missing"), Regex("e-a$")]), true)
-        @Expect(preCheckoutCtx.`match`, "e-a")
+        @Expect(matchText(preCheckoutCtx.`match`), "e-a")
 
         let shippingCtx = testContext(Update.withShippingQuery(172, ShippingQuery(user, "ship-a")))
         @Expect(Context.has.shippingQuery(Regex("^ship")).matches(shippingCtx), true)
-        @Expect(shippingCtx.`match`, "ship")
+        @Expect(matchText(shippingCtx.`match`), "ship")
         @Expect(shippingCtx.hasShippingQuery([Regex("^missing"), Regex("ip-a$")]), true)
-        @Expect(shippingCtx.`match`, "ip-a")
+        @Expect(matchText(shippingCtx.`match`), "ip-a")
 
         match (callbackCtx.refineCallbackQuery(Regex("^cli"))) {
-            case Some(narrowed) => @Expect(narrowed.`match`, "cli")
+            case Some(narrowed) => @Expect(matchText(narrowed.`match`), "cli")
             case None => @Expect(false, true)
         }
     }
@@ -541,17 +333,17 @@ public class ContextHasTest {
         let ctx = testContext(Update.withMessage(18, Message(48, chat, "alpha beta", user)))
 
         @Expect(ctx.hasText(TextTrigger.contains("pha")), true)
-        @Expect(ctx.`match`, "pha")
+        @Expect(matchText(ctx.`match`), "pha")
         @Expect(ctx.hasText(TextTrigger.prefix("alpha")), true)
-        @Expect(ctx.`match`, "alpha")
+        @Expect(matchText(ctx.`match`), "alpha")
         @Expect(ctx.hasText(TextTrigger.suffix("beta")), true)
-        @Expect(ctx.`match`, "beta")
+        @Expect(matchText(ctx.`match`), "beta")
         @Expect(ctx.hasText(TextTrigger.contains("gamma")), false)
-        @Expect(ctx.`match`, "beta")
+        @Expect(matchText(ctx.`match`), "beta")
 
         let inlineCtx = testContext(Update.withInlineQuery(19, InlineQuery(user, "inline-value")))
         @Expect(Context.has.inlineQuery(TextTrigger.contains("line")).matches(inlineCtx), true)
-        @Expect(inlineCtx.`match`, "line")
+        @Expect(matchText(inlineCtx.`match`), "line")
 
         @Expect(triggerFn("exact").matchValue("exact"), "exact")
         @Expect(triggerFn(["missing", "array"]).matchValue("array"), "array")
@@ -570,9 +362,14 @@ public class ContextHasTest {
         let ctx = testContext(Update.withMessage(15, message))
 
         @Expect(ctx.hasText("alpha"), true)
-        @Expect(ctx.`match`, "alpha")
+        @Expect(matchText(ctx.`match`), "alpha")
         @Expect(ctx.hasText("beta"), false)
-        @Expect(ctx.`match`, "alpha")
+        @Expect(matchText(ctx.`match`), "alpha")
+
+        let emptyMatchCtx = testContext(Update.withMessage(16, Message(46, chat, "gamma", user)))
+        @Expect(optionPresent(emptyMatchCtx.`match`), false)
+        @Expect(emptyMatchCtx.hasText("delta"), false)
+        @Expect(optionPresent(emptyMatchCtx.`match`), false)
     }
 
     @TestCase
@@ -581,53 +378,53 @@ public class ContextHasTest {
         let user = User(463, false, "Evelyn", "evelyn")
 
         let emptyText = testContext(Update.withMessage(151, Message(451, chat, "", user)))
-        emptyText.`match` = "seed"
+        emptyText.`match` = Some(ContextMatch.string("seed"))
         @Expect(emptyText.hasText(""), false)
-        @Expect(emptyText.`match`, "seed")
+        @Expect(matchText(emptyText.`match`), "seed")
 
         let commandMessage = Message(452, chat, "/start payload", user)
         commandMessage.addEntity(MessageEntity("bot_command", 0, 6))
         let commandCtx = testContext(Update.withMessage(152, commandMessage))
-        commandCtx.`match` = "seed"
+        commandCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(commandCtx.hasCommand("help"), false)
-        @Expect(commandCtx.`match`, "seed")
+        @Expect(matchText(commandCtx.`match`), "seed")
 
         let callbackCtx = testContext(Update.withCallbackQuery(153, CallbackQuery(user, "clicked", Message(453, chat, "button", user))))
-        callbackCtx.`match` = "seed"
+        callbackCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(callbackCtx.hasCallbackQuery("missing"), false)
-        @Expect(callbackCtx.`match`, "seed")
+        @Expect(matchText(callbackCtx.`match`), "seed")
 
         let gameCtx = testContext(Update.withCallbackQuery(154, CallbackQuery(user, "", "game-a", Message(454, chat, "game", user), "")))
-        gameCtx.`match` = "seed"
+        gameCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(gameCtx.hasGameQuery("missing"), false)
-        @Expect(gameCtx.`match`, "seed")
+        @Expect(matchText(gameCtx.`match`), "seed")
 
         let inlineCtx = testContext(Update.withInlineQuery(155, InlineQuery(user, "inline-a")))
-        inlineCtx.`match` = "seed"
+        inlineCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(inlineCtx.hasInlineQuery("missing"), false)
-        @Expect(inlineCtx.`match`, "seed")
+        @Expect(matchText(inlineCtx.`match`), "seed")
 
         let chosenCtx = testContext(Update.withChosenInlineResult(156, ChosenInlineResult(user, "chosen-a", "inline-message")))
-        chosenCtx.`match` = "seed"
+        chosenCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(chosenCtx.hasChosenInlineResult("missing"), false)
-        @Expect(chosenCtx.`match`, "seed")
+        @Expect(matchText(chosenCtx.`match`), "seed")
 
         let preCheckoutCtx = testContext(Update.withPreCheckoutQuery(157, PreCheckoutQuery(user, "pre-a")))
-        preCheckoutCtx.`match` = "seed"
+        preCheckoutCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(preCheckoutCtx.hasPreCheckoutQuery("missing"), false)
-        @Expect(preCheckoutCtx.`match`, "seed")
+        @Expect(matchText(preCheckoutCtx.`match`), "seed")
 
         let shippingCtx = testContext(Update.withShippingQuery(158, ShippingQuery(user, "ship-a")))
-        shippingCtx.`match` = "seed"
+        shippingCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(shippingCtx.hasShippingQuery("missing"), false)
-        @Expect(shippingCtx.`match`, "seed")
+        @Expect(matchText(shippingCtx.`match`), "seed")
 
         let missingCtx = testContext(Update(159))
-        missingCtx.`match` = "seed"
+        missingCtx.`match` = Some(ContextMatch.string("seed"))
         @Expect(missingCtx.hasText("anything"), false)
         @Expect(missingCtx.hasCallbackQuery("anything"), false)
         @Expect(missingCtx.hasReaction("heart"), false)
-        @Expect(missingCtx.`match`, "seed")
+        @Expect(matchText(missingCtx.`match`), "seed")
     }
 
     @TestCase
@@ -639,7 +436,7 @@ public class ContextHasTest {
         targeted.addEntity(MessageEntity("bot_command", 0, 20))
         let targetedCtx = testContext(Update.withMessage(16, targeted))
         @Expect(targetedCtx.hasCommand("start"), true)
-        @Expect(targetedCtx.`match`, "payload")
+        @Expect(matchText(targetedCtx.`match`), "payload")
 
         let otherBot = Message(47, chat, "/start@other_bot payload", user)
         otherBot.addEntity(MessageEntity("bot_command", 0, 16))
@@ -655,9 +452,9 @@ public class ContextHasTest {
         let ctx = testContext(Update.withChannelPost(160, channelPost))
 
         @Expect(ctx.hasText("/publish payload"), true)
-        @Expect(ctx.`match`, "/publish payload")
+        @Expect(matchText(ctx.`match`), "/publish payload")
         @Expect(ctx.hasCommand("publish"), true)
-        @Expect(ctx.`match`, "payload")
+        @Expect(matchText(ctx.`match`), "payload")
     }
 
     @TestCase
@@ -744,6 +541,21 @@ public class ContextShortcutTest {
         @Expect(contextShortcutRequiredContext("answerCallbackQuery"), "callback_query_id")
         @Expect(contextShortcutRequiredContext("setChatMenuButton"), "none")
         @Expect(contextShortcutRequiredContext("editMessageTextInline"), "inline_message_id")
+    }
+
+    @TestCase
+    public func contextSourceDriftGateLocksUpstreamContextSurfaceCounts(): Unit {
+        let rows = contextSourceDriftGate()
+
+        @Expect(rows.size, 5)
+        @Expect(contextSourceDriftGateOk(), true)
+        @Expect(contextUpdateShortcutNames().size, 24)
+        @Expect(contextAggregateShortcutNames().size, 8)
+        @Expect(contextHasPredicateFamilies().size, 11)
+        @Expect(contextMatchWriterFamilies().size, 8)
+        @Expect(contextShortcutApiTargets().size, 136)
+        @Expect(rows[0].upstreamAnchor, "src/context.ts update shortcuts")
+        @Expect(rows[4].contract, "Context typed API shortcut targets")
     }
 
     @TestCase

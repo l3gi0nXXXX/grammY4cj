@@ -445,7 +445,7 @@ public class SessionMiddlewareTest {
         let middleware = session<CounterSession>(SessionOptions<CounterSession>({ => CounterSession(1) }, storage))
 
         middleware.handle(testCtx(70), { ctx: SessionFlavorContext<CounterSession> =>
-            @Expect(ctx.chatId, 70)
+            @Expect(intValue(ctx.chatId), 70)
             @Expect(ctx.updateId(), 70)
             ctx.session.count += 1
         })
@@ -807,7 +807,7 @@ public class MultiSessionMiddlewareTest {
         )
 
         middleware.handle(testCtx(36), { ctx: MultiSessionFlavorContext2<CounterSession, CounterSession> =>
-            @Expect(ctx.chatId, 36)
+            @Expect(intValue(ctx.chatId), 36)
             ctx.session.first.count += 3
             ctx.session.second = CounterSession(11)
         })

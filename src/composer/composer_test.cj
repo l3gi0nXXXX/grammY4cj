@@ -1,6 +1,6 @@
 package grammy4cj.composer
 
-import grammy4cj.context.Context
+import grammy4cj.context.{Context, ContextMatch, orThrow}
 import grammy4cj.core.Api
 import grammy4cj.types.{CallbackQuery, Chat, ChosenInlineResult, InlineQuery, Message, MessageEntity, MessageReactionUpdated, PreCheckoutQuery, ReactionType, ShippingQuery, Update, User, UserFromGetMe}
 import std.collection.{ArrayList, HashMap}
@@ -70,6 +70,10 @@ private func testCtx(updateId: Int64, kind: String): Context {
         return Context(update, Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
     }
     Context(Update(updateId, kind), Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
+}
+
+private func matchText(value: Option<ContextMatch>): String {
+    orThrow(value, "composer-test").text
 }
 
 private func recordingMiddleware(events: ArrayList<String>, name: String): MiddlewareFn {
@@ -482,7 +486,7 @@ public class ComposerMiddlewareTest {
         @Expect(events.size, 10)
         @Expect(events[0], "hears")
         @Expect(events[1], "command")
-        @Expect(commandCtx.`match`, "payload")
+        @Expect(matchText(commandCtx.`match`), "payload")
         @Expect(events[2], "reaction")
         @Expect(events[3], "chatType")
         @Expect(events[4], "callbackQuery")
@@ -512,31 +516,31 @@ public class ComposerMiddlewareTest {
 
         let hearsCtx = Context(Update.withMessage(90, Message(81, chat, "hello", user)), Api("fake-token"), botInfo())
         run(composer, hearsCtx)
-        @Expect(hearsCtx.`match`, "llo")
+        @Expect(matchText(hearsCtx.`match`), "llo")
 
         let callbackCtx = Context(Update.withCallbackQuery(91, CallbackQuery(user, "cb-data", callbackMessage)), Api("fake-token"), botInfo())
         run(composer, callbackCtx)
-        @Expect(callbackCtx.`match`, "cb")
+        @Expect(matchText(callbackCtx.`match`), "cb")
 
         let gameCtx = Context(Update.withCallbackQuery(92, CallbackQuery(user, "", "game-data", callbackMessage, "")), Api("fake-token"), botInfo())
         run(composer, gameCtx)
-        @Expect(gameCtx.`match`, "ga")
+        @Expect(matchText(gameCtx.`match`), "ga")
 
         let inlineCtx = Context(Update.withInlineQuery(93, InlineQuery(user, "inline-data")), Api("fake-token"), botInfo())
         run(composer, inlineCtx)
-        @Expect(inlineCtx.`match`, "in")
+        @Expect(matchText(inlineCtx.`match`), "in")
 
         let chosenCtx = Context(Update.withChosenInlineResult(94, ChosenInlineResult(user, "chosen-data", "inline-id")), Api("fake-token"), botInfo())
         run(composer, chosenCtx)
-        @Expect(chosenCtx.`match`, "cho")
+        @Expect(matchText(chosenCtx.`match`), "cho")
 
         let preCheckoutCtx = Context(Update.withPreCheckoutQuery(95, PreCheckoutQuery(user, "pre-data")), Api("fake-token"), botInfo())
         run(composer, preCheckoutCtx)
-        @Expect(preCheckoutCtx.`match`, "pre")
+        @Expect(matchText(preCheckoutCtx.`match`), "pre")
 
         let shippingCtx = Context(Update.withShippingQuery(96, ShippingQuery(user, "ship-data")), Api("fake-token"), botInfo())
         run(composer, shippingCtx)
-        @Expect(shippingCtx.`match`, "ship")
+        @Expect(matchText(shippingCtx.`match`), "ship")
 
         @Expect(events.size, 7)
         @Expect(events[0], "hears")
@@ -721,7 +725,7 @@ public class ComposerMiddlewareTest {
         run(composer, ctx)
 
         @Expect(events.size, 1)
-        @Expect(ctx.`match`, "payload")
+        @Expect(matchText(ctx.`match`), "payload")
     }
 
     @TestCase

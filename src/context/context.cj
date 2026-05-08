@@ -45,6 +45,24 @@ public class ContextShortcutMapping {
     }
 }
 
+public class ContextSourceDriftRow {
+    public let upstreamAnchor: String
+    public let contract: String
+    public let expectedCount: Int64
+    public let actualCount: Int64
+
+    public init(upstreamAnchor: String, contract: String, expectedCount: Int64, actualCount: Int64) {
+        this.upstreamAnchor = upstreamAnchor
+        this.contract = contract
+        this.expectedCount = expectedCount
+        this.actualCount = actualCount
+    }
+
+    public prop ok: Bool {
+        get() { this.expectedCount == this.actualCount }
+    }
+}
+
 public class TextTrigger {
     public let values: Array<String>
     public let mode: String
@@ -128,12 +146,12 @@ public class TextTrigger {
 
     public func matchValue(content: String): String {
         match (this.matchResult(content)) {
-            case Some(value) => return value
+            case Some(value) => return value.text
             case None => return ""
         }
     }
 
-    public func matchResult(content: String): Option<String> {
+    public func matchResult(content: String): Option<ContextMatch> {
         if (this.mode == "regex") {
             for (regex in this.regexes) {
                 match (firstRegexMatch(regex, content)) {
@@ -141,26 +159,61 @@ public class TextTrigger {
                     case None => ()
                 }
             }
-            return None<String>
+            return None<ContextMatch>
         }
         for (value in this.values) {
             if (value.isEmpty()) {
                 continue
             }
             if (this.mode == "exact" && content == value) {
-                return Some(value)
+                return Some(ContextMatch.string(value))
             }
             if (this.mode == "contains" && content.contains(value)) {
-                return Some(value)
+                return Some(ContextMatch.string(value))
             }
             if (this.mode == "prefix" && content.startsWith(value)) {
-                return Some(value)
+                return Some(ContextMatch.string(value))
             }
             if (this.mode == "suffix" && content.endsWith(value)) {
-                return Some(value)
+                return Some(ContextMatch.string(value))
             }
         }
-        None<String>
+        None<ContextMatch>
+    }
+}
+
+public class ContextMatch {
+    public let kind: String
+    public let values: Array<String>
+
+    public init(kind: String, values: Array<String>) {
+        this.kind = kind
+        this.values = values
+    }
+
+    public static func string(value: String): ContextMatch {
+        ContextMatch("string", [value])
+    }
+
+    public static func regex(values: Array<String>): ContextMatch {
+        ContextMatch("regex", values)
+    }
+
+    public prop text: String {
+        get() {
+            if (this.values.size == 0) {
+                return ""
+            }
+            this.values[0]
+        }
+    }
+
+    public prop isString: Bool {
+        get() { this.kind == "string" }
+    }
+
+    public prop isRegex: Bool {
+        get() { this.kind == "regex" }
     }
 }
 
@@ -386,25 +439,46 @@ public class ContextPredicate {
             return matchesReaction(ctx, this.reactions)
         }
         if (this.kind == "chatType") {
-            return ctx.chat.isPresent && containsString(this.values, ctx.chat.kind)
+            match (ctx.chat) {
+                case Some(chat) => return containsString(this.values, chat.kind)
+                case None => return false
+            }
         }
         if (this.kind == "callbackQuery") {
-            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.data.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.data, this.trigger)
+            match (ctx.callbackQuery) {
+                case Some(callbackQuery) => return !callbackQuery.data.isEmpty() && matchAndStore(ctx, callbackQuery.data, this.trigger)
+                case None => return false
+            }
         }
         if (this.kind == "gameQuery") {
-            return ctx.callbackQuery.isPresent && !ctx.callbackQuery.gameShortName.isEmpty() && matchAndStore(ctx, ctx.callbackQuery.gameShortName, this.trigger)
+            match (ctx.callbackQuery) {
+                case Some(callbackQuery) => return !callbackQuery.gameShortName.isEmpty() && matchAndStore(ctx, callbackQuery.gameShortName, this.trigger)
+                case None => return false
+            }
         }
         if (this.kind == "inlineQuery") {
-            return ctx.inlineQuery.isPresent && matchAndStore(ctx, ctx.inlineQuery.query, this.trigger)
+            match (ctx.inlineQuery) {
+                case Some(inlineQuery) => return matchAndStore(ctx, inlineQuery.query, this.trigger)
+                case None => return false
+            }
         }
         if (this.kind == "chosenInlineResult") {
-            return ctx.chosenInlineResult.isPresent && matchAndStore(ctx, ctx.chosenInlineResult.resultId, this.trigger)
+            match (ctx.chosenInlineResult) {
+                case Some(chosenInlineResult) => return matchAndStore(ctx, chosenInlineResult.resultId, this.trigger)
+                case None => return false
+            }
         }
         if (this.kind == "preCheckoutQuery") {
-            return ctx.preCheckoutQuery.isPresent && matchAndStore(ctx, ctx.preCheckoutQuery.invoicePayload, this.trigger)
+            match (ctx.preCheckoutQuery) {
+                case Some(preCheckoutQuery) => return matchAndStore(ctx, preCheckoutQuery.invoicePayload, this.trigger)
+                case None => return false
+            }
         }
         if (this.kind == "shippingQuery") {
-            return ctx.shippingQuery.isPresent && matchAndStore(ctx, ctx.shippingQuery.invoicePayload, this.trigger)
+            match (ctx.shippingQuery) {
+                case Some(shippingQuery) => return matchAndStore(ctx, shippingQuery.invoicePayload, this.trigger)
+                case None => return false
+            }
         }
         false
     }
@@ -413,9 +487,9 @@ public class ContextPredicate {
 public class HearsContext {
     public let ctx: Context
     public let message: Message
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, message: Message, `match`: String) {
+    public init(ctx: Context, message: Message, `match`: ContextMatch) {
         this.ctx = ctx
         this.message = message
         this.`match` = `match`
@@ -425,9 +499,9 @@ public class HearsContext {
 public class CommandContext {
     public let ctx: Context
     public let message: Message
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, message: Message, `match`: String) {
+    public init(ctx: Context, message: Message, `match`: ContextMatch) {
         this.ctx = ctx
         this.message = message
         this.`match` = `match`
@@ -449,9 +523,9 @@ public class ChatTypeContext {
 public class CallbackQueryContext {
     public let ctx: Context
     public let callbackQuery: CallbackQuery
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, callbackQuery: CallbackQuery, `match`: String) {
+    public init(ctx: Context, callbackQuery: CallbackQuery, `match`: ContextMatch) {
         this.ctx = ctx
         this.callbackQuery = callbackQuery
         this.`match` = `match`
@@ -461,9 +535,9 @@ public class CallbackQueryContext {
 public class GameQueryContext {
     public let ctx: Context
     public let callbackQuery: CallbackQuery
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, callbackQuery: CallbackQuery, `match`: String) {
+    public init(ctx: Context, callbackQuery: CallbackQuery, `match`: ContextMatch) {
         this.ctx = ctx
         this.callbackQuery = callbackQuery
         this.`match` = `match`
@@ -473,9 +547,9 @@ public class GameQueryContext {
 public class InlineQueryContext {
     public let ctx: Context
     public let inlineQuery: InlineQuery
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, inlineQuery: InlineQuery, `match`: String) {
+    public init(ctx: Context, inlineQuery: InlineQuery, `match`: ContextMatch) {
         this.ctx = ctx
         this.inlineQuery = inlineQuery
         this.`match` = `match`
@@ -485,9 +559,9 @@ public class InlineQueryContext {
 public class ChosenInlineResultContext {
     public let ctx: Context
     public let chosenInlineResult: ChosenInlineResult
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, chosenInlineResult: ChosenInlineResult, `match`: String) {
+    public init(ctx: Context, chosenInlineResult: ChosenInlineResult, `match`: ContextMatch) {
         this.ctx = ctx
         this.chosenInlineResult = chosenInlineResult
         this.`match` = `match`
@@ -497,9 +571,9 @@ public class ChosenInlineResultContext {
 public class PreCheckoutQueryContext {
     public let ctx: Context
     public let preCheckoutQuery: PreCheckoutQuery
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, preCheckoutQuery: PreCheckoutQuery, `match`: String) {
+    public init(ctx: Context, preCheckoutQuery: PreCheckoutQuery, `match`: ContextMatch) {
         this.ctx = ctx
         this.preCheckoutQuery = preCheckoutQuery
         this.`match` = `match`
@@ -509,9 +583,9 @@ public class PreCheckoutQueryContext {
 public class ShippingQueryContext {
     public let ctx: Context
     public let shippingQuery: ShippingQuery
-    public let `match`: String
+    public let `match`: ContextMatch
 
-    public init(ctx: Context, shippingQuery: ShippingQuery, `match`: String) {
+    public init(ctx: Context, shippingQuery: ShippingQuery, `match`: ContextMatch) {
         this.ctx = ctx
         this.shippingQuery = shippingQuery
         this.`match` = `match`
@@ -534,7 +608,7 @@ public class Context <: FilterContextView {
     public let update: Update
     public let api: Api
     public let me: UserFromGetMe
-    public var `match`: String = ""
+    public var `match`: Option<ContextMatch> = None<ContextMatch>
 
     public init(update: Update, api: Api, me: UserFromGetMe) {
         this.update = update
@@ -558,203 +632,132 @@ public class Context <: FilterContextView {
         this.me.username
     }
 
-    public prop message: Message {
-        get() { this.update.message }
-    }
+    public prop message: Option<Message> { get() { maybeMessage(this.update.message) } }
+    public prop editedMessage: Option<Message> { get() { maybeMessage(this.update.editedMessage) } }
+    public prop channelPost: Option<Message> { get() { maybeMessage(this.update.channelPost) } }
+    public prop editedChannelPost: Option<Message> { get() { maybeMessage(this.update.editedChannelPost) } }
+    public prop businessConnection: Option<BusinessConnection> { get() { maybeBusinessConnection(this.update.businessConnection) } }
+    public prop businessMessage: Option<Message> { get() { maybeMessage(this.update.businessMessage) } }
+    public prop editedBusinessMessage: Option<Message> { get() { maybeMessage(this.update.editedBusinessMessage) } }
+    public prop deletedBusinessMessages: Option<BusinessMessagesDeleted> { get() { maybeBusinessMessagesDeleted(this.update.deletedBusinessMessages) } }
+    public prop messageReaction: Option<MessageReactionUpdated> { get() { maybeMessageReactionUpdated(this.update.messageReaction) } }
+    public prop messageReactionCount: Option<MessageReactionCountUpdated> { get() { maybeMessageReactionCountUpdated(this.update.messageReactionCount) } }
+    public prop inlineQuery: Option<InlineQuery> { get() { maybeInlineQuery(this.update.inlineQuery) } }
+    public prop chosenInlineResult: Option<ChosenInlineResult> { get() { maybeChosenInlineResult(this.update.chosenInlineResult) } }
+    public prop callbackQuery: Option<CallbackQuery> { get() { maybeCallbackQuery(this.update.callbackQuery) } }
+    public prop shippingQuery: Option<ShippingQuery> { get() { maybeShippingQuery(this.update.shippingQuery) } }
+    public prop preCheckoutQuery: Option<PreCheckoutQuery> { get() { maybePreCheckoutQuery(this.update.preCheckoutQuery) } }
+    public prop poll: Option<Poll> { get() { maybePoll(this.update.poll) } }
+    public prop pollAnswer: Option<PollAnswer> { get() { maybePollAnswer(this.update.pollAnswer) } }
+    public prop myChatMember: Option<ChatMemberUpdated> { get() { maybeChatMemberUpdated(this.update.myChatMember) } }
+    public prop chatMember: Option<ChatMemberUpdated> { get() { maybeChatMemberUpdated(this.update.chatMember) } }
+    public prop managedBot: Option<ManagedBotUpdate> { get() { maybeManagedBotUpdate(this.update.managedBot) } }
+    public prop chatJoinRequest: Option<ChatJoinRequest> { get() { maybeChatJoinRequest(this.update.chatJoinRequest) } }
+    public prop chatBoost: Option<ChatBoostUpdated> { get() { maybeChatBoostUpdated(this.update.chatBoost) } }
+    public prop removedChatBoost: Option<ChatBoostRemoved> { get() { maybeChatBoostRemoved(this.update.removedChatBoost) } }
+    public prop purchasedPaidMedia: Option<PurchasedPaidMedia> { get() { maybePurchasedPaidMedia(this.update.purchasedPaidMedia) } }
 
-    public prop editedMessage: Message {
-        get() { this.update.editedMessage }
-    }
-
-    public prop channelPost: Message {
-        get() { this.update.channelPost }
-    }
-
-    public prop editedChannelPost: Message {
-        get() { this.update.editedChannelPost }
-    }
-
-    public prop businessConnection: BusinessConnection {
-        get() { this.update.businessConnection }
-    }
-
-    public prop businessMessage: Message {
-        get() { this.update.businessMessage }
-    }
-
-    public prop editedBusinessMessage: Message {
-        get() { this.update.editedBusinessMessage }
-    }
-
-    public prop deletedBusinessMessages: BusinessMessagesDeleted {
-        get() { this.update.deletedBusinessMessages }
-    }
-
-    public prop messageReaction: MessageReactionUpdated {
-        get() { this.update.messageReaction }
-    }
-
-    public prop messageReactionCount: MessageReactionCountUpdated {
-        get() { this.update.messageReactionCount }
-    }
-
-    public prop inlineQuery: InlineQuery {
-        get() { this.update.inlineQuery }
-    }
-
-    public prop chosenInlineResult: ChosenInlineResult {
-        get() { this.update.chosenInlineResult }
-    }
-
-    public prop callbackQuery: CallbackQuery {
-        get() { this.update.callbackQuery }
-    }
-
-    public prop shippingQuery: ShippingQuery {
-        get() { this.update.shippingQuery }
-    }
-
-    public prop preCheckoutQuery: PreCheckoutQuery {
-        get() { this.update.preCheckoutQuery }
-    }
-
-    public prop poll: Poll {
-        get() { this.update.poll }
-    }
-
-    public prop pollAnswer: PollAnswer {
-        get() { this.update.pollAnswer }
-    }
-
-    public prop myChatMember: ChatMemberUpdated {
-        get() { this.update.myChatMember }
-    }
-
-    public prop chatMember: ChatMemberUpdated {
-        get() { this.update.chatMember }
-    }
-
-    public prop managedBot: ManagedBotUpdate {
-        get() { this.update.managedBot }
-    }
-
-    public prop chatJoinRequest: ChatJoinRequest {
-        get() { this.update.chatJoinRequest }
-    }
-
-    public prop chatBoost: ChatBoostUpdated {
-        get() { this.update.chatBoost }
-    }
-
-    public prop removedChatBoost: ChatBoostRemoved {
-        get() { this.update.removedChatBoost }
-    }
-
-    public prop purchasedPaidMedia: PurchasedPaidMedia {
-        get() { this.update.purchasedPaidMedia }
-    }
-
-    public prop msg: Message {
+    public prop msg: Option<Message> {
         get() {
-            if (this.message.isPresent) { return this.message }
-            if (this.editedMessage.isPresent) { return this.editedMessage }
-            if (this.channelPost.isPresent) { return this.channelPost }
-            if (this.editedChannelPost.isPresent) { return this.editedChannelPost }
-            if (this.businessMessage.isPresent) { return this.businessMessage }
-            if (this.editedBusinessMessage.isPresent) { return this.editedBusinessMessage }
-            if (this.callbackQuery.isPresent && this.callbackQuery.message.isPresent) { return this.callbackQuery.message }
-            Message()
+            match (this.message) { case Some(value) => return Some(value); case None => () }
+            match (this.editedMessage) { case Some(value) => return Some(value); case None => () }
+            match (this.channelPost) { case Some(value) => return Some(value); case None => () }
+            match (this.editedChannelPost) { case Some(value) => return Some(value); case None => () }
+            match (this.businessMessage) { case Some(value) => return Some(value); case None => () }
+            match (this.editedBusinessMessage) { case Some(value) => return Some(value); case None => () }
+            match (this.callbackQuery) { case Some(value) => return maybeMessage(value.message); case None => () }
+            None<Message>
         }
     }
 
-    public prop chat: Chat {
+    public prop chat: Option<Chat> {
         get() {
-            let message = this.msg
-            if (message.isPresent && message.chat.isPresent) { return message.chat }
-            if (this.deletedBusinessMessages.isPresent) { return this.deletedBusinessMessages.chat }
-            if (this.messageReaction.isPresent) { return this.messageReaction.chat }
-            if (this.messageReactionCount.isPresent) { return this.messageReactionCount.chat }
-            if (this.myChatMember.isPresent) { return this.myChatMember.chat }
-            if (this.chatMember.isPresent) { return this.chatMember.chat }
-            if (this.chatJoinRequest.isPresent) { return this.chatJoinRequest.chat }
-            if (this.chatBoost.isPresent) { return this.chatBoost.chat }
-            if (this.removedChatBoost.isPresent) { return this.removedChatBoost.chat }
-            Chat()
+            match (this.msg) { case Some(value) => match (maybeChat(value.chat)) { case Some(chat) => return Some(chat); case None => () }; case None => () }
+            match (this.deletedBusinessMessages) { case Some(value) => return maybeChat(value.chat); case None => () }
+            match (this.messageReaction) { case Some(value) => return maybeChat(value.chat); case None => () }
+            match (this.messageReactionCount) { case Some(value) => return maybeChat(value.chat); case None => () }
+            match (this.myChatMember) { case Some(value) => return maybeChat(value.chat); case None => () }
+            match (this.chatMember) { case Some(value) => return maybeChat(value.chat); case None => () }
+            match (this.chatJoinRequest) { case Some(value) => return maybeChat(value.chat); case None => () }
+            match (this.chatBoost) { case Some(value) => return maybeChat(value.chat); case None => () }
+            match (this.removedChatBoost) { case Some(value) => return maybeChat(value.chat); case None => () }
+            None<Chat>
         }
     }
 
-    public prop senderChat: Chat {
+    public prop senderChat: Option<Chat> {
         get() {
-            let message = this.msg
-            if (message.isPresent && message.senderChat.isPresent) {
-                return message.senderChat
+            match (this.msg) {
+                case Some(message) => return maybeChat(message.senderChat)
+                case None => return None<Chat>
             }
-            Chat()
         }
     }
 
-    public prop from: User {
+    public prop from: Option<User> {
         get() {
-            if (this.businessConnection.isPresent) { return this.businessConnection.user }
-            if (this.messageReaction.isPresent) { return this.messageReaction.user }
-            if (this.managedBot.isPresent) { return this.managedBot.user }
-            if (this.chatBoost.isPresent && this.chatBoost.boost.source.user.isPresent) { return this.chatBoost.boost.source.user }
-            if (this.removedChatBoost.isPresent && this.removedChatBoost.source.user.isPresent) { return this.removedChatBoost.source.user }
-            if (this.callbackQuery.isPresent) { return this.callbackQuery.user }
-            if (this.msg.isPresent && this.msg.user.isPresent) { return this.msg.user }
-            if (this.inlineQuery.isPresent) { return this.inlineQuery.user }
-            if (this.chosenInlineResult.isPresent) { return this.chosenInlineResult.user }
-            if (this.shippingQuery.isPresent) { return this.shippingQuery.user }
-            if (this.preCheckoutQuery.isPresent) { return this.preCheckoutQuery.user }
-            if (this.myChatMember.isPresent) { return this.myChatMember.user }
-            if (this.chatMember.isPresent) { return this.chatMember.user }
-            if (this.chatJoinRequest.isPresent) { return this.chatJoinRequest.user }
-            if (this.purchasedPaidMedia.isPresent) { return this.purchasedPaidMedia.user }
-            User()
+            match (this.businessConnection) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.messageReaction) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.managedBot) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.chatBoost) { case Some(value) => match (maybeUser(value.boost.source.user)) { case Some(user) => return Some(user); case None => () }; case None => () }
+            match (this.removedChatBoost) { case Some(value) => match (maybeUser(value.source.user)) { case Some(user) => return Some(user); case None => () }; case None => () }
+            match (this.callbackQuery) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.msg) { case Some(value) => match (maybeUser(value.user)) { case Some(user) => return Some(user); case None => () }; case None => () }
+            match (this.inlineQuery) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.chosenInlineResult) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.shippingQuery) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.preCheckoutQuery) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.myChatMember) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.chatMember) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.chatJoinRequest) { case Some(value) => return maybeUser(value.user); case None => () }
+            match (this.purchasedPaidMedia) { case Some(value) => return maybeUser(value.user); case None => () }
+            None<User>
         }
     }
 
-    public prop msgId: Int64 {
+    public prop msgId: Option<Int64> {
         get() {
-            if (this.msg.isPresent) { return this.msg.messageId }
-            if (this.messageReaction.isPresent) { return this.messageReaction.messageId }
-            if (this.messageReactionCount.isPresent) { return this.messageReactionCount.messageId }
-            0
+            match (this.msg) { case Some(value) => return Some(value.messageId); case None => () }
+            match (this.messageReaction) { case Some(value) => return Some(value.messageId); case None => () }
+            match (this.messageReactionCount) { case Some(value) => return Some(value.messageId); case None => () }
+            None<Int64>
         }
     }
 
-    public prop chatId: Int64 {
+    public prop chatId: Option<Int64> {
         get() {
-            if (this.chat.isPresent) { return this.chat.id }
-            if (this.businessConnection.isPresent) { return this.businessConnection.userChatId }
-            0
+            match (this.chat) { case Some(value) => return Some(value.id); case None => () }
+            match (this.businessConnection) { case Some(value) => return Some(value.userChatId); case None => () }
+            None<Int64>
         }
     }
 
-    public prop inlineMessageId: String {
+    public prop inlineMessageId: Option<String> {
         get() {
-            if (this.callbackQuery.isPresent && !this.callbackQuery.inlineMessageId.isEmpty()) {
-                return this.callbackQuery.inlineMessageId
+            match (this.callbackQuery) {
+                case Some(value) =>
+                    if (!value.inlineMessageId.isEmpty()) { return Some(value.inlineMessageId) }
+                case None => ()
             }
-            if (this.chosenInlineResult.isPresent) {
-                return this.chosenInlineResult.inlineMessageId
+            match (this.chosenInlineResult) {
+                case Some(value) =>
+                    if (!value.inlineMessageId.isEmpty()) { return Some(value.inlineMessageId) }
+                case None => ()
             }
-            ""
+            None<String>
         }
     }
 
-    public prop businessConnectionId: String {
+    public prop businessConnectionId: Option<String> {
         get() {
-            if (this.msg.isPresent && !this.msg.businessConnectionId.isEmpty()) {
-                return this.msg.businessConnectionId
+            match (this.msg) {
+                case Some(value) =>
+                    if (!value.businessConnectionId.isEmpty()) { return Some(value.businessConnectionId) }
+                case None => ()
             }
-            if (this.businessConnection.isPresent) {
-                return this.businessConnection.id
-            }
-            if (this.deletedBusinessMessages.isPresent) {
-                return this.deletedBusinessMessages.businessConnectionId
-            }
-            ""
+            match (this.businessConnection) { case Some(value) => return Some(value.id); case None => () }
+            match (this.deletedBusinessMessages) { case Some(value) => return Some(value.businessConnectionId); case None => () }
+            None<String>
         }
     }
 
@@ -966,7 +969,7 @@ public class Context <: FilterContextView {
         if (!this.hasText(trigger)) {
             return None<HearsContext>
         }
-        Some(HearsContext(this, triggerMessage(this), this.`match`))
+        Some(HearsContext(this, orThrow(triggerMessage(this), "refineText"), orThrow(this.`match`, "refineText")))
     }
 
     public func refineText(trigger: Regex): Option<HearsContext> {
@@ -985,7 +988,7 @@ public class Context <: FilterContextView {
         if (!this.hasCommand(commands)) {
             return None<CommandContext>
         }
-        Some(CommandContext(this, triggerMessage(this), this.`match`))
+        Some(CommandContext(this, orThrow(triggerMessage(this), "refineCommand"), orThrow(this.`match`, "refineCommand")))
     }
 
     public func refineChatType(chatType: String): Option<ChatTypeContext> {
@@ -996,7 +999,8 @@ public class Context <: FilterContextView {
         if (!this.hasChatType(chatTypes)) {
             return None<ChatTypeContext>
         }
-        Some(ChatTypeContext(this, this.chat, this.chat.kind))
+        let chat = orThrow(this.chat, "refineChatType")
+        Some(ChatTypeContext(this, chat, chat.kind))
     }
 
     public func refineCallbackQuery(trigger: String): Option<CallbackQueryContext> {
@@ -1011,7 +1015,7 @@ public class Context <: FilterContextView {
         if (!this.hasCallbackQuery(trigger)) {
             return None<CallbackQueryContext>
         }
-        Some(CallbackQueryContext(this, this.callbackQuery, this.`match`))
+        Some(CallbackQueryContext(this, orThrow(this.callbackQuery, "refineCallbackQuery"), orThrow(this.`match`, "refineCallbackQuery")))
     }
 
     public func refineCallbackQuery(trigger: Regex): Option<CallbackQueryContext> {
@@ -1034,7 +1038,7 @@ public class Context <: FilterContextView {
         if (!this.hasGameQuery(trigger)) {
             return None<GameQueryContext>
         }
-        Some(GameQueryContext(this, this.callbackQuery, this.`match`))
+        Some(GameQueryContext(this, orThrow(this.callbackQuery, "refineGameQuery"), orThrow(this.`match`, "refineGameQuery")))
     }
 
     public func refineGameQuery(trigger: Regex): Option<GameQueryContext> {
@@ -1057,7 +1061,7 @@ public class Context <: FilterContextView {
         if (!this.hasInlineQuery(trigger)) {
             return None<InlineQueryContext>
         }
-        Some(InlineQueryContext(this, this.inlineQuery, this.`match`))
+        Some(InlineQueryContext(this, orThrow(this.inlineQuery, "refineInlineQuery"), orThrow(this.`match`, "refineInlineQuery")))
     }
 
     public func refineInlineQuery(trigger: Regex): Option<InlineQueryContext> {
@@ -1080,7 +1084,7 @@ public class Context <: FilterContextView {
         if (!this.hasChosenInlineResult(trigger)) {
             return None<ChosenInlineResultContext>
         }
-        Some(ChosenInlineResultContext(this, this.chosenInlineResult, this.`match`))
+        Some(ChosenInlineResultContext(this, orThrow(this.chosenInlineResult, "refineChosenInlineResult"), orThrow(this.`match`, "refineChosenInlineResult")))
     }
 
     public func refineChosenInlineResult(trigger: Regex): Option<ChosenInlineResultContext> {
@@ -1103,7 +1107,7 @@ public class Context <: FilterContextView {
         if (!this.hasPreCheckoutQuery(trigger)) {
             return None<PreCheckoutQueryContext>
         }
-        Some(PreCheckoutQueryContext(this, this.preCheckoutQuery, this.`match`))
+        Some(PreCheckoutQueryContext(this, orThrow(this.preCheckoutQuery, "refinePreCheckoutQuery"), orThrow(this.`match`, "refinePreCheckoutQuery")))
     }
 
     public func refinePreCheckoutQuery(trigger: Regex): Option<PreCheckoutQueryContext> {
@@ -1126,7 +1130,7 @@ public class Context <: FilterContextView {
         if (!this.hasShippingQuery(trigger)) {
             return None<ShippingQueryContext>
         }
-        Some(ShippingQueryContext(this, this.shippingQuery, this.`match`))
+        Some(ShippingQueryContext(this, orThrow(this.shippingQuery, "refineShippingQuery"), orThrow(this.`match`, "refineShippingQuery")))
     }
 
     public func refineShippingQuery(trigger: Regex): Option<ShippingQueryContext> {
@@ -1141,28 +1145,28 @@ public class Context <: FilterContextView {
         if (!this.hasReaction(reaction)) {
             return None<ReactionContext>
         }
-        Some(ReactionContext(this, this.messageReaction))
+        Some(ReactionContext(this, orThrow(this.messageReaction, "refineReaction")))
     }
 
     public func refineReaction(reactions: Array<String>): Option<ReactionContext> {
         if (!this.hasReaction(reactions)) {
             return None<ReactionContext>
         }
-        Some(ReactionContext(this, this.messageReaction))
+        Some(ReactionContext(this, orThrow(this.messageReaction, "refineReaction")))
     }
 
     public func refineReaction(reaction: ReactionType): Option<ReactionContext> {
         if (!this.hasReaction(reaction)) {
             return None<ReactionContext>
         }
-        Some(ReactionContext(this, this.messageReaction))
+        Some(ReactionContext(this, orThrow(this.messageReaction, "refineReaction")))
     }
 
     public func refineReaction(reactions: Array<ReactionType>): Option<ReactionContext> {
         if (!this.hasReaction(reactions)) {
             return None<ReactionContext>
         }
-        Some(ReactionContext(this, this.messageReaction))
+        Some(ReactionContext(this, orThrow(this.messageReaction, "refineReaction")))
     }
 
     public func reply(text: String): Payload {
@@ -1993,11 +1997,14 @@ public class Context <: FilterContextView {
     private func defaultReplyPayload(method: String, includeDirectTopic: Bool): Payload {
         let payload = Payload("")
         payload.addInt("chat_id", orThrow(this.chatId, method))
-        if (!this.businessConnectionId.isEmpty()) {
-            payload.addValue("business_connection_id", this.businessConnectionId)
+        match (this.businessConnectionId) {
+            case Some(id) => payload.addValue("business_connection_id", id)
+            case None => ()
         }
-        if (this.msg.isTopicMessage) {
-            payload.addInt("message_thread_id", this.msg.messageThreadId)
+        match (this.msg) {
+            case Some(message) =>
+                if (message.isTopicMessage) { payload.addInt("message_thread_id", message.messageThreadId) }
+            case None => ()
         }
         if (includeDirectTopic) {
             addDirectMessagesTopicIfPresent(payload)
@@ -2008,8 +2015,10 @@ public class Context <: FilterContextView {
     private func draftReplyPayload(method: String): Payload {
         let payload = Payload("")
         payload.addInt("chat_id", orThrow(this.chatId, method))
-        if (this.msg.isTopicMessage) {
-            payload.addInt("message_thread_id", this.msg.messageThreadId)
+        match (this.msg) {
+            case Some(message) =>
+                if (message.isTopicMessage) { payload.addInt("message_thread_id", message.messageThreadId) }
+            case None => ()
         }
         payload
     }
@@ -2017,11 +2026,14 @@ public class Context <: FilterContextView {
     private func chatActionPayload(method: String): Payload {
         let payload = Payload("")
         payload.addInt("chat_id", orThrow(this.chatId, method))
-        if (!this.businessConnectionId.isEmpty()) {
-            payload.addValue("business_connection_id", this.businessConnectionId)
+        match (this.businessConnectionId) {
+            case Some(id) => payload.addValue("business_connection_id", id)
+            case None => ()
         }
-        if (this.msg.messageThreadId != 0) {
-            payload.addInt("message_thread_id", this.msg.messageThreadId)
+        match (this.msg) {
+            case Some(message) =>
+                if (message.messageThreadId != 0) { payload.addInt("message_thread_id", message.messageThreadId) }
+            case None => ()
         }
         payload
     }
@@ -2029,8 +2041,10 @@ public class Context <: FilterContextView {
     private func invoiceReplyPayload(method: String): Payload {
         let payload = Payload("")
         payload.addInt("chat_id", orThrow(this.chatId, method))
-        if (this.msg.isTopicMessage) {
-            payload.addInt("message_thread_id", this.msg.messageThreadId)
+        match (this.msg) {
+            case Some(message) =>
+                if (message.isTopicMessage) { payload.addInt("message_thread_id", message.messageThreadId) }
+            case None => ()
         }
         addDirectMessagesTopicIfPresent(payload)
         payload
@@ -2132,62 +2146,73 @@ public class Context <: FilterContextView {
 
     private func inlineOrMessageTargetPayload(method: String): Payload {
         let payload = Payload("")
-        if (!this.inlineMessageId.isEmpty()) {
-            payload.addValue("inline_message_id", this.inlineMessageId)
-        } else {
-            payload.addInt("chat_id", orThrow(this.chatId, method))
-            payload.addInt("message_id", orThrow(this.msgId, method))
+        match (this.inlineMessageId) {
+            case Some(id) => payload.addValue("inline_message_id", id)
+            case None =>
+                payload.addInt("chat_id", orThrow(this.chatId, method))
+                payload.addInt("message_id", orThrow(this.msgId, method))
         }
         addBusinessConnectionIfPresent(payload)
         payload
     }
 
     private func addBusinessConnectionIfPresent(payload: Payload): Unit {
-        if (!this.businessConnectionId.isEmpty()) {
-            payload.addValue("business_connection_id", this.businessConnectionId)
+        match (this.businessConnectionId) {
+            case Some(id) => payload.addValue("business_connection_id", id)
+            case None => ()
         }
     }
 
     private func addDirectMessagesTopicIfPresent(payload: Payload): Unit {
-        if (this.msg.directMessagesTopicId != 0) {
-            payload.addInt("direct_messages_topic_id", this.msg.directMessagesTopicId)
+        match (this.msg) {
+            case Some(message) =>
+                if (message.directMessagesTopicId != 0) { payload.addInt("direct_messages_topic_id", message.directMessagesTopicId) }
+            case None => ()
         }
     }
 
     private func callbackQueryId(method: String): String {
-        if (!this.callbackQuery.isPresent) {
-            throw Exception("Missing information for API call to " + method)
+        match (this.callbackQuery) {
+            case Some(callbackQuery) =>
+                if (!callbackQuery.data.isEmpty()) { return callbackQuery.data }
+                if (!callbackQuery.gameShortName.isEmpty()) { return callbackQuery.gameShortName }
+                if (!callbackQuery.inlineMessageId.isEmpty()) { return callbackQuery.inlineMessageId }
+            case None => ()
         }
-        if (!this.callbackQuery.data.isEmpty()) { return this.callbackQuery.data }
-        if (!this.callbackQuery.gameShortName.isEmpty()) { return this.callbackQuery.gameShortName }
-        if (!this.callbackQuery.inlineMessageId.isEmpty()) { return this.callbackQuery.inlineMessageId }
         throw Exception("Missing information for API call to " + method)
     }
 
     private func inlineQueryId(method: String): String {
-        if (!this.inlineQuery.isPresent || this.inlineQuery.query.isEmpty()) {
-            throw Exception("Missing information for API call to " + method)
+        match (this.inlineQuery) {
+            case Some(inlineQuery) =>
+                if (!inlineQuery.query.isEmpty()) { return inlineQuery.query }
+            case None => ()
         }
-        this.inlineQuery.query
+        throw Exception("Missing information for API call to " + method)
     }
 
     private func shippingQueryId(method: String): String {
-        if (!this.shippingQuery.isPresent || this.shippingQuery.invoicePayload.isEmpty()) {
-            throw Exception("Missing information for API call to " + method)
+        match (this.shippingQuery) {
+            case Some(shippingQuery) =>
+                if (!shippingQuery.invoicePayload.isEmpty()) { return shippingQuery.invoicePayload }
+            case None => ()
         }
-        this.shippingQuery.invoicePayload
+        throw Exception("Missing information for API call to " + method)
     }
 
     private func preCheckoutQueryId(method: String): String {
-        if (!this.preCheckoutQuery.isPresent || this.preCheckoutQuery.invoicePayload.isEmpty()) {
-            throw Exception("Missing information for API call to " + method)
+        match (this.preCheckoutQuery) {
+            case Some(preCheckoutQuery) =>
+                if (!preCheckoutQuery.invoicePayload.isEmpty()) { return preCheckoutQuery.invoicePayload }
+            case None => ()
         }
-        this.preCheckoutQuery.invoicePayload
+        throw Exception("Missing information for API call to " + method)
     }
 
     private func invokeInlineOrMessageApi(messageMethod: String, inlineMethod: String, payload: Payload): Payload {
-        if (!this.inlineMessageId.isEmpty()) {
-            return invokeApi(inlineMethod, payload)
+        match (this.inlineMessageId) {
+            case Some(_) => return invokeApi(inlineMethod, payload)
+            case None => ()
         }
         invokeApi(messageMethod, payload)
     }
@@ -2339,6 +2364,96 @@ public func contextShortcutMappings(): Array<ContextShortcutMapping> {
         mappings.add(ContextShortcutMapping(target, target, contextShortcutRequiredContext(target)))
     }
     mappings.toArray()
+}
+
+public func contextSourceDriftGate(): Array<ContextSourceDriftRow> {
+    [
+        ContextSourceDriftRow("src/context.ts update shortcuts", "Option update getter surface", 24, contextUpdateShortcutNames().size),
+        ContextSourceDriftRow("src/context.ts aggregation shortcuts", "Option aggregate getter surface", 8, contextAggregateShortcutNames().size),
+        ContextSourceDriftRow("src/context.ts StaticHas overload families", "Context.has runtime predicate families", 11, contextHasPredicateFamilies().size),
+        ContextSourceDriftRow("src/context.ts trigger match writers", "ctx.match ContextMatch writer families", 8, contextMatchWriterFamilies().size),
+        ContextSourceDriftRow("src/context.ts API shortcut methods", "Context typed API shortcut targets", 136, contextShortcutApiTargets().size)
+    ]
+}
+
+public func contextSourceDriftGateOk(): Bool {
+    for (row in contextSourceDriftGate()) {
+        if (!row.ok) {
+            return false
+        }
+    }
+    true
+}
+
+public func contextUpdateShortcutNames(): Array<String> {
+    [
+        "message",
+        "editedMessage",
+        "channelPost",
+        "editedChannelPost",
+        "businessConnection",
+        "businessMessage",
+        "editedBusinessMessage",
+        "deletedBusinessMessages",
+        "messageReaction",
+        "messageReactionCount",
+        "inlineQuery",
+        "chosenInlineResult",
+        "callbackQuery",
+        "shippingQuery",
+        "preCheckoutQuery",
+        "poll",
+        "pollAnswer",
+        "myChatMember",
+        "chatMember",
+        "managedBot",
+        "chatJoinRequest",
+        "chatBoost",
+        "removedChatBoost",
+        "purchasedPaidMedia"
+    ]
+}
+
+public func contextAggregateShortcutNames(): Array<String> {
+    [
+        "msg",
+        "chat",
+        "senderChat",
+        "from",
+        "msgId",
+        "chatId",
+        "inlineMessageId",
+        "businessConnectionId"
+    ]
+}
+
+public func contextHasPredicateFamilies(): Array<String> {
+    [
+        "filterQuery",
+        "text",
+        "command",
+        "reaction",
+        "chatType",
+        "callbackQuery",
+        "gameQuery",
+        "inlineQuery",
+        "chosenInlineResult",
+        "preCheckoutQuery",
+        "shippingQuery"
+    ]
+}
+
+public func contextMatchWriterFamilies(): Array<String> {
+    [
+        "text",
+        "command",
+        "callbackQuery",
+        "gameQuery",
+        "inlineQuery",
+        "chosenInlineResult",
+        "preCheckoutQuery",
+        "shippingQuery"
+    ]
 }
 
 public func contextShortcutApiTargets(): Array<String> {
@@ -2543,11 +2658,216 @@ public func contextShortcutRequiredContext(target: String): String {
     "chat_id"
 }
 
+public func maybeUser(value: User): Option<User> {
+    if (value.isPresent) { return Some(value) }
+    None<User>
+}
+
+public func maybeChat(value: Chat): Option<Chat> {
+    if (value.isPresent) { return Some(value) }
+    None<Chat>
+}
+
+public func maybeMessage(value: Message): Option<Message> {
+    if (value.isPresent) { return Some(value) }
+    None<Message>
+}
+
+public func maybeBusinessConnection(value: BusinessConnection): Option<BusinessConnection> {
+    if (value.isPresent) { return Some(value) }
+    None<BusinessConnection>
+}
+
+public func maybeBusinessMessagesDeleted(value: BusinessMessagesDeleted): Option<BusinessMessagesDeleted> {
+    if (value.isPresent) { return Some(value) }
+    None<BusinessMessagesDeleted>
+}
+
+public func maybeMessageReactionUpdated(value: MessageReactionUpdated): Option<MessageReactionUpdated> {
+    if (value.isPresent) { return Some(value) }
+    None<MessageReactionUpdated>
+}
+
+public func maybeMessageReactionCountUpdated(value: MessageReactionCountUpdated): Option<MessageReactionCountUpdated> {
+    if (value.isPresent) { return Some(value) }
+    None<MessageReactionCountUpdated>
+}
+
+public func maybeInlineQuery(value: InlineQuery): Option<InlineQuery> {
+    if (value.isPresent) { return Some(value) }
+    None<InlineQuery>
+}
+
+public func maybeChosenInlineResult(value: ChosenInlineResult): Option<ChosenInlineResult> {
+    if (value.isPresent) { return Some(value) }
+    None<ChosenInlineResult>
+}
+
+public func maybeCallbackQuery(value: CallbackQuery): Option<CallbackQuery> {
+    if (value.isPresent) { return Some(value) }
+    None<CallbackQuery>
+}
+
+public func maybeShippingQuery(value: ShippingQuery): Option<ShippingQuery> {
+    if (value.isPresent) { return Some(value) }
+    None<ShippingQuery>
+}
+
+public func maybePreCheckoutQuery(value: PreCheckoutQuery): Option<PreCheckoutQuery> {
+    if (value.isPresent) { return Some(value) }
+    None<PreCheckoutQuery>
+}
+
+public func maybePoll(value: Poll): Option<Poll> {
+    if (value.isPresent) { return Some(value) }
+    None<Poll>
+}
+
+public func maybePollAnswer(value: PollAnswer): Option<PollAnswer> {
+    if (value.isPresent) { return Some(value) }
+    None<PollAnswer>
+}
+
+public func maybeChatMemberUpdated(value: ChatMemberUpdated): Option<ChatMemberUpdated> {
+    if (value.isPresent) { return Some(value) }
+    None<ChatMemberUpdated>
+}
+
+public func maybeManagedBotUpdate(value: ManagedBotUpdate): Option<ManagedBotUpdate> {
+    if (value.isPresent) { return Some(value) }
+    None<ManagedBotUpdate>
+}
+
+public func maybeChatJoinRequest(value: ChatJoinRequest): Option<ChatJoinRequest> {
+    if (value.isPresent) { return Some(value) }
+    None<ChatJoinRequest>
+}
+
+public func maybeChatBoostUpdated(value: ChatBoostUpdated): Option<ChatBoostUpdated> {
+    if (value.isPresent) { return Some(value) }
+    None<ChatBoostUpdated>
+}
+
+public func maybeChatBoostRemoved(value: ChatBoostRemoved): Option<ChatBoostRemoved> {
+    if (value.isPresent) { return Some(value) }
+    None<ChatBoostRemoved>
+}
+
+public func maybePurchasedPaidMedia(value: PurchasedPaidMedia): Option<PurchasedPaidMedia> {
+    if (value.isPresent) { return Some(value) }
+    None<PurchasedPaidMedia>
+}
+
+public func optionPresent<T>(value: Option<T>): Bool {
+    match (value) {
+        case Some(_) => true
+        case None => false
+    }
+}
+
 public func orThrow(value: Int64, method: String): Int64 {
     if (value == 0) {
         throw Exception("Missing information for API call to " + method)
     }
     value
+}
+
+public func orThrow<T>(value: Option<T>, method: String): T {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<Int64>, method: String): Int64 {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<String>, method: String): String {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<ContextMatch>, method: String): ContextMatch {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<User>, method: String): User {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<Chat>, method: String): Chat {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<Message>, method: String): Message {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<CallbackQuery>, method: String): CallbackQuery {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<InlineQuery>, method: String): InlineQuery {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<ChosenInlineResult>, method: String): ChosenInlineResult {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<PreCheckoutQuery>, method: String): PreCheckoutQuery {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<ShippingQuery>, method: String): ShippingQuery {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<MessageReactionUpdated>, method: String): MessageReactionUpdated {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
+}
+
+public func orThrow(value: Option<ManagedBotUpdate>, method: String): ManagedBotUpdate {
+    match (value) {
+        case Some(v) => v
+        case None => throw Exception("Missing information for API call to " + method)
+    }
 }
 
 public func orThrow(value: String, method: String): String {
@@ -2616,90 +2936,111 @@ private func validateCommandNames(commands: Array<String>): Unit {
 
 private func matchesFilterQuery(ctx: Context, query: String): Bool {
     if (query == ":text") {
-        let message = triggerMessage(ctx)
-        return message.isPresent && !message.text.isEmpty()
+        match (triggerMessage(ctx)) {
+            case Some(message) => return !message.text.isEmpty()
+            case None => return false
+        }
     }
     if (query == ":caption") {
-        let message = triggerMessage(ctx)
-        return message.isPresent && !message.caption.isEmpty()
+        match (triggerMessage(ctx)) {
+            case Some(message) => return !message.caption.isEmpty()
+            case None => return false
+        }
     }
     if (query == ":entities:bot_command") {
-        return hasBotCommandEntity(triggerMessage(ctx))
+        match (triggerMessage(ctx)) {
+            case Some(message) => return hasBotCommandEntity(message)
+            case None => return false
+        }
     }
     if (query == "callback_query:data") {
-        return ctx.callbackQuery.isPresent && !ctx.callbackQuery.data.isEmpty()
+        match (ctx.callbackQuery) {
+            case Some(callbackQuery) => return !callbackQuery.data.isEmpty()
+            case None => return false
+        }
     }
     if (query == "callback_query:game_short_name") {
-        return ctx.callbackQuery.isPresent && !ctx.callbackQuery.gameShortName.isEmpty()
+        match (ctx.callbackQuery) {
+            case Some(callbackQuery) => return !callbackQuery.gameShortName.isEmpty()
+            case None => return false
+        }
     }
-    if (query == "message_reaction") { return ctx.messageReaction.isPresent }
-    if (query == "inline_query") { return ctx.inlineQuery.isPresent }
-    if (query == "chosen_inline_result") { return ctx.chosenInlineResult.isPresent }
-    if (query == "pre_checkout_query") { return ctx.preCheckoutQuery.isPresent }
-    if (query == "shipping_query") { return ctx.shippingQuery.isPresent }
-    if (query == "message") { return ctx.message.isPresent }
-    if (query == "edited_message") { return ctx.editedMessage.isPresent }
-    if (query == "channel_post") { return ctx.channelPost.isPresent }
-    if (query == "edited_channel_post") { return ctx.editedChannelPost.isPresent }
-    if (query == "business_connection") { return ctx.businessConnection.isPresent }
-    if (query == "business_message") { return ctx.businessMessage.isPresent }
-    if (query == "edited_business_message") { return ctx.editedBusinessMessage.isPresent }
-    if (query == "deleted_business_messages") { return ctx.deletedBusinessMessages.isPresent }
-    if (query == "message_reaction_count") { return ctx.messageReactionCount.isPresent }
-    if (query == "poll") { return ctx.poll.isPresent }
-    if (query == "poll_answer") { return ctx.pollAnswer.isPresent }
-    if (query == "my_chat_member") { return ctx.myChatMember.isPresent }
-    if (query == "chat_member") { return ctx.chatMember.isPresent }
-    if (query == "managed_bot") { return ctx.managedBot.isPresent }
-    if (query == "chat_join_request") { return ctx.chatJoinRequest.isPresent }
-    if (query == "chat_boost") { return ctx.chatBoost.isPresent }
-    if (query == "removed_chat_boost") { return ctx.removedChatBoost.isPresent }
-    if (query == "purchased_paid_media") { return ctx.purchasedPaidMedia.isPresent }
+    if (query == "message_reaction") { return optionPresent(ctx.messageReaction) }
+    if (query == "inline_query") { return optionPresent(ctx.inlineQuery) }
+    if (query == "chosen_inline_result") { return optionPresent(ctx.chosenInlineResult) }
+    if (query == "pre_checkout_query") { return optionPresent(ctx.preCheckoutQuery) }
+    if (query == "shipping_query") { return optionPresent(ctx.shippingQuery) }
+    if (query == "message") { return optionPresent(ctx.message) }
+    if (query == "edited_message") { return optionPresent(ctx.editedMessage) }
+    if (query == "channel_post") { return optionPresent(ctx.channelPost) }
+    if (query == "edited_channel_post") { return optionPresent(ctx.editedChannelPost) }
+    if (query == "business_connection") { return optionPresent(ctx.businessConnection) }
+    if (query == "business_message") { return optionPresent(ctx.businessMessage) }
+    if (query == "edited_business_message") { return optionPresent(ctx.editedBusinessMessage) }
+    if (query == "deleted_business_messages") { return optionPresent(ctx.deletedBusinessMessages) }
+    if (query == "message_reaction_count") { return optionPresent(ctx.messageReactionCount) }
+    if (query == "poll") { return optionPresent(ctx.poll) }
+    if (query == "poll_answer") { return optionPresent(ctx.pollAnswer) }
+    if (query == "my_chat_member") { return optionPresent(ctx.myChatMember) }
+    if (query == "chat_member") { return optionPresent(ctx.chatMember) }
+    if (query == "managed_bot") { return optionPresent(ctx.managedBot) }
+    if (query == "chat_join_request") { return optionPresent(ctx.chatJoinRequest) }
+    if (query == "chat_boost") { return optionPresent(ctx.chatBoost) }
+    if (query == "removed_chat_boost") { return optionPresent(ctx.removedChatBoost) }
+    if (query == "purchased_paid_media") { return optionPresent(ctx.purchasedPaidMedia) }
     !query.isEmpty() && query == ctx.update.kind
 }
 
 private func matchesText(ctx: Context, trigger: TextTrigger): Bool {
     let message = triggerMessage(ctx)
-    if (!message.isPresent) {
-        return false
+    match (message) {
+        case Some(value) => return matchAndStore(ctx, messageContent(value), trigger)
+        case None => return false
     }
-    matchAndStore(ctx, messageContent(message), trigger)
 }
 
 private func matchAndStore(ctx: Context, content: String, trigger: TextTrigger): Bool {
     match (trigger.matchResult(content)) {
         case Some(result) =>
-            ctx.`match` = result
+            ctx.`match` = Some(result)
             return true
         case None => false
     }
 }
 
-private func firstRegexMatch(regex: Regex, content: String): Option<String> {
+private func firstRegexMatch(regex: Regex, content: String): Option<ContextMatch> {
     for (md in regex.findAll(content, group: true)) {
-        let pos = md.matchPosition()
-        return Some(content[pos.start..pos.end])
+        let values = ArrayList<String>()
+        values.add(md.matchString())
+        var index: Int64 = 1
+        while (index <= md.groupCount()) {
+            values.add(md.matchString(index))
+            index += 1
+        }
+        return Some(ContextMatch.regex(values.toArray()))
     }
-    None<String>
+    None<ContextMatch>
 }
 
 private func matchesCommand(ctx: Context, commands: Array<String>): Bool {
     let message = triggerMessage(ctx)
-    if (!message.isPresent || !hasBotCommandEntity(message)) {
-        return false
+    match (message) {
+        case Some(value) =>
+            if (!hasBotCommandEntity(value)) { return false }
+            let text = messageContent(value)
+            for (entity in value.entities) {
+                if (entity.kind != "bot_command" || entity.offset != 0 || entity.length <= 1 || entity.length > text.size) {
+                    continue
+                }
+                let raw = text[1..entity.length]
+                if (commandMatches(ctx, commands, raw)) {
+                    ctx.`match` = Some(ContextMatch.string(text[entity.length..].trimAsciiStart()))
+                    return true
+                }
+            }
+            return false
+        case None => return false
     }
-    let text = messageContent(message)
-    for (entity in message.entities) {
-        if (entity.kind != "bot_command" || entity.offset != 0 || entity.length <= 1 || entity.length > text.size) {
-            continue
-        }
-        let raw = text[1..entity.length]
-        if (commandMatches(ctx, commands, raw)) {
-            ctx.`match` = text[entity.length..].trimAsciiStart()
-            return true
-        }
-    }
-    false
 }
 
 private func commandMatches(ctx: Context, commands: Array<String>, raw: String): Bool {
@@ -2727,36 +3068,38 @@ private func commandTarget(raw: String): String {
     }
 }
 
-private func triggerMessage(ctx: Context): Message {
-    if (ctx.message.isPresent) { return ctx.message }
-    if (ctx.channelPost.isPresent) { return ctx.channelPost }
-    Message()
+private func triggerMessage(ctx: Context): Option<Message> {
+    match (ctx.message) { case Some(value) => return Some(value); case None => () }
+    match (ctx.channelPost) { case Some(value) => return Some(value); case None => () }
+    None<Message>
 }
 
 private func matchesReaction(ctx: Context, wanted: Array<ReactionType>): Bool {
-    if (!ctx.messageReaction.isPresent) {
-        return false
-    }
-    for (reaction in ctx.messageReaction.newReaction) {
-        if (reactionExists(ctx.messageReaction.oldReaction, reaction)) {
-            continue
-        }
-        for (candidate in wanted) {
-            if (sameReaction(reaction, candidate)) {
-                return true
+    match (ctx.messageReaction) {
+        case Some(messageReaction) =>
+            for (reaction in messageReaction.newReaction) {
+                if (reactionExists(messageReaction.oldReaction, reaction)) {
+                    continue
+                }
+                for (candidate in wanted) {
+                    if (sameReaction(reaction, candidate)) {
+                        return true
+                    }
+                }
+                if (reaction.kind != "emoji" && reaction.kind != "custom_emoji" && reaction.kind != "paid") {
+                    return true
+                }
             }
-        }
-        if (reaction.kind != "emoji" && reaction.kind != "custom_emoji" && reaction.kind != "paid") {
-            return true
-        }
+            return false
+        case None => return false
     }
-    false
 }
 
-private func collectEntities(message: Message, kinds: Array<String>): Array<MessageEntityText> {
+private func collectEntities(messageOption: Option<Message>, kinds: Array<String>): Array<MessageEntityText> {
     let result = ArrayList<MessageEntityText>()
-    if (!message.isPresent) {
-        return result.toArray()
+    let message = match (messageOption) {
+        case Some(value) => value
+        case None => return result.toArray()
     }
     let text = messageContent(message)
     if (text.isEmpty()) {
@@ -2776,10 +3119,11 @@ private func collectEntities(message: Message, kinds: Array<String>): Array<Mess
     result.toArray()
 }
 
-private func reactionSummary(update: MessageReactionUpdated): ReactionSummary {
+private func reactionSummary(updateOption: Option<MessageReactionUpdated>): ReactionSummary {
     let summary = ReactionSummary()
-    if (!update.isPresent) {
-        return summary
+    let update = match (updateOption) {
+        case Some(value) => value
+        case None => return summary
     }
     let emoji = ArrayList<String>()
     let emojiAdded = ArrayList<String>()

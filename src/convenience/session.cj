@@ -605,7 +605,7 @@ public class SessionFlavorContext<T> {
         }
     }
 
-    public prop chatId: Int64 {
+    public prop chatId: Option<Int64> {
         get() { this.ctx.chatId }
     }
 
@@ -841,7 +841,7 @@ public class MultiSessionFlavorContext2<A, B> {
         this.session = MultiSessionData2<A, B>(sessionContext.first, sessionContext.second)
     }
 
-    public prop chatId: Int64 {
+    public prop chatId: Option<Int64> {
         get() { this.ctx.chatId }
     }
 
@@ -933,11 +933,9 @@ public func lazySession<A, B>(options: MultiSessionOptions2<A, B>): LazySessionM
 }
 
 public func defaultGetSessionKey(ctx: Context): Option<String> {
-    let chatId = ctx.chatId
-    if (chatId == 0) {
-        None<String>
-    } else {
-        Some(chatId.toString())
+    match (ctx.chatId) {
+        case Some(chatId) => Some(chatId.toString())
+        case None => None<String>
     }
 }
 

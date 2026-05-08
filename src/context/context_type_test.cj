@@ -26,6 +26,10 @@ private func typeTestContext(update: Update): Context {
     Context(update, Api("token"), typeTestBotInfo())
 }
 
+private func typeMatchText(value: Option<ContextMatch>): String {
+    orThrow(value, "type-test").text
+}
+
 @Test
 public class ContextTypeSurfaceTest {
     @TestCase
@@ -38,24 +42,24 @@ public class ContextTypeSurfaceTest {
 
         @Expect(ctx.hasFilter(":text"), true)
         @Expect(ctx.hasText("/start payload"), true)
-        let textMatch: String = ctx.`match`
+        let textMatch: String = typeMatchText(ctx.`match`)
         @Expect(textMatch, "/start payload")
         @Expect(ctx.hasCommand("start"), true)
-        let commandMatch: String = ctx.`match`
+        let commandMatch: String = typeMatchText(ctx.`match`)
         @Expect(commandMatch, "payload")
         @Expect(ctx.hasChatType("private"), true)
-        @Expect(ctx.chat.kind, "private")
+        @Expect(orThrow(ctx.chat, "type-test").kind, "private")
 
         let gameCtx = typeTestContext(Update.withCallbackQuery(
             1401,
             CallbackQuery(user, "", "game-short-name", message, "")
         ))
         @Expect(gameCtx.hasGameQuery("game-short-name"), true)
-        @Expect(gameCtx.callbackQuery.gameShortName, "game-short-name")
+        @Expect(orThrow(gameCtx.callbackQuery, "type-test").gameShortName, "game-short-name")
 
         let inlineCtx = typeTestContext(Update.withInlineQuery(1402, InlineQuery(user, "inline-query")))
         @Expect(inlineCtx.hasInlineQuery("inline-query"), true)
-        @Expect(inlineCtx.inlineQuery.query, "inline-query")
+        @Expect(orThrow(inlineCtx.inlineQuery, "type-test").query, "inline-query")
     }
 
     @TestCase
@@ -69,7 +73,7 @@ public class ContextTypeSurfaceTest {
         match (ctx.refineText("/start payload")) {
             case Some(narrowed) =>
                 let narrowedMessage: Message = narrowed.message
-                let narrowedMatch: String = narrowed.`match`
+                let narrowedMatch: String = narrowed.`match`.text
                 @Expect(narrowedMessage.text, "/start payload")
                 @Expect(narrowedMatch, "/start payload")
             case None => @Expect(false, true)
@@ -78,7 +82,7 @@ public class ContextTypeSurfaceTest {
         match (ctx.refineCommand("start")) {
             case Some(narrowed) =>
                 let narrowedMessage: Message = narrowed.message
-                let commandPayload: String = narrowed.`match`
+                let commandPayload: String = narrowed.`match`.text
                 @Expect(narrowedMessage.messageId, 541)
                 @Expect(commandPayload, "payload")
             case None => @Expect(false, true)
@@ -101,7 +105,7 @@ public class ContextTypeSurfaceTest {
             case Some(narrowed) =>
                 let callback: CallbackQuery = narrowed.callbackQuery
                 @Expect(callback.data, "callback-data")
-                @Expect(narrowed.`match`, "callback-data")
+                @Expect(narrowed.`match`.text, "callback-data")
             case None => @Expect(false, true)
         }
 
@@ -113,7 +117,7 @@ public class ContextTypeSurfaceTest {
             case Some(narrowed) =>
                 let gameCallback: CallbackQuery = narrowed.callbackQuery
                 @Expect(gameCallback.gameShortName, "game-short-name")
-                @Expect(narrowed.`match`, "game-short-name")
+                @Expect(narrowed.`match`.text, "game-short-name")
             case None => @Expect(false, true)
         }
 
@@ -122,7 +126,7 @@ public class ContextTypeSurfaceTest {
             case Some(narrowed) =>
                 let inline: InlineQuery = narrowed.inlineQuery
                 @Expect(inline.query, "inline-query")
-                @Expect(narrowed.`match`, "inline-query")
+                @Expect(narrowed.`match`.text, "inline-query")
             case None => @Expect(false, true)
         }
 
@@ -134,7 +138,7 @@ public class ContextTypeSurfaceTest {
             case Some(narrowed) =>
                 let chosen: ChosenInlineResult = narrowed.chosenInlineResult
                 @Expect(chosen.resultId, "chosen-result")
-                @Expect(narrowed.`match`, "chosen-result")
+                @Expect(narrowed.`match`.text, "chosen-result")
             case None => @Expect(false, true)
         }
 
@@ -146,7 +150,7 @@ public class ContextTypeSurfaceTest {
             case Some(narrowed) =>
                 let preCheckout: PreCheckoutQuery = narrowed.preCheckoutQuery
                 @Expect(preCheckout.invoicePayload, "pre-payload")
-                @Expect(narrowed.`match`, "pre-payload")
+                @Expect(narrowed.`match`.text, "pre-payload")
             case None => @Expect(false, true)
         }
 
@@ -158,7 +162,7 @@ public class ContextTypeSurfaceTest {
             case Some(narrowed) =>
                 let shipping: ShippingQuery = narrowed.shippingQuery
                 @Expect(shipping.invoicePayload, "shipping-payload")
-                @Expect(narrowed.`match`, "shipping-payload")
+                @Expect(narrowed.`match`.text, "shipping-payload")
             case None => @Expect(false, true)
         }
 
@@ -188,14 +192,14 @@ public class ContextTypeSurfaceTest {
         let ctx = typeTestContext(Update.withMessage(1411, message))
 
         @Expect(ctx.hasText(Regex("^regex")), true)
-        let matchValue: String = ctx.`match`
+        let matchValue: String = typeMatchText(ctx.`match`)
         @Expect(matchValue, "regex")
 
         match (ctx.refineText(Regex("text$"))) {
             case Some(narrowed) =>
                 let narrowedMessage: Message = narrowed.message
                 @Expect(narrowedMessage.messageId, 542)
-                @Expect(narrowed.`match`, "text")
+                @Expect(narrowed.`match`.text, "text")
             case None => @Expect(false, true)
         }
 
@@ -205,7 +209,7 @@ public class ContextTypeSurfaceTest {
         ))
         @Expect(callbackCtx.hasCallbackQuery(Regex("^callback")), true)
         match (callbackCtx.refineCallbackQuery([Regex("regex$")])) {
-            case Some(narrowed) => @Expect(narrowed.`match`, "regex")
+            case Some(narrowed) => @Expect(narrowed.`match`.text, "regex")
             case None => @Expect(false, true)
         }
     }
