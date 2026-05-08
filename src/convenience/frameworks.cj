@@ -563,6 +563,35 @@ public class AdapterStatusEntry {
     }
 }
 
+public class FrameworkAdapterPublicShape {
+    public let name: String
+    public let upstreamSignature: String
+    public let cangjieSignature: String
+    public let requestShape: String
+    public let responseShape: String
+    public let fakeProtocolEntry: String
+
+    public init(
+        name: String,
+        upstreamSignature: String,
+        cangjieSignature: String,
+        requestShape: String,
+        responseShape: String,
+        fakeProtocolEntry: String
+    ) {
+        this.name = name
+        this.upstreamSignature = upstreamSignature
+        this.cangjieSignature = cangjieSignature
+        this.requestShape = requestShape
+        this.responseShape = responseShape
+        this.fakeProtocolEntry = fakeProtocolEntry
+    }
+
+    public func usesWebhookRequestAsPublicShape(): Bool {
+        this.cangjieSignature == "WebhookRequest -> ReqResHandler"
+    }
+}
+
 public class FrameworkAdapterContract {
     public let name: String
     public let updateSource: String
@@ -577,6 +606,8 @@ public class FrameworkAdapterContract {
     public let endBody: String
     public let unauthorizedStatusText: String
     public let unauthorizedBody: String
+    public let cangjiePublicSignature: String
+    public let fakeProtocolEntry: String
 
     public init(name: String) {
         this.name = name
@@ -592,6 +623,9 @@ public class FrameworkAdapterContract {
         this.endBody = adapterEndBody(name)
         this.unauthorizedStatusText = adapterUnauthorizedStatusText(name)
         this.unauthorizedBody = adapterUnauthorizedBody(name)
+        let shape = frameworkAdapterPublicShape(name)
+        this.cangjiePublicSignature = shape.cangjieSignature
+        this.fakeProtocolEntry = shape.fakeProtocolEntry
     }
 }
 
@@ -686,6 +720,45 @@ public func adapterStatus(name: String): AdapterStatusEntry {
 
 public func adapterIsSupported(name: String): Bool {
     adapterStatus(name).supported
+}
+
+public func frameworkAdapterPublicShapeCount(): Int64 {
+    frameworkAdapterPublicShapes().size
+}
+
+public func frameworkAdapterPublicShape(name: String): FrameworkAdapterPublicShape {
+    for (shape in frameworkAdapterPublicShapes()) {
+        if (shape.name == name) {
+            return shape
+        }
+    }
+    FrameworkAdapterPublicShape(name, "", "unsupported", "", "", "")
+}
+
+public func frameworkAdapterPublicShapes(): Array<FrameworkAdapterPublicShape> {
+    [
+        FrameworkAdapterPublicShape("aws-lambda", "(event, context, callback) -> ReqResHandler", "AwsLambdaAdapter(event, context, callback)", "event.body JSON plus event.headers", "callback(statusCode/body/headers)", "awsLambdaAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("aws-lambda-async", "(event, context) -> ReqResHandler with handlerReturn", "AwsLambdaAsyncAdapter(event, context)", "event.body JSON plus event.headers", "handlerReturn promise-like lambda result", "awsLambdaAsyncAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("azure", "(context, request) -> ReqResHandler", "AzureAdapter(context, request)", "request.body plus request.headers", "context.res mutation", "azureAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("azure-v4", "(request) -> ReqResHandler with handlerReturn", "AzureV4Adapter(request)", "request.json() plus request.headers.get", "handlerReturn status/body or jsonBody", "azureV4Adapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("bun", "(request) -> ReqResHandler<Response>", "BunAdapter(request)", "request.json() plus Headers.get", "handlerReturn Response", "bunAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("cloudflare", "(event) -> ReqResHandler", "CloudflareAdapter(event)", "event.request.json() plus Headers.get", "event.respondWith(Response)", "cloudflareAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("cloudflare-mod", "(request) -> ReqResHandler<Response>", "CloudflareModuleAdapter(request)", "request.json() plus Headers.get", "handlerReturn Response", "cloudflareModuleAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("elysia", "(ctx) -> ReqResHandler<string>", "ElysiaAdapter(ctx)", "ctx.body plus lowercase ctx.headers", "handlerReturn string and ctx.set", "elysiaAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("express", "(req, res) -> ReqResHandler", "ExpressAdapter(req, res)", "req.body plus req.header", "res.end/set/send/status", "expressAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("fastify", "(request, reply) -> ReqResHandler", "FastifyAdapter(request, reply)", "request.body plus lowercase headers", "reply.headers/code/send", "fastifyAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("hono", "(c) -> ReqResHandler<Response>", "HonoAdapter(c)", "c.req.json() plus c.req.header", "handlerReturn Response", "honoAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("http", "(req, res) -> ReqResHandler", "HttpAdapter(req, res)", "Node raw JSON stream plus lowercase headers", "res.writeHead/end", "nodeHttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("https", "(req, res) -> ReqResHandler", "HttpsAdapter(req, res)", "Node raw JSON stream plus lowercase headers", "res.writeHead/end", "httpsAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("koa", "(ctx) -> ReqResHandler", "KoaAdapter(ctx)", "ctx.request.body plus ctx.get", "ctx.status/body/response mutation", "koaAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("next-js", "(req, res) -> ReqResHandler", "NextAdapter(req, res)", "req.body plus lowercase headers", "res.end/status/json/send", "nextJsAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("nhttp", "(rev) -> ReqResHandler", "NHttpAdapter(rev)", "rev.body plus rev.headers.get", "rev.response sendStatus/status/send", "nhttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("oak", "(ctx) -> ReqResHandler", "OakAdapter(ctx)", "ctx.request.body.json plus headers.get", "ctx.response status/type/body", "oakAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("serveHttp", "(requestEvent) -> ReqResHandler", "ServeHttpAdapter(requestEvent)", "requestEvent.request.json plus headers.get", "requestEvent.respondWith(Response)", "serveHttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("std/http", "(req) -> ReqResHandler<Response>", "StdHttpAdapter(req)", "req.json plus headers.get", "handlerReturn Response", "stdHttpAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("sveltekit", "({ request }) -> ReqResHandler<Response>", "SveltekitAdapter(event)", "event.request.json plus headers.get", "handlerReturn Response", "sveltekitAdapter(WebhookRequest)"),
+        FrameworkAdapterPublicShape("worktop", "(req, res) -> ReqResHandler", "WorktopAdapter(req, res)", "req.json plus req.headers.get", "res.end/send", "worktopAdapter(WebhookRequest)")
+    ]
 }
 
 public func adapterHasHandlerReturn(name: String): Bool {
@@ -1208,9 +1281,9 @@ private func updateResolverForAdapter(adapterName: String, request: WebhookReque
 
 private func adapterReason(name: String): String {
     if (name == "http" || name == "https") {
-        return "Node http/https adapter reads raw JSON stream and writes with writeHead/end."
+        return "Node http/https public shape is tracked separately from the fake WebhookRequest test seam; adapter reads raw JSON stream and writes with writeHead/end."
     }
-    "Upstream grammY adapter request, header, response, and handlerReturn semantics are mirrored by injectable fake framework objects."
+    "Upstream grammY adapter public request/response shape is tracked; injectable fake framework objects drive default tests."
 }
 
 private func headerValueForAdapter(adapterName: String, request: WebhookRequest): String {
