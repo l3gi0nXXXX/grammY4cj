@@ -219,6 +219,39 @@ public class TelegramTypesTest {
     }
 
     @TestCase
+    public func telegramTypeIRCoversExportIntegrityFieldsAndUnions(): Unit {
+        let integrity = telegramTypeExportIntegrityReport()
+        let update = telegramTypeIRFor("Update")
+        let message = telegramTypeIRFor("Message")
+        let inputMedia = telegramTypeIRFor("InputMedia")
+        let inputMediaVideo = telegramTypeIRFor("InputMediaVideo")
+        let missing = telegramTypeIRFor("MissingType")
+
+        @Expect(telegramTypeExportNames().size, 306)
+        @Expect(telegramTypeExportNames()[0], "ApiError")
+        @Expect(integrity.ok(), true)
+        @Expect(integrity.expectedExportCount, 306)
+        @Expect(integrity.actualExportCount, 306)
+        @Expect(integrity.duplicateExportCount, 0)
+        @Expect(integrity.missingModelCount, 0)
+        @Expect(telegramTypeIRManifestCount(), 306)
+        @Expect(telegramTypeIRCompletenessGate(), true)
+        @Expect(update.publicExport, true)
+        @Expect(update.generatedFromUpstream, true)
+        @Expect(update.fieldCount(), 25)
+        @Expect(update.fields[0].jsonKey, "update_id")
+        @Expect(update.fields[0].cangjieFieldName, "updateId")
+        @Expect(update.fields[1].optional(), true)
+        @Expect(message.hasField("message_id"), true)
+        @Expect(message.fields[0].cangjieFieldName, "messageId")
+        @Expect(inputMedia.declarationKind, "union")
+        @Expect(inputMedia.unionMemberCount(), 5)
+        @Expect(inputMedia.hasUnionMember("InputMediaVideo"), true)
+        @Expect(inputMediaVideo.fields[1].usesInputFile(), true)
+        @Expect(missing.publicExport, false)
+    }
+
+    @TestCase
     public func telegramTypeFieldManifestRecordsJsonKeysOptionalityArraysAndApiLinks(): Unit {
         let updateFields = telegramTypeFieldManifestFor("Update")
         let messageFields = telegramTypeFieldManifestFor("Message")
@@ -265,6 +298,12 @@ public class TelegramTypesTest {
     public func telegramTypeBusExposesApiAndContextIntegrationTrace(): Unit {
         let sendPhoto = telegramTypeModelDescriptorFor("Message")
         let updateFields = telegramTypeContextGetterTrace()
+        let bus = telegramTypeBus()
+        let sendPhotoMapping = telegramTypeApiMappingFor("sendPhoto")
+        let inlineMapping = telegramTypeApiMappingFor("editMessageMediaInline")
+        let getMeMapping = telegramTypeApiMappingFor("getMe")
+        let callbackContext = telegramTypeContextMappingFor("callback_query")
+        let updateIdContext = telegramTypeContextMappingFor("update_id")
 
         @Expect(telegramTypeApiWrapperIntegrationCount(), 180)
         @Expect(telegramTypeContextGetterTraceCount(), 25)
@@ -273,6 +312,25 @@ public class TelegramTypesTest {
         @Expect(updateFields[11].fieldName, "inline_query")
         @Expect(updateFields[12].fieldName, "chosen_inline_result")
         @Expect(updateFields[13].fieldName, "callback_query")
+        @Expect(telegramTypeApiMappingCount(), 180)
+        @Expect(telegramTypeContextMappingCount(), 25)
+        @Expect(bus.complete(), true)
+        @Expect(bus.irNodes.size, 306)
+        @Expect(bus.apiMappings.size, 180)
+        @Expect(bus.contextMappings.size, 25)
+        @Expect(sendPhotoMapping.payloadTypeName, "Opts<sendPhoto>")
+        @Expect(sendPhotoMapping.resultTypeName, "Message")
+        @Expect(sendPhotoMapping.usesInputFile, true)
+        @Expect(inlineMapping.payloadTypeName, "Opts<editMessageMedia>")
+        @Expect(inlineMapping.hasCangjieWrapper, true)
+        @Expect(getMeMapping.payloadTypeName, "{}")
+        @Expect(getMeMapping.resultTypeName, "UserFromGetMe")
+        @Expect(callbackContext.contextPropertyName, "callbackQuery")
+        @Expect(callbackContext.contextAccessorName, "callbackQuery")
+        @Expect(callbackContext.resultTypeName, "CallbackQuery")
+        @Expect(callbackContext.optional(), true)
+        @Expect(updateIdContext.contextAccessorName, "updateId()")
+        @Expect(updateIdContext.required, true)
         @Expect(telegramObjectSubsetTraceAcceptedAsGate(), false)
     }
 
@@ -296,6 +354,34 @@ public class TelegramTypesTest {
         @Expect(diffs[1].memberName, "username")
         @Expect(report.contains("union_member_added:union.C"), true)
         @Expect(report.contains("union_member_removed:union.B"), true)
+    }
+
+    @TestCase
+    public func telegramTypeSnapshotDriftCheckReportsManifestCountChanges(): Unit {
+        let current = telegramTypeCurrentManifestSnapshot()
+        let drifted = TelegramTypeManifestSnapshot(
+            current.version,
+            current.exportCount - 1,
+            current.exportModuleCount,
+            current.apiMethodCount,
+            current.inputFileAliasCount,
+            current.irNodeCount,
+            current.apiMappingCount,
+            current.contextMappingCount,
+            current.rootFacade
+        )
+        let ok = telegramTypeSnapshotDriftCheck(current)
+        let drift = telegramTypeSnapshotDriftCheck(drifted)
+
+        @Expect(current.exportCount, 306)
+        @Expect(current.irNodeCount, 306)
+        @Expect(current.apiMappingCount, 180)
+        @Expect(current.contextMappingCount, 25)
+        @Expect(ok.ok, true)
+        @Expect(ok.diffCount(), 0)
+        @Expect(drift.ok, false)
+        @Expect(drift.diffCount(), 1)
+        @Expect(drift.report.contains("count_changed:telegram_types.export_count"), true)
     }
 
     @TestCase

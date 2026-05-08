@@ -201,6 +201,259 @@ public class TelegramTypeDryRunDiff {
     }
 }
 
+public class TelegramTypeExportIntegrityReport {
+    public let expectedExportCount: Int64
+    public let actualExportCount: Int64
+    public let duplicateExportCount: Int64
+    public let missingModelCount: Int64
+
+    public init(expectedExportCount: Int64, actualExportCount: Int64, duplicateExportCount: Int64, missingModelCount: Int64) {
+        this.expectedExportCount = expectedExportCount
+        this.actualExportCount = actualExportCount
+        this.duplicateExportCount = duplicateExportCount
+        this.missingModelCount = missingModelCount
+    }
+
+    public func ok(): Bool {
+        this.expectedExportCount == this.actualExportCount &&
+            this.duplicateExportCount == 0 &&
+            this.missingModelCount == 0
+    }
+}
+
+public class TelegramTypeIRField {
+    public let ownerTypeName: String
+    public let fieldName: String
+    public let jsonKey: String
+    public let cangjieFieldName: String
+    public let required: Bool
+    public let arrayDepth: String
+    public let inputFileReplacementPoint: String
+    public let apiMethods: String
+
+    public init(
+        ownerTypeName: String,
+        fieldName: String,
+        jsonKey: String,
+        cangjieFieldName: String,
+        required: Bool,
+        arrayDepth: String,
+        inputFileReplacementPoint: String,
+        apiMethods: String
+    ) {
+        this.ownerTypeName = ownerTypeName
+        this.fieldName = fieldName
+        this.jsonKey = jsonKey
+        this.cangjieFieldName = cangjieFieldName
+        this.required = required
+        this.arrayDepth = arrayDepth
+        this.inputFileReplacementPoint = inputFileReplacementPoint
+        this.apiMethods = apiMethods
+    }
+
+    public func optional(): Bool {
+        !this.required
+    }
+
+    public func usesInputFile(): Bool {
+        !this.inputFileReplacementPoint.isEmpty()
+    }
+}
+
+public class TelegramTypeIRNode {
+    public let exportName: String
+    public let moduleName: String
+    public let declarationKind: String
+    public let cangjieModel: String
+    public let fields: Array<TelegramTypeIRField>
+    public let unionMembers: Array<String>
+    public let inputFileReplacementPoint: String
+    public let associatedApiMethods: String
+    public let generatedFromUpstream: Bool
+    public let publicExport: Bool
+
+    public init(
+        exportName: String,
+        moduleName: String,
+        declarationKind: String,
+        cangjieModel: String,
+        fields: Array<TelegramTypeIRField>,
+        unionMembers: Array<String>,
+        inputFileReplacementPoint: String,
+        associatedApiMethods: String,
+        generatedFromUpstream: Bool,
+        publicExport: Bool
+    ) {
+        this.exportName = exportName
+        this.moduleName = moduleName
+        this.declarationKind = declarationKind
+        this.cangjieModel = cangjieModel
+        this.fields = fields
+        this.unionMembers = unionMembers
+        this.inputFileReplacementPoint = inputFileReplacementPoint
+        this.associatedApiMethods = associatedApiMethods
+        this.generatedFromUpstream = generatedFromUpstream
+        this.publicExport = publicExport
+    }
+
+    public func fieldCount(): Int64 {
+        this.fields.size
+    }
+
+    public func unionMemberCount(): Int64 {
+        this.unionMembers.size
+    }
+
+    public func hasField(jsonKey: String): Bool {
+        for (field in this.fields) {
+            if (field.jsonKey == jsonKey) {
+                return true
+            }
+        }
+        false
+    }
+
+    public func hasUnionMember(memberName: String): Bool {
+        for (member in this.unionMembers) {
+            if (member == memberName) {
+                return true
+            }
+        }
+        false
+    }
+
+    public func usedByApiMethod(methodName: String): Bool {
+        ("," + this.associatedApiMethods + ",").contains("," + methodName + ",")
+    }
+}
+
+public class TelegramTypeApiMapping {
+    public let apiMethodName: String
+    public let payloadTypeName: String
+    public let resultTypeName: String
+    public let usesInputFile: Bool
+    public let hasPayload: Bool
+    public let hasCangjieWrapper: Bool
+
+    public init(
+        apiMethodName: String,
+        payloadTypeName: String,
+        resultTypeName: String,
+        usesInputFile: Bool,
+        hasPayload: Bool,
+        hasCangjieWrapper: Bool
+    ) {
+        this.apiMethodName = apiMethodName
+        this.payloadTypeName = payloadTypeName
+        this.resultTypeName = resultTypeName
+        this.usesInputFile = usesInputFile
+        this.hasPayload = hasPayload
+        this.hasCangjieWrapper = hasCangjieWrapper
+    }
+}
+
+public class TelegramTypeContextMapping {
+    public let updateFieldName: String
+    public let contextPropertyName: String
+    public let contextAccessorName: String
+    public let resultTypeName: String
+    public let required: Bool
+
+    public init(
+        updateFieldName: String,
+        contextPropertyName: String,
+        contextAccessorName: String,
+        resultTypeName: String,
+        required: Bool
+    ) {
+        this.updateFieldName = updateFieldName
+        this.contextPropertyName = contextPropertyName
+        this.contextAccessorName = contextAccessorName
+        this.resultTypeName = resultTypeName
+        this.required = required
+    }
+
+    public func optional(): Bool {
+        !this.required
+    }
+}
+
+public class TelegramTypeManifestSnapshot {
+    public let version: String
+    public let exportCount: Int64
+    public let exportModuleCount: Int64
+    public let apiMethodCount: Int64
+    public let inputFileAliasCount: Int64
+    public let irNodeCount: Int64
+    public let apiMappingCount: Int64
+    public let contextMappingCount: Int64
+    public let rootFacade: String
+
+    public init(
+        version: String,
+        exportCount: Int64,
+        exportModuleCount: Int64,
+        apiMethodCount: Int64,
+        inputFileAliasCount: Int64,
+        irNodeCount: Int64,
+        apiMappingCount: Int64,
+        contextMappingCount: Int64,
+        rootFacade: String
+    ) {
+        this.version = version
+        this.exportCount = exportCount
+        this.exportModuleCount = exportModuleCount
+        this.apiMethodCount = apiMethodCount
+        this.inputFileAliasCount = inputFileAliasCount
+        this.irNodeCount = irNodeCount
+        this.apiMappingCount = apiMappingCount
+        this.contextMappingCount = contextMappingCount
+        this.rootFacade = rootFacade
+    }
+}
+
+public class TelegramTypeDriftCheckReport {
+    public let ok: Bool
+    public let diffs: Array<TelegramTypeDryRunDiff>
+    public let report: String
+
+    public init(ok: Bool, diffs: Array<TelegramTypeDryRunDiff>, report: String) {
+        this.ok = ok
+        this.diffs = diffs
+        this.report = report
+    }
+
+    public func diffCount(): Int64 {
+        this.diffs.size
+    }
+}
+
+public class TelegramTypeBus {
+    public let irNodes: Array<TelegramTypeIRNode>
+    public let apiMappings: Array<TelegramTypeApiMapping>
+    public let contextMappings: Array<TelegramTypeContextMapping>
+    public let integrity: TelegramTypeExportIntegrityReport
+
+    public init(
+        irNodes: Array<TelegramTypeIRNode>,
+        apiMappings: Array<TelegramTypeApiMapping>,
+        contextMappings: Array<TelegramTypeContextMapping>,
+        integrity: TelegramTypeExportIntegrityReport
+    ) {
+        this.irNodes = irNodes
+        this.apiMappings = apiMappings
+        this.contextMappings = contextMappings
+        this.integrity = integrity
+    }
+
+    public func complete(): Bool {
+        this.integrity.ok() &&
+            this.irNodes.size == 306 &&
+            this.apiMappings.size == 180 &&
+            this.contextMappings.size == 25
+    }
+}
+
 public func telegramTypePackageBaseline(): TelegramTypePackageBaseline {
     TelegramTypePackageBaseline(
         "@grammyjs/types",
@@ -302,6 +555,33 @@ public func telegramTypeExportModuleFor(name: String): String {
         }
     }
     ""
+}
+
+public func telegramTypeExportNames(): Array<String> {
+    let out = ArrayList<String>()
+    for (module in telegramTypeExportModules()) {
+        for (name in module.names()) {
+            out.add(name)
+        }
+    }
+    out.toArray()
+}
+
+public func telegramTypeExportIntegrityReport(): TelegramTypeExportIntegrityReport {
+    let names = telegramTypeExportNames()
+    var duplicates: Int64 = 0
+    var missingModels: Int64 = 0
+    var index: Int64 = 0
+    for (name in names) {
+        if (stringArrayContainsBefore(names, name, index)) {
+            duplicates += 1
+        }
+        if (!telegramTypeModelDescriptorFor(name).constructible) {
+            missingModels += 1
+        }
+        index += 1
+    }
+    TelegramTypeExportIntegrityReport(306, names.size, duplicates, missingModels)
 }
 
 public func telegramApiMethodNames(): Array<String> {
@@ -441,6 +721,37 @@ public func telegramTypeFieldManifestFor(name: String): Array<TelegramTypeFieldM
     out.toArray()
 }
 
+public func telegramTypeIRManifest(): Array<TelegramTypeIRNode> {
+    let out = ArrayList<TelegramTypeIRNode>()
+    for (descriptor in telegramTypeModelManifest()) {
+        out.add(telegramTypeIRFromDescriptor(descriptor))
+    }
+    out.toArray()
+}
+
+public func telegramTypeIRManifestCount(): Int64 {
+    telegramTypeIRManifest().size
+}
+
+public func telegramTypeIRFor(name: String): TelegramTypeIRNode {
+    telegramTypeIRFromDescriptor(telegramTypeModelDescriptorFor(name))
+}
+
+public func telegramTypeIRCompletenessGate(): Bool {
+    if (!telegramTypeExportIntegrityReport().ok()) {
+        return false
+    }
+    if (telegramTypeIRManifestCount() != telegramTypeExportManifestCount()) {
+        return false
+    }
+    for (node in telegramTypeIRManifest()) {
+        if (!node.publicExport || !node.generatedFromUpstream) {
+            return false
+        }
+    }
+    true
+}
+
 public func telegramTypeModelExists(name: String): Bool {
     telegramTypeModelDescriptorFor(name).constructible
 }
@@ -533,12 +844,63 @@ public func telegramTypeApiWrapperIntegrationCount(): Int64 {
     telegramTypeApiWrapperIntegrationNames().size
 }
 
+public func telegramTypeApiMappingManifest(): Array<TelegramTypeApiMapping> {
+    let out = ArrayList<TelegramTypeApiMapping>()
+    for (name in telegramTypeApiWrapperIntegrationNames()) {
+        out.add(telegramTypeApiMappingFor(name))
+    }
+    out.toArray()
+}
+
+public func telegramTypeApiMappingCount(): Int64 {
+    telegramTypeApiMappingManifest().size
+}
+
+public func telegramTypeApiMappingFor(methodName: String): TelegramTypeApiMapping {
+    let apiModel = telegramApiMethodManifestFor(canonicalApiMethodName(methodName))
+    TelegramTypeApiMapping(
+        methodName,
+        apiPayloadTypeName(methodName, apiModel.hasPayload),
+        apiResultTypeName(methodName),
+        apiModel.usesInputFile,
+        apiModel.hasPayload,
+        stringArrayContains(telegramTypeApiWrapperIntegrationNames(), methodName)
+    )
+}
+
 public func telegramTypeContextGetterTrace(): Array<TelegramTypeFieldModel> {
     telegramTypeFieldManifestFor("Update")
 }
 
 public func telegramTypeContextGetterTraceCount(): Int64 {
     telegramTypeContextGetterTrace().size
+}
+
+public func telegramTypeContextMappingManifest(): Array<TelegramTypeContextMapping> {
+    let out = ArrayList<TelegramTypeContextMapping>()
+    for (field in telegramTypeFieldManifestFor("Update")) {
+        out.add(TelegramTypeContextMapping(
+            field.fieldName,
+            contextPropertyNameForUpdateField(field.fieldName),
+            contextAccessorNameForUpdateField(field.fieldName),
+            contextTypeNameForUpdateField(field.fieldName),
+            field.required
+        ))
+    }
+    out.toArray()
+}
+
+public func telegramTypeContextMappingCount(): Int64 {
+    telegramTypeContextMappingManifest().size
+}
+
+public func telegramTypeContextMappingFor(updateFieldName: String): TelegramTypeContextMapping {
+    for (mapping in telegramTypeContextMappingManifest()) {
+        if (mapping.updateFieldName == updateFieldName) {
+            return mapping
+        }
+    }
+    TelegramTypeContextMapping(updateFieldName, "", "", "", false)
 }
 
 public func telegramTypeDryRunDiff(
@@ -584,11 +946,69 @@ public func telegramTypeDryRunReport(diffs: Array<TelegramTypeDryRunDiff>): Stri
     report
 }
 
+public func telegramTypeExpectedManifestSnapshot(): TelegramTypeManifestSnapshot {
+    let baseline = telegramTypePackageBaseline()
+    TelegramTypeManifestSnapshot(
+        baseline.version,
+        306,
+        13,
+        169,
+        18,
+        306,
+        180,
+        25,
+        baseline.rootFacade
+    )
+}
+
+public func telegramTypeCurrentManifestSnapshot(): TelegramTypeManifestSnapshot {
+    let baseline = telegramTypePackageBaseline()
+    TelegramTypeManifestSnapshot(
+        baseline.version,
+        telegramTypeExportManifestCount(),
+        telegramTypeExportModuleCount(),
+        telegramApiMethodManifestCount(),
+        telegramInputFileBoundAliasManifestCount(),
+        telegramTypeIRManifestCount(),
+        telegramTypeApiMappingCount(),
+        telegramTypeContextMappingCount(),
+        baseline.rootFacade
+    )
+}
+
+public func telegramTypeSnapshotDriftCheck(actual: TelegramTypeManifestSnapshot): TelegramTypeDriftCheckReport {
+    let expected = telegramTypeExpectedManifestSnapshot()
+    let diffs = ArrayList<TelegramTypeDryRunDiff>()
+    addStringDrift(diffs, "version", expected.version, actual.version)
+    addCountDrift(diffs, "export_count", expected.exportCount, actual.exportCount)
+    addCountDrift(diffs, "export_module_count", expected.exportModuleCount, actual.exportModuleCount)
+    addCountDrift(diffs, "api_method_count", expected.apiMethodCount, actual.apiMethodCount)
+    addCountDrift(diffs, "input_file_alias_count", expected.inputFileAliasCount, actual.inputFileAliasCount)
+    addCountDrift(diffs, "ir_node_count", expected.irNodeCount, actual.irNodeCount)
+    addCountDrift(diffs, "api_mapping_count", expected.apiMappingCount, actual.apiMappingCount)
+    addCountDrift(diffs, "context_mapping_count", expected.contextMappingCount, actual.contextMappingCount)
+    addStringDrift(diffs, "root_facade", expected.rootFacade, actual.rootFacade)
+    let out = diffs.toArray()
+    TelegramTypeDriftCheckReport(out.size == 0, out, telegramTypeDryRunReport(out))
+}
+
+public func telegramTypeBus(): TelegramTypeBus {
+    TelegramTypeBus(
+        telegramTypeIRManifest(),
+        telegramTypeApiMappingManifest(),
+        telegramTypeContextMappingManifest(),
+        telegramTypeExportIntegrityReport()
+    )
+}
+
 public func telegramTypeGateRequiresCompleteManifest(): Bool {
     telegramTypeExportManifestCount() == 306 &&
         telegramApiMethodManifestCount() == 169 &&
         telegramInputFileBoundAliasManifestCount() == 18 &&
-        telegramTypeModelManifestCount() == 306
+        telegramTypeModelManifestCount() == 306 &&
+        telegramTypeIRCompletenessGate() &&
+        telegramTypeBus().complete() &&
+        telegramTypeSnapshotDriftCheck(telegramTypeCurrentManifestSnapshot()).ok
 }
 
 public func telegramObjectSubsetTraceAcceptedAsGate(): Bool {
@@ -792,4 +1212,237 @@ private func memberListContains(members: String, member: String): Bool {
         }
     }
     false
+}
+
+private func telegramTypeIRFromDescriptor(descriptor: TelegramTypeModelDescriptor): TelegramTypeIRNode {
+    let fields = ArrayList<TelegramTypeIRField>()
+    for (field in telegramTypeFieldManifestFor(descriptor.exportName)) {
+        fields.add(TelegramTypeIRField(
+            field.objectName,
+            field.fieldName,
+            field.jsonKey,
+            cangjieFieldNameForJsonKey(field.jsonKey),
+            field.required,
+            field.arrayDepth,
+            field.inputFileReplacementPoint,
+            field.apiMethod
+        ))
+    }
+    TelegramTypeIRNode(
+        descriptor.exportName,
+        descriptor.moduleName,
+        descriptor.declarationKind,
+        descriptor.cangjieModel,
+        fields.toArray(),
+        splitMembers(descriptor.unionMembers),
+        descriptor.inputFileReplacementPoint,
+        descriptor.associatedApiMethods,
+        descriptor.generatedFromUpstream,
+        telegramTypeExportExists(descriptor.exportName)
+    )
+}
+
+private func stringArrayContains(values: Array<String>, target: String): Bool {
+    for (value in values) {
+        if (value == target) {
+            return true
+        }
+    }
+    false
+}
+
+private func stringArrayContainsBefore(values: Array<String>, target: String, beforeIndex: Int64): Bool {
+    var index: Int64 = 0
+    for (value in values) {
+        if (index >= beforeIndex) {
+            return false
+        }
+        if (value == target) {
+            return true
+        }
+        index += 1
+    }
+    false
+}
+
+private func cangjieFieldNameForJsonKey(jsonKey: String): String {
+    if (jsonKey == "update_id") { return "updateId" }
+    if (jsonKey == "message_id") { return "messageId" }
+    if (jsonKey == "message_thread_id") { return "messageThreadId" }
+    if (jsonKey == "direct_messages_topic_id") { return "directMessagesTopicId" }
+    if (jsonKey == "business_connection_id") { return "businessConnectionId" }
+    if (jsonKey == "is_bot") { return "isBot" }
+    if (jsonKey == "first_name") { return "firstName" }
+    if (jsonKey == "last_name") { return "lastName" }
+    if (jsonKey == "language_code") { return "languageCode" }
+    if (jsonKey == "migrate_to_chat_id") { return "migrateToChatId" }
+    if (jsonKey == "retry_after") { return "retryAfter" }
+    if (jsonKey == "error_code") { return "errorCode" }
+    if (jsonKey == "is_premium") { return "isPremium" }
+    if (jsonKey == "added_to_attachment_menu") { return "addedToAttachmentMenu" }
+    if (jsonKey == "can_join_groups") { return "canJoinGroups" }
+    if (jsonKey == "can_read_all_group_messages") { return "canReadAllGroupMessages" }
+    if (jsonKey == "supports_inline_queries") { return "supportsInlineQueries" }
+    if (jsonKey == "can_connect_to_business") { return "canConnectToBusiness" }
+    if (jsonKey == "has_main_web_app") { return "hasMainWebApp" }
+    if (jsonKey == "sender_chat") { return "senderChat" }
+    if (jsonKey == "caption_entities") { return "captionEntities" }
+    if (jsonKey == "reply_markup") { return "replyMarkup" }
+    if (jsonKey == "edited_message") { return "editedMessage" }
+    if (jsonKey == "channel_post") { return "channelPost" }
+    if (jsonKey == "edited_channel_post") { return "editedChannelPost" }
+    if (jsonKey == "business_connection") { return "businessConnection" }
+    if (jsonKey == "business_message") { return "businessMessage" }
+    if (jsonKey == "edited_business_message") { return "editedBusinessMessage" }
+    if (jsonKey == "deleted_business_messages") { return "deletedBusinessMessages" }
+    if (jsonKey == "message_reaction") { return "messageReaction" }
+    if (jsonKey == "message_reaction_count") { return "messageReactionCount" }
+    if (jsonKey == "inline_query") { return "inlineQuery" }
+    if (jsonKey == "chosen_inline_result") { return "chosenInlineResult" }
+    if (jsonKey == "callback_query") { return "callbackQuery" }
+    if (jsonKey == "shipping_query") { return "shippingQuery" }
+    if (jsonKey == "pre_checkout_query") { return "preCheckoutQuery" }
+    if (jsonKey == "poll_answer") { return "pollAnswer" }
+    if (jsonKey == "my_chat_member") { return "myChatMember" }
+    if (jsonKey == "chat_member") { return "chatMember" }
+    if (jsonKey == "managed_bot") { return "managedBot" }
+    if (jsonKey == "chat_join_request") { return "chatJoinRequest" }
+    if (jsonKey == "chat_boost") { return "chatBoost" }
+    if (jsonKey == "removed_chat_boost") { return "removedChatBoost" }
+    if (jsonKey == "purchased_paid_media") { return "purchasedPaidMedia" }
+    if (jsonKey == "parse_mode") { return "parseMode" }
+    if (jsonKey == "caption_entities") { return "captionEntities" }
+    if (jsonKey == "show_caption_above_media") { return "showCaptionAboveMedia" }
+    if (jsonKey == "has_spoiler") { return "hasSpoiler" }
+    if (jsonKey == "start_timestamp") { return "startTimestamp" }
+    if (jsonKey == "supports_streaming") { return "supportsStreaming" }
+    if (jsonKey == "emoji_list") { return "emojiList" }
+    if (jsonKey == "mask_position") { return "maskPosition" }
+    jsonKey
+}
+
+private func canonicalApiMethodName(methodName: String): String {
+    if (methodName == "editMessageLiveLocationInline") { return "editMessageLiveLocation" }
+    if (methodName == "stopMessageLiveLocationInline") { return "stopMessageLiveLocation" }
+    if (methodName == "editMessageTextInline") { return "editMessageText" }
+    if (methodName == "editMessageCaptionInline") { return "editMessageCaption" }
+    if (methodName == "editMessageMediaInline") { return "editMessageMedia" }
+    if (methodName == "editMessageReplyMarkupInline") { return "editMessageReplyMarkup" }
+    if (methodName == "setGameScoreInline") { return "setGameScore" }
+    if (methodName == "getGameHighScoresInline") { return "getGameHighScores" }
+    if (methodName == "kickChatMember") { return "banChatMember" }
+    if (methodName == "getChatMembersCount") { return "getChatMemberCount" }
+    if (methodName == "sendGiftToChannel") { return "sendGift" }
+    methodName
+}
+
+private func apiPayloadTypeName(methodName: String, hasPayload: Bool): String {
+    if (!hasPayload) {
+        return "{}"
+    }
+    "Opts<" + canonicalApiMethodName(methodName) + ">"
+}
+
+private func apiResultTypeName(methodName: String): String {
+    let canonical = canonicalApiMethodName(methodName)
+    if (canonical == "getUpdates") { return "Array<Update>" }
+    if (canonical == "getMe") { return "UserFromGetMe" }
+    if (canonical == "getWebhookInfo") { return "WebhookInfo" }
+    if (canonical == "getFile") { return "File" }
+    if (canonical == "getChat") { return "ChatFullInfo" }
+    if (canonical == "getChatAdministrators") { return "Array<ChatMember>" }
+    if (canonical == "getChatMember") { return "ChatMember" }
+    if (canonical == "getChatMemberCount") { return "Int64" }
+    if (canonical == "getMyCommands") { return "Array<BotCommand>" }
+    if (canonical == "getCustomEmojiStickers") { return "Array<Sticker>" }
+    if (canonical == "getAvailableGifts") { return "Gifts" }
+    if (canonical == "getGameHighScores") { return "Array<GameHighScore>" }
+    if (canonical == "getUserProfilePhotos") { return "UserProfilePhotos" }
+    if (canonical == "getUserProfileAudios") { return "UserProfileAudios" }
+    if (canonical == "copyMessage") { return "MessageId" }
+    if (canonical == "copyMessages" || canonical == "forwardMessages") { return "Array<MessageId>" }
+    if (canonical.startsWith("send") || canonical.startsWith("forward") || canonical.startsWith("editMessage")) {
+        return "Message"
+    }
+    if (methodReturnsArray(canonical)) {
+        return "Array<TelegramObject>"
+    }
+    if (
+        canonical.startsWith("answer") || canonical.startsWith("set") ||
+        canonical.startsWith("delete") || canonical.startsWith("remove") ||
+        canonical.startsWith("ban") || canonical.startsWith("unban") ||
+        canonical.startsWith("restrict") || canonical.startsWith("promote") ||
+        canonical.startsWith("approve") || canonical.startsWith("decline") ||
+        canonical.startsWith("close") || canonical.startsWith("reopen") ||
+        canonical.startsWith("hide") || canonical.startsWith("unhide") ||
+        canonical == "logOut" || canonical == "leaveChat" ||
+        canonical == "pinChatMessage" || canonical == "unpinChatMessage" ||
+        canonical == "unpinAllChatMessages" || canonical == "unpinAllForumTopicMessages" ||
+        canonical == "unpinAllGeneralForumTopicMessages"
+    ) {
+        return "Bool"
+    }
+    "TelegramObject"
+}
+
+private func contextPropertyNameForUpdateField(fieldName: String): String {
+    cangjieFieldNameForJsonKey(fieldName)
+}
+
+private func contextAccessorNameForUpdateField(fieldName: String): String {
+    if (fieldName == "update_id") {
+        return "updateId()"
+    }
+    contextPropertyNameForUpdateField(fieldName)
+}
+
+private func contextTypeNameForUpdateField(fieldName: String): String {
+    if (fieldName == "update_id") { return "Int64" }
+    if (fieldName == "message") { return "Message" }
+    if (fieldName == "edited_message") { return "Message" }
+    if (fieldName == "channel_post") { return "Message" }
+    if (fieldName == "edited_channel_post") { return "Message" }
+    if (fieldName == "business_connection") { return "BusinessConnection" }
+    if (fieldName == "business_message") { return "Message" }
+    if (fieldName == "edited_business_message") { return "Message" }
+    if (fieldName == "deleted_business_messages") { return "BusinessMessagesDeleted" }
+    if (fieldName == "message_reaction") { return "MessageReactionUpdated" }
+    if (fieldName == "message_reaction_count") { return "MessageReactionCountUpdated" }
+    if (fieldName == "inline_query") { return "InlineQuery" }
+    if (fieldName == "chosen_inline_result") { return "ChosenInlineResult" }
+    if (fieldName == "callback_query") { return "CallbackQuery" }
+    if (fieldName == "shipping_query") { return "ShippingQuery" }
+    if (fieldName == "pre_checkout_query") { return "PreCheckoutQuery" }
+    if (fieldName == "poll") { return "Poll" }
+    if (fieldName == "poll_answer") { return "PollAnswer" }
+    if (fieldName == "my_chat_member") { return "ChatMemberUpdated" }
+    if (fieldName == "chat_member") { return "ChatMemberUpdated" }
+    if (fieldName == "managed_bot") { return "ManagedBotUpdate" }
+    if (fieldName == "chat_join_request") { return "ChatJoinRequest" }
+    if (fieldName == "chat_boost") { return "ChatBoostUpdated" }
+    if (fieldName == "removed_chat_boost") { return "ChatBoostRemoved" }
+    if (fieldName == "purchased_paid_media") { return "PurchasedPaidMedia" }
+    ""
+}
+
+private func addCountDrift(diffs: ArrayList<TelegramTypeDryRunDiff>, name: String, expected: Int64, actual: Int64): Unit {
+    if (expected != actual) {
+        diffs.add(TelegramTypeDryRunDiff(
+            "count_changed",
+            "telegram_types",
+            name,
+            "expected " + expected.toString() + " actual " + actual.toString()
+        ))
+    }
+}
+
+private func addStringDrift(diffs: ArrayList<TelegramTypeDryRunDiff>, name: String, expected: String, actual: String): Unit {
+    if (expected != actual) {
+        diffs.add(TelegramTypeDryRunDiff(
+            "value_changed",
+            "telegram_types",
+            name,
+            "expected " + expected + " actual " + actual
+        ))
+    }
 }
