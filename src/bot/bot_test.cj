@@ -8,10 +8,12 @@ import grammy4cj.composer.BotError
 import grammy4cj.composer.NextFunction
 import grammy4cj.context.Context
 import grammy4cj.core.Api
+import grammy4cj.core.ApiCallFn
 import grammy4cj.core.ApiClientOptions
 import grammy4cj.core.CancelSignal
 import grammy4cj.core.GrammyError
 import grammy4cj.core.HttpError
+import grammy4cj.core.Payload
 import grammy4cj.test_support.FakeHttp
 import grammy4cj.types.ApiResponse
 import grammy4cj.types.ResponseParameters
@@ -459,22 +461,29 @@ public class BotTest {
         let me = UserFromGetMe(199, true, "CtxApi", "ctx_api_bot")
         let bot = Bot("fake-token", BotConfig(botInfo: Some(me)))
         let copied = ArrayList<String>()
+        let copiedFunctionCounts = ArrayList<Int64>()
 
         bot.api.use("bot-first")
         bot.api.use("bot-second")
+        bot.api.use("bot-function", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>
+            prev(method, payload, signal)
+        })
         bot.use({ ctx: Context, _next: NextFunction =>
             for (name in ctx.api.installedTransformers) {
                 copied.add(name)
             }
+            copiedFunctionCounts.add(ctx.api.config.installedTransformerFunctions().size)
             ctx.api.use("per-update")
         })
 
         bot.handleUpdate(Update(1002, "message"))
 
-        @Expect(copied.size, 2)
+        @Expect(copied.size, 3)
         @Expect(copied[0], "bot-first")
         @Expect(copied[1], "bot-second")
-        @Expect(bot.api.installedTransformers.size, 2)
+        @Expect(copied[2], "bot-function")
+        @Expect(copiedFunctionCounts[0], 1)
+        @Expect(bot.api.installedTransformers.size, 3)
     }
 
     @TestCase
