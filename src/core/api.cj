@@ -2,10 +2,39 @@ package grammy4cj.core
 
 import std.collection.ArrayList
 
+import grammy4cj.types.Chat
 import grammy4cj.types.InputFile
+import grammy4cj.types.Message
+import grammy4cj.types.Update
+import grammy4cj.types.User
 
 public type ApiBuildUrl = (String, String, String, String) -> String
 public type WebhookReplyPredicate = (String) -> Bool
+
+public class ApiResult<T> {
+    public let body: String
+    public let value: T
+    public let result: T
+    public let typeTrace: String
+    public let fields: ArrayList<PayloadField> = ArrayList<PayloadField>()
+
+    public init(body: String, value: T, typeTrace: String) {
+        this.body = body
+        this.value = value
+        this.result = value
+        this.typeTrace = typeTrace
+    }
+
+    public init(body: String, value: T, typeTrace: String, tracePayload: Payload) {
+        this.body = body
+        this.value = value
+        this.result = value
+        this.typeTrace = typeTrace
+        for (field in tracePayload.fields) {
+            this.fields.add(field)
+        }
+    }
+}
 
 public class ApiClientOptions {
     public let apiRoot: String
@@ -143,6 +172,241 @@ private func mergeOtherPayload(payload: Payload, other: Payload): Payload {
 
 public func tracePayload(method: String, payload: Payload): Payload {
     Payload("").addValue("__method", method).addValue("__payload", createJsonPayload(payload).body)
+}
+
+private func tracedApiResult<T>(trace: Payload, value: T, typeTrace: String): ApiResult<T> {
+    ApiResult<T>(trace.body, value, typeTrace, trace)
+}
+
+private func apiJsonFieldValue(json: String, key: String): String {
+    let pattern = "\"" + key + "\""
+    let keyIndex = apiIndexOfFrom(json, pattern, 0)
+    if (keyIndex < 0) {
+        return ""
+    }
+    var i = keyIndex + pattern.size
+    while (i < json.size && apiIsJsonWhitespace(json[i..i + 1])) {
+        i += 1
+    }
+    if (i >= json.size || json[i..i + 1] != ":") {
+        return ""
+    }
+    apiReadJsonValue(json, i + 1)
+}
+
+private func apiReadJsonValue(json: String, startIndex: Int64): String {
+    var i = startIndex
+    while (i < json.size && apiIsJsonWhitespace(json[i..i + 1])) {
+        i += 1
+    }
+    if (i >= json.size) {
+        return ""
+    }
+    let first = json[i..i + 1]
+    if (first == "\"") {
+        return apiReadJsonStringValue(json, i)
+    }
+    if (first == "{" || first == "[") {
+        return apiReadJsonCompositeValue(json, i)
+    }
+    let end = apiReadJsonPrimitiveEnd(json, i)
+    apiTrimJson(json[i..end])
+}
+
+private func apiReadJsonStringValue(json: String, startIndex: Int64): String {
+    var i = startIndex + 1
+    var escaped = false
+    while (i < json.size) {
+        let ch = json[i..i + 1]
+        if (escaped) {
+            escaped = false
+        } else if (ch == "\\") {
+            escaped = true
+        } else if (ch == "\"") {
+            return json[startIndex..i + 1]
+        }
+        i += 1
+    }
+    ""
+}
+
+private func apiReadJsonCompositeValue(json: String, startIndex: Int64): String {
+    var i = startIndex
+    var depth: Int64 = 0
+    var inString = false
+    var escaped = false
+    while (i < json.size) {
+        let ch = json[i..i + 1]
+        if (inString) {
+            if (escaped) {
+                escaped = false
+            } else if (ch == "\\") {
+                escaped = true
+            } else if (ch == "\"") {
+                inString = false
+            }
+        } else if (ch == "\"") {
+            inString = true
+        } else if (ch == "{" || ch == "[") {
+            depth += 1
+        } else if (ch == "}" || ch == "]") {
+            depth -= 1
+            if (depth == 0) {
+                return json[startIndex..i + 1]
+            }
+        }
+        i += 1
+    }
+    ""
+}
+
+private func apiReadJsonPrimitiveEnd(json: String, startIndex: Int64): Int64 {
+    var i = startIndex
+    while (i < json.size) {
+        let ch = json[i..i + 1]
+        if (ch == "," || ch == "}" || ch == "]") {
+            return i
+        }
+        i += 1
+    }
+    i
+}
+
+private func apiParseJsonString(value: String): String {
+    let trimmed = apiTrimJson(value)
+    if (trimmed.size < 2 || trimmed[0..1] != "\"" || trimmed[trimmed.size - 1..trimmed.size] != "\"") {
+        return trimmed
+    }
+    var out = ""
+    var i: Int64 = 1
+    while (i < trimmed.size - 1) {
+        let ch = trimmed[i..i + 1]
+        if (ch == "\\" && i + 1 < trimmed.size - 1) {
+            out += trimmed[i + 1..i + 2]
+            i += 2
+        } else {
+            out += ch
+            i += 1
+        }
+    }
+    out
+}
+
+private func apiParseJsonBoolOrDefault(value: String, fallback: Bool): Bool {
+    let trimmed = apiTrimJson(value)
+    if (trimmed == "true") {
+        return true
+    }
+    if (trimmed == "false") {
+        return false
+    }
+    fallback
+}
+
+private func apiParseJsonIntOrDefault(value: String, fallback: Int64): Int64 {
+    let trimmed = apiTrimJson(value)
+    if (trimmed.isEmpty()) {
+        return fallback
+    }
+    var sign: Int64 = 1
+    var i: Int64 = 0
+    if (trimmed[0..1] == "-") {
+        sign = -1
+        i = 1
+    }
+    var out: Int64 = 0
+    var hasDigit = false
+    while (i < trimmed.size) {
+        let digit = apiDigitValue(trimmed[i..i + 1])
+        if (digit < 0) {
+            break
+        }
+        hasDigit = true
+        out = out * 10 + digit
+        i += 1
+    }
+    if (!hasDigit) {
+        return fallback
+    }
+    out * sign
+}
+
+private func apiDigitValue(ch: String): Int64 {
+    if (ch == "0") { return 0 }
+    if (ch == "1") { return 1 }
+    if (ch == "2") { return 2 }
+    if (ch == "3") { return 3 }
+    if (ch == "4") { return 4 }
+    if (ch == "5") { return 5 }
+    if (ch == "6") { return 6 }
+    if (ch == "7") { return 7 }
+    if (ch == "8") { return 8 }
+    if (ch == "9") { return 9 }
+    -1
+}
+
+private func apiTrimJson(value: String): String {
+    var start: Int64 = 0
+    var end = value.size
+    while (start < end && apiIsJsonWhitespace(value[start..start + 1])) {
+        start += 1
+    }
+    while (end > start && apiIsJsonWhitespace(value[end - 1..end])) {
+        end -= 1
+    }
+    value[start..end]
+}
+
+private func apiIsJsonWhitespace(ch: String): Bool {
+    ch == " " || ch == "\n" || ch == "\r" || ch == "\t"
+}
+
+private func apiIndexOfFrom(value: String, needle: String, startIndex: Int64): Int64 {
+    if (needle.isEmpty()) {
+        return startIndex
+    }
+    var i = startIndex
+    while (i + needle.size <= value.size) {
+        if (value[i..i + needle.size] == needle) {
+            return i
+        }
+        i += 1
+    }
+    -1
+}
+
+private func apiParseUser(body: String): User {
+    User(
+        apiParseJsonIntOrDefault(apiJsonFieldValue(body, "id"), 0),
+        apiParseJsonBoolOrDefault(apiJsonFieldValue(body, "is_bot"), false),
+        apiParseJsonString(apiJsonFieldValue(body, "first_name")),
+        apiParseJsonString(apiJsonFieldValue(body, "username"))
+    )
+}
+
+private func apiParseMessage(body: String): Message {
+    Message(
+        apiParseJsonIntOrDefault(apiJsonFieldValue(body, "message_id"), 0),
+        Chat(apiParseJsonIntOrDefault(apiJsonFieldValue(apiJsonFieldValue(body, "chat"), "id"), 0), apiParseJsonString(apiJsonFieldValue(apiJsonFieldValue(body, "chat"), "type"))),
+        apiParseJsonString(apiJsonFieldValue(body, "text"))
+    )
+}
+
+private func apiParseUpdates(body: String): ArrayList<Update> {
+    let updates = ArrayList<Update>()
+    var i: Int64 = 0
+    while (i < body.size) {
+        if (body[i..i + 1] == "{") {
+            let object = apiReadJsonCompositeValue(body, i)
+            if (!object.isEmpty()) {
+                updates.add(Update(apiParseJsonIntOrDefault(apiJsonFieldValue(object, "update_id"), 0), ""))
+                i += object.size
+                continue
+            }
+        }
+        i += 1
+    }
+    updates
 }
 
 private func payloadHasField(payload: Payload, key: String): Bool {
@@ -454,28 +718,94 @@ public class Api {
         this.raw.call(method, payload, signal)
     }
 
-    public func sendMessage(chatId: Int64, text: String): Payload {
-        this.sendMessage(requiredTextPayload(chatId, text))
+    public func getUpdates(): ApiResult<ArrayList<Update>> {
+        if (this.traceCompatibilityMode) {
+            return tracedApiResult<ArrayList<Update>>(tracePayload("getUpdates", Payload("{}")), ArrayList<Update>(), "Update[]")
+        }
+        let body = this.raw.call("getUpdates", Payload("{}"))
+        ApiResult<ArrayList<Update>>(body, apiParseUpdates(body), "Update[]")
     }
 
-    public func sendMessage(chatId: String, text: String): Payload {
-        this.sendMessage(requiredTextPayload(chatId, text))
+    public func getUpdates(signal: CancelSignal): ApiResult<ArrayList<Update>> {
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracedApiResult<ArrayList<Update>>(tracePayload("getUpdates", Payload("{}")), ArrayList<Update>(), "Update[]")
+        }
+        let body = this.raw.call("getUpdates", Payload("{}"), signal)
+        ApiResult<ArrayList<Update>>(body, apiParseUpdates(body), "Update[]")
     }
 
-    public func sendMessage(chatId: Int64, text: String, other: Payload): Payload {
-        this.sendMessage(mergeOtherPayload(requiredTextPayload(chatId, text), other))
+    public func getMe(): ApiResult<User> {
+        if (this.traceCompatibilityMode) {
+            return tracedApiResult<User>(tracePayload("getMe", Payload("{}")), User(), "User")
+        }
+        let body = this.raw.getMe()
+        ApiResult<User>(body, apiParseUser(body), "User")
     }
 
-    public func sendMessage(chatId: String, text: String, other: Payload): Payload {
-        this.sendMessage(mergeOtherPayload(requiredTextPayload(chatId, text), other))
+    public func getMe(signal: CancelSignal): ApiResult<User> {
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracedApiResult<User>(tracePayload("getMe", Payload("{}")), User(), "User")
+        }
+        let body = this.raw.call("getMe", Payload("{}"), signal)
+        ApiResult<User>(body, apiParseUser(body), "User")
     }
 
-    public func sendMessage(chatId: Int64, text: String, signal: CancelSignal): Payload {
-        this.call("sendMessage", requiredTextPayload(chatId, text), signal)
+    public func sendMessage(chatId: Int64, text: String): ApiResult<Message> {
+        let payload = requiredTextPayload(chatId, text)
+        if (this.traceCompatibilityMode) {
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
     }
 
-    public func sendMessage(chatId: String, text: String, signal: CancelSignal): Payload {
-        this.call("sendMessage", requiredTextPayload(chatId, text), signal)
+    public func sendMessage(chatId: String, text: String): ApiResult<Message> {
+        let payload = requiredTextPayload(chatId, text)
+        if (this.traceCompatibilityMode) {
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
+    }
+
+    public func sendMessage(chatId: Int64, text: String, other: Payload): ApiResult<Message> {
+        let payload = mergeOtherPayload(requiredTextPayload(chatId, text), other)
+        if (this.traceCompatibilityMode) {
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
+    }
+
+    public func sendMessage(chatId: String, text: String, other: Payload): ApiResult<Message> {
+        let payload = mergeOtherPayload(requiredTextPayload(chatId, text), other)
+        if (this.traceCompatibilityMode) {
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
+    }
+
+    public func sendMessage(chatId: Int64, text: String, signal: CancelSignal): ApiResult<Message> {
+        let payload = requiredTextPayload(chatId, text)
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload, signal)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
+    }
+
+    public func sendMessage(chatId: String, text: String, signal: CancelSignal): ApiResult<Message> {
+        let payload = requiredTextPayload(chatId, text)
+        if (this.traceCompatibilityMode) {
+            signal.throwIfCancelled()
+            return tracedApiResult<Message>(tracePayload("sendMessage", payload), apiParseMessage(createJsonPayload(payload).body), "Message.TextMessage")
+        }
+        let body = this.raw.call("sendMessage", payload, signal)
+        ApiResult<Message>(body, apiParseMessage(body), "Message.TextMessage")
     }
 
     public func sendPhoto(chatId: Int64, photo: String): Payload { this.sendPhoto(mediaPayload(chatId, "photo", photo)) }

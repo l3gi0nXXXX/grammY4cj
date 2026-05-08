@@ -4,6 +4,7 @@ API_CONSTANTS	grammy4cj.convenience	public	grammY/src/mod.ts:25;grammY/src/conve
 Api	grammy4cj.core	expert-public	grammY/src/mod.ts:51	Expert public Api class.
 ApiCallFn	grammy4cj.core	expert-public	grammY/src/mod.ts:53	Expert public API call function type.
 ApiClientOptions	grammy4cj.core	expert-public	grammY/src/mod.ts:54	Expert public API client options.
+ApiResult	grammy4cj.core	expert-public	grammY/src/mod.ts:51;grammY/src/core/api.ts:138	Cangjie typed API result shell for upstream Promise<ReturnType<Telegram method>>.
 Bot	grammy4cj.bot	public	grammY/src/mod.ts:3	Common root Bot export.
 BotConfig	grammy4cj.bot	public	grammY/src/mod.ts:4	Common root BotConfig export.
 BotError	grammy4cj.composer	public	grammY/src/mod.ts:5	Common root BotError equivalent.

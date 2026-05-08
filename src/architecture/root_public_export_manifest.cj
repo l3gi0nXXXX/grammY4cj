@@ -4,7 +4,7 @@ public let ROOT_PUBLIC_EXPORT_MANIFEST_PATH: String = "src/architecture/root_pub
 public let ROOT_PUBLIC_EXPORT_MANIFEST_UPSTREAM_ANCHOR: String = "grammY/src/mod.ts:1-60"
 
 public func rootPublicExportManifestEntryCount(): Int64 {
-    59
+    60
 }
 
 public func rootPublicExportManifestPublicCount(): Int64 {
@@ -12,7 +12,7 @@ public func rootPublicExportManifestPublicCount(): Int64 {
 }
 
 public func rootPublicExportManifestExpertPublicCount(): Int64 {
-    9
+    10
 }
 
 public func rootPublicExportManifestInternalCount(): Int64 {

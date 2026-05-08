@@ -581,6 +581,23 @@ public class ApiClientTest {
     }
 
     @TestCase
+    public func transformerErrorsPropagateWithoutCallingFetch(): Unit {
+        let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("unused"))
+        let client = ApiClient(ApiClientOptions("https://api.telegram.org", "prod"), fake)
+        client.use("boom", { _prev: ApiCallFn, method: String, _payload: Payload, _signal: CancelSignal =>
+            throw Exception("transformer failed for " + method)
+        })
+
+        try {
+            client.callApi("token", "sendMessage", Payload("").addValue("chat_id", "42"))
+            @Expect(true, false)
+        } catch (err: Exception) {
+            @Expect(err.message, "transformer failed for sendMessage")
+            @Expect(fake.called, false)
+        }
+    }
+
+    @TestCase
     public func rawFacadeAllowsUnknownMethodsWithExplicitPayload(): Unit {
         let fake = CoreTestFakeHttp().enqueueApi(ApiResponse.success("ok"))
         let api = createRawApi("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)

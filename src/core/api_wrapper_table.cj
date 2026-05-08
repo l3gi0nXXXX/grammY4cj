@@ -191,6 +191,14 @@ public func apiWrapperCount(): Int64 {
     apiWrapperMethodNames().size
 }
 
+public func apiRawFacadeMethodNames(): Array<String> {
+    apiWrapperMethodNames()
+}
+
+public func apiRawFacadeCount(): Int64 {
+    apiRawFacadeMethodNames().size
+}
+
 public func apiRawZeroArgMethodNames(): Array<String> {
     [
         "getMe",
@@ -628,6 +636,29 @@ public func apiWrapperReturnTypeKindCount(): Int64 {
         }
     }
     returnTypes.size
+}
+
+public func apiWrapperMissingReturnTypeCount(): Int64 {
+    var missing: Int64 = 0
+    for (trace in apiWrapperSchemaTraces()) {
+        if (trace.returnTypeTrace == "") {
+            missing += 1
+        }
+    }
+    missing
+}
+
+public func apiWrapperTypedResultRows(): ArrayList<String> {
+    let rows = ArrayList<String>()
+    for (trace in apiWrapperSchemaTraces()) {
+        let resultType = if (trace.publicMethodName == "getMe" && trace.returnTypeTrace == "UserFromGetMe") {
+            "User"
+        } else {
+            trace.returnTypeTrace
+        }
+        rows.add(trace.publicMethodName + "~ApiResult<" + resultType + ">")
+    }
+    rows
 }
 
 public func apiWrapperPublicOutputGoldenRows(): ArrayList<String> {

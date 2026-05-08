@@ -5,6 +5,9 @@ import std.unittest.*
 
 import grammy4cj.types.ApiResponse
 import grammy4cj.types.InputFile
+import grammy4cj.types.Message
+import grammy4cj.types.Update
+import grammy4cj.types.User
 
 private class ApiTestFakeFetch <: CoreFetch {
     public var called: Bool = false
@@ -42,8 +45,26 @@ private func methodName(payload: Payload): String {
     ""
 }
 
+private func methodName<T>(result: ApiResult<T>): String {
+    for (field in result.fields) {
+        if (field.key == "__method") {
+            return field.value
+        }
+    }
+    ""
+}
+
 private func payloadBody(payload: Payload): String {
     for (field in payload.fields) {
+        if (field.key == "__payload") {
+            return field.value
+        }
+    }
+    ""
+}
+
+private func payloadBody<T>(result: ApiResult<T>): String {
+    for (field in result.fields) {
         if (field.key == "__payload") {
             return field.value
         }
@@ -271,12 +292,16 @@ public class ApiWrapperTest {
     public func wrapperTableCountsUpstreamMethods(): Unit {
         @Expect(apiWrapperMethodNames().size, 180)
         @Expect(apiWrapperCount(), 180)
+        @Expect(apiRawFacadeMethodNames().size, 180)
+        @Expect(apiRawFacadeCount(), 180)
         @Expect(apiWrapperGenerationSkeletonCount(), 180)
         @Expect(apiWrapperSchemaTraceCount(), 180)
         @Expect(apiWrapperSignatureTraceCount(), 180)
         @Expect(apiWrapperSchemaTraceRows().size, 180)
         @Expect(apiWrapperMinimalPayloadGoldenRows().size, 180)
         @Expect(apiWrapperPublicOutputGoldenRows().size, 180)
+        @Expect(apiWrapperTypedResultRows().size, 180)
+        @Expect(apiWrapperMissingReturnTypeCount(), 0)
         @Expect(apiRawZeroArgMethodNames().size, 8)
         @Expect(apiWrapperMethodNames()[0], "getUpdates")
         @Expect(apiWrapperMethodNames()[179], "getGameHighScoresInline")
@@ -422,6 +447,13 @@ public class ApiWrapperTest {
     }
 
     @TestCase
+    public func apiResultRowsTrackRepresentativeTypedReturnShape(): Unit {
+        @Expect(goldenRowFor(apiWrapperTypedResultRows(), "getMe"), "getMe~ApiResult<User>")
+        @Expect(goldenRowFor(apiWrapperTypedResultRows(), "sendMessage"), "sendMessage~ApiResult<Message.TextMessage>")
+        @Expect(goldenRowFor(apiWrapperTypedResultRows(), "getUpdates"), "getUpdates~ApiResult<Update[]>")
+    }
+
+    @TestCase
     public func complexWrapperPayloadSchemaMatchesUpstreamOptionsMerge(): Unit {
         let sendMessage = apiWrapperSchemaTraceFor("sendMessage")
         @Expect(sendMessage.rawMethodName, "sendMessage")
@@ -501,16 +533,21 @@ public class ApiWrapperTest {
 
     @TestCase
     public func apiWrapperUsesRawApiAndReturnsTelegramResultWhenFetcherInjected(): Unit {
-        let fake = ApiTestFakeFetch("{\"message_id\":1}")
+        let fake = ApiTestFakeFetch("{\"message_id\":1,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"hi\"}")
         let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
 
         let result = api.sendMessage(42, "hi")
 
-        @Expect(result.body, "{\"message_id\":1}")
+        let typed: ApiResult<Message> = result
+        @Expect(typed.body, "{\"message_id\":1,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"hi\"}")
+        @Expect(typed.value.messageId, 1)
+        @Expect(typed.value.chat.id, 42)
+        @Expect(typed.value.text, "hi")
+        @Expect(typed.typeTrace, "Message.TextMessage")
         @Expect(fake.called, true)
         @Expect(fake.url, "https://api.telegram.org/bottoken/sendMessage")
         @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\"}")
-        @Expect(api.raw.call("getMe", Payload("{}")), "{\"message_id\":1}")
+        @Expect(api.raw.call("getMe", Payload("{}")), "{\"message_id\":1,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"hi\"}")
     }
 
     @TestCase
@@ -544,7 +581,7 @@ public class ApiWrapperTest {
 
     @TestCase
     public func apiUseInstallsTransformersThatWrapWrapperCalls(): Unit {
-        let fake = ApiTestFakeFetch("{\"message_id\":1}")
+        let fake = ApiTestFakeFetch("{\"message_id\":1,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"hi\"}")
         let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
 
         api.config.use("annotate", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>
@@ -552,7 +589,7 @@ public class ApiWrapperTest {
             prev(method, payload.addValue("via_transformer", "yes"), signal)
         })
 
-        @Expect(api.sendMessage(42, "hi").body, "{\"message_id\":1}")
+        @Expect(api.sendMessage(42, "hi").body, "{\"message_id\":1,\"chat\":{\"id\":42,\"type\":\"private\"},\"text\":\"hi\"}")
         @Expect(api.config.installedTransformers().size, 1)
         @Expect(api.config.installedTransformers()[0], "annotate")
         @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\",\"via_transformer\":\"yes\"}")
@@ -583,6 +620,33 @@ public class ApiWrapperTest {
         @Expect(copied.endpointFor("getMe"), "https://api.telegram.org/botother-token/getMe")
         @Expect(copiedWithFetch.sendMessage(42, "hi").body, "{\"ok\":true}")
         @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\",\"copied_fn\":\"yes\"}")
+    }
+
+    @TestCase
+    public func representativeApiMethodsReturnTypedResults(): Unit {
+        let fake = ApiTestFakeFetch("{\"id\":7,\"is_bot\":true,\"first_name\":\"Ada\",\"username\":\"ada_bot\"}")
+        let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+
+        let me: ApiResult<User> = api.getMe()
+
+        @Expect(me.body, "{\"id\":7,\"is_bot\":true,\"first_name\":\"Ada\",\"username\":\"ada_bot\"}")
+        @Expect(me.value.id, 7)
+        @Expect(me.value.isBot, true)
+        @Expect(me.value.firstName, "Ada")
+        @Expect(me.typeTrace, "User")
+    }
+
+    @TestCase
+    public func getUpdatesReturnsTypedUpdateArrayResult(): Unit {
+        let fake = ApiTestFakeFetch("[{\"update_id\":11,\"message\":{}},{\"update_id\":12,\"edited_message\":{}}]")
+        let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
+
+        let updates: ApiResult<ArrayList<Update>> = api.getUpdates()
+
+        @Expect(updates.value.size, 2)
+        @Expect(updates.value[0].updateId, 11)
+        @Expect(updates.value[1].updateId, 12)
+        @Expect(updates.typeTrace, "Update[]")
     }
 
     @TestCase

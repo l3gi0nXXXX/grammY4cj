@@ -56,6 +56,7 @@ public import grammy4cj.filter.matchFilter
 public import grammy4cj.core.Api
 public import grammy4cj.core.ApiCallFn
 public import grammy4cj.core.ApiClientOptions
+public import grammy4cj.core.ApiResult
 public import grammy4cj.core.GrammyError
 public import grammy4cj.core.HttpError
 public import grammy4cj.core.RawApiFacade

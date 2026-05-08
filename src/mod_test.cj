@@ -60,9 +60,9 @@ public class Grammy4cjRootTest {
             MultiSessionOptions2<String, String>(SessionOptions<String>(), SessionOptions<String>()),
         )
 
-        @Expect(rootPublicExportManifestEntryCount(), 59)
+        @Expect(rootPublicExportManifestEntryCount(), 60)
         @Expect(rootPublicExportManifestPublicCount(), 46)
-        @Expect(rootPublicExportManifestExpertPublicCount(), 9)
+        @Expect(rootPublicExportManifestExpertPublicCount(), 10)
         @Expect(rootPublicExportManifestInternalCount(), 4)
         @Expect(rootPublicExportManifestTestOnlyCount(), 0)
         @Expect(rootSurfaceExpectedFrameworkAdapterCount(), 21)
