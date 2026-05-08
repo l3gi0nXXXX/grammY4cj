@@ -543,15 +543,42 @@ public class ApiWrapperTest {
         let fake = ApiTestFakeFetch("{\"message_id\":1}")
         let api = Api("token", ApiClientOptions("https://api.telegram.org", "prod"), fake)
 
-        api.use("annotate", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>
+        api.config.use("annotate", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>
             @Expect(method, "sendMessage")
             prev(method, payload.addValue("via_transformer", "yes"), signal)
         })
 
         @Expect(api.sendMessage(42, "hi").body, "{\"message_id\":1}")
-        @Expect(api.installedTransformers.size, 1)
-        @Expect(api.installedTransformers[0], "annotate")
+        @Expect(api.config.installedTransformers().size, 1)
+        @Expect(api.config.installedTransformers()[0], "annotate")
         @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\",\"via_transformer\":\"yes\"}")
+    }
+
+    @TestCase
+    public func apiConfigNamespaceReturnsTransformerCopiesAndCanSeedNewApi(): Unit {
+        let api = Api("token")
+
+        api.config.use("first").use("second")
+        api.config.use("fn", { prev: ApiCallFn, method: String, payload: Payload, signal: CancelSignal =>
+            prev(method, payload.addValue("copied_fn", "yes"), signal)
+        })
+        let installed = api.config.installedTransformers()
+        installed[0] = "mutated"
+        let fake = ApiTestFakeFetch("{\"ok\":true}")
+        let copied = Api("other-token", api.config)
+        let copiedWithFetch = Api("other-token", api.config, fake)
+        api.config.use("third")
+
+        @Expect(api.config.installedTransformers()[0], "first")
+        @Expect(api.config.installedTransformers().size, 4)
+        @Expect(api.config.installedTransformerFunctions().size, 1)
+        @Expect(copied.config.installedTransformers().size, 3)
+        @Expect(copied.config.installedTransformers()[0], "first")
+        @Expect(copied.config.installedTransformers()[1], "second")
+        @Expect(copied.config.installedTransformerFunctions().size, 1)
+        @Expect(copied.endpointFor("getMe"), "https://api.telegram.org/botother-token/getMe")
+        @Expect(copiedWithFetch.sendMessage(42, "hi").body, "{\"ok\":true}")
+        @Expect(fake.body, "{\"chat_id\":42,\"text\":\"hi\",\"copied_fn\":\"yes\"}")
     }
 
     @TestCase
