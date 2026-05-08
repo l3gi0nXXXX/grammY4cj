@@ -50,6 +50,7 @@ run_cjpm_gate() {
 }
 
 run_step "check_architecture_artifacts" sh "$SCRIPT_DIR/check_architecture_artifacts.sh"
+run_step "check_default_acceptance_matrix" sh "$SCRIPT_DIR/check_default_acceptance_matrix.sh"
 run_step "check_formal_substitute_ledger" sh "$SCRIPT_DIR/check_formal_substitute_ledger.sh"
 run_step "check_api_public_surface" sh "$SCRIPT_DIR/check_api_public_surface.sh"
 run_step "check_platform_gates" sh "$SCRIPT_DIR/check_platform_gates.sh"

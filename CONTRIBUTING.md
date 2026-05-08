@@ -92,6 +92,9 @@ Run the full local release gate before handoff:
 GRAMMY4CJ_HARD_FAIL=1 sh scripts/check_upstream_contract.sh
 sh scripts/check_source_trace_matrix.sh
 sh scripts/check_dependency_boundaries.sh
+sh scripts/check_default_acceptance_matrix.sh
+sh scripts/check_platform_gates.sh
+sh scripts/check_root_public_surface.sh
 sh scripts/check_public_docs.sh
 source "$CANGJIE_SDK_HOME/envsetup.sh"
 cjpm clean && cjpm build -i && cjpm test
@@ -112,6 +115,12 @@ The release gate covers:
 - **Dependency boundary.**
   `scripts/check_dependency_boundaries.sh` must keep core, context, platform,
   and convenience imports inside their documented layer boundaries.
+- **Platform and package gates.**
+  `scripts/check_platform_gates.sh`,
+  `scripts/check_root_public_surface.sh`, and
+  `scripts/check_default_acceptance_matrix.sh` must keep the Deno-equivalent,
+  Node-equivalent, Web-equivalent, and Cangjie Native facades aligned with the
+  root package manifest and the default offline acceptance matrix.
 - **Build and test.**
   `cjpm clean && cjpm build -i && cjpm test` must pass after the Cangjie
   environment is loaded.
@@ -121,8 +130,11 @@ The release gate covers:
 
 #### Package Metadata
 
-Keep `cjpm.toml`, `README.md`, `src/README.md`, and exported baseline constants
-consistent. The package name is `grammy4cj`, the package version must match the
-public `GRAMMY4CJ_VERSION` constant, the README Bot API badge must match
-`TELEGRAM_BOT_API_VERSION`, and the source map must describe the same pinned
-upstream baseline as the exported baseline constants.
+Keep `cjpm.toml`, `README.md`, `src/README.md`, root exports, platform facade
+contracts, and exported baseline constants consistent. The package name is
+`grammy4cj`, the package version must match the public `GRAMMY4CJ_VERSION`
+constant, the README Bot API badge must match `TELEGRAM_BOT_API_VERSION`, and
+the source map must describe the same pinned upstream baseline as the exported
+baseline constants. Upstream TypeScript conditional exports and type-only
+exports are tracked as Cangjie package-model boundaries, not as separate Cangjie
+runtime entry files.

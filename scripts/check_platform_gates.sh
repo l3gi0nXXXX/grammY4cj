@@ -45,6 +45,10 @@ if [ -f "$PLATFORM" ]; then
   require_fixed "$PLATFORM" 'PlatformRuntimeContract("web", "cloudflare", "empty-object", "manual-readable-stream", "debug-skypack-web")' "web facade mirrors upstream platform.web.ts"
   require_fixed "$PLATFORM" 'public let DEFAULT_CALLBACK_ADAPTER: String = "callback"' "callback adapter is explicit"
   require_fixed "$PLATFORM" 'public let DEFAULT_WEBHOOK_ADAPTER: String = "oak"' "package default adapter is not callback"
+  require_fixed "$PLATFORM" 'PlatformPackageExportContract(' "package conditional export contract is represented"
+  require_fixed "$PLATFORM" 'cjpm-single-static-root-no-conditional-export' "cjpm package boundary is documented"
+  require_fixed "$PLATFORM" 'cangjie-no-type-only-runtime-split' "type-only export boundary is documented"
+  require_fixed "$PLATFORM" 'public func mergeBaseFetchConfigForRuntime' "platform baseFetchConfig override merge helper"
 fi
 
 if [ -f "$MOD" ]; then

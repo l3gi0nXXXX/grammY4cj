@@ -6,7 +6,7 @@ REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
 
 LEDGER="$REPO_DIR/src/architecture/formal_substitute_ledger.tsv"
 GATE_STATUS="$REPO_DIR/src/architecture/gate_status.tsv"
-EXPECTED_HEADER='formal_substitute	upstream_mechanism	cangjie_substitute	gate	owner_artifact	test_artifact	acceptance	drift_trigger'
+EXPECTED_HEADER='formal_substitute	status	upstream_mechanism	cangjie_substitute	gate	owner_artifact	test_artifact	acceptance	drift_trigger'
 
 failures=0
 
@@ -35,13 +35,17 @@ fi
 
 if [ -f "$LEDGER" ]; then
   row_count="$(awk -F '\t' 'NR > 1 && $1 != "" {count += 1} END {print count + 0}' "$LEDGER")"
-  bad_width="$(awk -F '\t' 'NR > 1 && $1 != "" && NF != 8 {bad += 1} END {print bad + 0}' "$LEDGER")"
+  bad_width="$(awk -F '\t' 'NR > 1 && $1 != "" && NF != 9 {bad += 1} END {print bad + 0}' "$LEDGER")"
   blank_fields="$(awk -F '\t' '
     NR > 1 && $1 != "" {
-      for (i = 1; i <= 8; i += 1) {
+      for (i = 1; i <= 9; i += 1) {
         if ($i == "") bad += 1
       }
     }
+    END {print bad + 0}
+  ' "$LEDGER")"
+  bad_status="$(awk -F '\t' '
+    NR > 1 && $1 != "" && $2 != "open" && $2 != "test-only" && $2 != "language-boundary" && $2 != "removed" {bad += 1}
     END {print bad + 0}
   ' "$LEDGER")"
   duplicate_keys="$(awk -F '\t' '
@@ -53,11 +57,14 @@ if [ -f "$LEDGER" ]; then
   ' "$LEDGER")"
   bad_gate="$(awk -F '\t' '
     NR == FNR && NR > 1 && $1 != "" {gates[$1] = 1; next}
-    FNR > 1 && $1 != "" && !($4 in gates) {bad += 1}
+    FNR > 1 && $1 != "" && !($5 in gates) {bad += 1}
     END {print bad + 0}
   ' "$GATE_STATUS" "$LEDGER")"
+  open_count="$(awk -F '\t' 'NR > 1 && $2 == "open" {count += 1} END {print count + 0}' "$LEDGER")"
+  language_boundary_count="$(awk -F '\t' 'NR > 1 && $2 == "language-boundary" {count += 1} END {print count + 0}' "$LEDGER")"
+  test_only_count="$(awk -F '\t' 'NR > 1 && $2 == "test-only" {count += 1} END {print count + 0}' "$LEDGER")"
 
-  printf 'formal substitute ledger rows=%s\n' "$row_count"
+  printf 'formal substitute ledger rows=%s open=%s language_boundary=%s test_only=%s\n' "$row_count" "$open_count" "$language_boundary_count" "$test_only_count"
   if [ "$row_count" -lt 7 ]; then
     fail "formal substitute ledger must contain at least 7 rows"
   fi
@@ -66,6 +73,9 @@ if [ -f "$LEDGER" ]; then
   fi
   if [ "$blank_fields" != "0" ]; then
     fail "formal substitute ledger blank required fields=$blank_fields"
+  fi
+  if [ "$bad_status" != "0" ]; then
+    fail "formal substitute ledger rows with invalid status=$bad_status"
   fi
   if [ "$duplicate_keys" != "0" ]; then
     fail "formal substitute ledger duplicate formal_substitute keys=$duplicate_keys"
@@ -91,7 +101,7 @@ if [ -f "$LEDGER" ]; then
     fi
   done
 
-  awk -F '\t' 'NR > 1 && $1 != "" {print $5 "\n" $6}' "$LEDGER" |
+  awk -F '\t' 'NR > 1 && $1 != "" {print $6 "\n" $7}' "$LEDGER" |
     tr ';' '\n' |
     while IFS= read -r artifact; do
       [ -n "$artifact" ] || continue

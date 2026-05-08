@@ -9,6 +9,8 @@ PHASE_STATUS="$REPO_DIR/src/architecture/phase_status.tsv"
 GATE_STATUS="$REPO_DIR/src/architecture/gate_status.tsv"
 WORKFLOW_LEDGER="$REPO_DIR/src/architecture/upstream_diff_workflow.tsv"
 ROOT_EXPORT_MANIFEST="$REPO_DIR/src/architecture/root_public_export_manifest.tsv"
+DEFAULT_ACCEPTANCE_MATRIX="$REPO_DIR/src/architecture/default_acceptance_matrix.tsv"
+FORMAL_SUBSTITUTE_LEDGER="$REPO_DIR/src/architecture/formal_substitute_ledger.tsv"
 PLATFORM_SOURCE="$REPO_DIR/src/platform/platform.cj"
 CORE_CLIENT_SOURCE="$REPO_DIR/src/core/client.cj"
 INPUT_FILE_SOURCE="$REPO_DIR/src/types/input_file.cj"
@@ -44,6 +46,8 @@ check_header "$PHASE_STATUS" 'phase	phase_group	status	evidence	next_action'
 check_header "$GATE_STATUS" 'gate	status	owner_artifact	acceptance	next_action'
 check_header "$WORKFLOW_LEDGER" 'upstream_path	gate	required_checks	docs_impact	note'
 check_header "$ROOT_EXPORT_MANIFEST" 'export_name	module	category	upstream_anchor	note'
+check_header "$DEFAULT_ACCEPTANCE_MATRIX" 'acceptance_area	category	gate	owner_artifact	default_command	opt_in_gate	network	file_io	server	token_policy	acceptance'
+check_header "$FORMAL_SUBSTITUTE_LEDGER" 'formal_substitute	status	upstream_mechanism	cangjie_substitute	gate	owner_artifact	test_artifact	acceptance	drift_trigger'
 
 check_no_shell_out() {
   label="$1"
@@ -174,6 +178,10 @@ if [ -f "$SCRIPT_DIR/check_release_metadata.sh" ]; then
   else
     record_failure
   fi
+fi
+
+if ! sh "$SCRIPT_DIR/check_default_acceptance_matrix.sh"; then
+  record_failure
 fi
 
 if ! sh "$SCRIPT_DIR/check_upstream_diff_workflow.sh" --validate-only; then

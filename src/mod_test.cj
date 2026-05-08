@@ -8,6 +8,12 @@ import grammy4cj.architecture.rootPublicExportManifestPublicCount
 import grammy4cj.architecture.rootPublicExportManifestTestOnlyCount
 import grammy4cj.architecture.rootSurfaceExpectedFrameworkAdapterCount
 import grammy4cj.architecture.rootSurfaceExpectedHonoHandlerReturnKind
+import grammy4cj.architecture.defaultAcceptanceMatrixCategoryCount
+import grammy4cj.architecture.defaultAcceptanceMatrixDefaultNetworkRows
+import grammy4cj.architecture.defaultAcceptanceMatrixGateScript
+import grammy4cj.architecture.defaultAcceptanceMatrixOptInRows
+import grammy4cj.architecture.defaultAcceptanceMatrixPackageRows
+import grammy4cj.architecture.defaultAcceptanceMatrixRowCount
 import grammy4cj.types.Update
 import grammy4cj.types.UserFromGetMe
 
@@ -83,6 +89,12 @@ public class Grammy4cjRootTest {
         @Expect(rootPublicExportManifestTestOnlyCount(), 0)
         @Expect(rootSurfaceExpectedFrameworkAdapterCount(), 21)
         @Expect(rootSurfaceExpectedHonoHandlerReturnKind(), "promise-response")
+        @Expect(defaultAcceptanceMatrixRowCount(), 10)
+        @Expect(defaultAcceptanceMatrixCategoryCount(), 3)
+        @Expect(defaultAcceptanceMatrixDefaultNetworkRows(), 0)
+        @Expect(defaultAcceptanceMatrixOptInRows(), 1)
+        @Expect(defaultAcceptanceMatrixPackageRows(), 3)
+        @Expect(defaultAcceptanceMatrixGateScript(), "scripts/check_default_acceptance_matrix.sh")
         @Expect(sessionMiddleware is MultiSessionMiddleware2<String, String>, true)
     }
 }

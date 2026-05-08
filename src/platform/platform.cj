@@ -39,6 +39,35 @@ public class PlatformRuntimeContract {
     }
 }
 
+public class PlatformPackageExportContract {
+    public let entry: String
+    public let nodeTarget: String
+    public let browserTarget: String
+    public let defaultTarget: String
+    public let typesTarget: String
+    public let cangjieBoundary: String
+
+    public init(
+        entry: String,
+        nodeTarget: String,
+        browserTarget: String,
+        defaultTarget: String,
+        typesTarget: String,
+        cangjieBoundary: String
+    ) {
+        this.entry = entry
+        this.nodeTarget = nodeTarget
+        this.browserTarget = browserTarget
+        this.defaultTarget = defaultTarget
+        this.typesTarget = typesTarget
+        this.cangjieBoundary = cangjieBoundary
+    }
+
+    public func summary(): String {
+        this.entry + ":" + this.nodeTarget + ":" + this.defaultTarget + ":" + this.cangjieBoundary
+    }
+}
+
 public class DebugContract {
     public let runtime: String
     public let namespace: String
@@ -563,6 +592,10 @@ public class PlatformAdapter {
         makeBaseFetchConfigForRuntime(this.runtime, apiRoot)
     }
 
+    public func baseFetchConfigWithOverride(apiRoot: String, overrideConfig: BaseFetchConfig): BaseFetchConfig {
+        mergeBaseFetchConfigForRuntime(this.runtime, apiRoot, overrideConfig)
+    }
+
     public func itrToStream(iterator: ByteIterator): ByteStream {
         makeByteStreamFromIteratorForRuntime(this.runtime, iterator)
     }
@@ -630,6 +663,48 @@ public func platformRuntimeContractFor(runtime: String): PlatformRuntimeContract
     PlatformRuntimeContract(runtime, defaultAdapterForRuntime(runtime), "unknown", "unknown", "unknown")
 }
 
+public func platformPackageExportContracts(): Array<PlatformPackageExportContract> {
+    [
+        PlatformPackageExportContract(
+            ".",
+            "./out/mod.js",
+            "./out/web.mjs",
+            "./out/web.mjs",
+            "./out/mod.d.ts",
+            "cjpm-single-static-root-no-conditional-export"
+        ),
+        PlatformPackageExportContract(
+            "./types",
+            "",
+            "",
+            "./out/types.js",
+            "./out/types.d.ts",
+            "cangjie-no-type-only-runtime-split"
+        ),
+        PlatformPackageExportContract(
+            "./web",
+            "",
+            "",
+            "./out/web.mjs",
+            "./out/web.d.ts",
+            "web-equivalent-profile-not-separate-package-entry"
+        )
+    ]
+}
+
+public func platformPackageExportContractCount(): Int64 {
+    3
+}
+
+public func platformPackageExportContractFor(entry: String): PlatformPackageExportContract {
+    for (contract in platformPackageExportContracts()) {
+        if (contract.entry == entry) {
+            return contract
+        }
+    }
+    PlatformPackageExportContract(entry, "", "", "", "", "unknown")
+}
+
 public func debugContract(runtime: String, namespace: String): DebugContract {
     if (runtime == "deno") {
         return DebugContract("deno", namespace, "debug", "DEBUG", true, true)
@@ -686,6 +761,24 @@ public func baseFetchConfig(apiRoot: String): BaseFetchConfig {
 
 public func baseFetchConfigForRuntime(runtime: String, apiRoot: String): BaseFetchConfig {
     makeBaseFetchConfigForRuntime(runtime, apiRoot)
+}
+
+public func mergeBaseFetchConfigForRuntime(runtime: String, apiRoot: String, overrideConfig: BaseFetchConfig): BaseFetchConfig {
+    let base = makeBaseFetchConfigForRuntime(runtime, apiRoot)
+    if (overrideConfig.isEmpty) {
+        return base
+    }
+    let mergedRoot = if (overrideConfig.apiRoot.isEmpty()) {
+        base.apiRoot
+    } else {
+        overrideConfig.apiRoot
+    }
+    let mergedAgent = if (overrideConfig.agentKind.isEmpty()) {
+        base.agentKind
+    } else {
+        overrideConfig.agentKind
+    }
+    BaseFetchConfig(mergedRoot, mergedAgent, overrideConfig.keepAlive, overrideConfig.compress, false)
 }
 
 public func itrToStream(iterator: ByteIterator): ByteStream {
