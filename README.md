@@ -122,6 +122,20 @@ This helps compare published upstream behavior against the Cangjie port when inv
 Being compatible with browsers is especially useful for running bots on Cloudflare Workers.
 grammY4cj keeps the same architecture target, while the executable runtime is Cangjie Native.
 
+<!-- grammy4cj:docs-heading-exemptions root -->
+
+## Platform and Package Surface
+
+grammY publishes conditional Deno, Node.js, and web entries. Cangjie packages use
+a single static `cjpm` root, so grammY4cj exposes Deno-equivalent,
+Node-equivalent, Web-equivalent, and Cangjie Native platform profiles from the
+root package instead of separate package conditions.
+
+The default offline gate checks platform facades, root exports, package
+metadata, public docs, and the formal substitute ledger. Real Telegram, real
+framework servers, loopback HTTP, and file-system integration checks are
+opt-in only and documented in the architecture test matrix.
+
 ## [Contribution Guide »](./CONTRIBUTING.md)
 
 Before a release, contributors should run the upstream contract in hard-fail

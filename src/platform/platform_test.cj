@@ -174,6 +174,9 @@ public class PlatformTest {
         let http = baseFetchConfigForRuntime("node", "http://localhost:8081")
         let web = webPlatform().baseFetchConfig("https://api.telegram.org")
         let custom = nodePlatform().baseFetchConfig("unix:/tmp/socket")
+        let overrideConfig = BaseFetchConfig("", "custom-agent", false, true, false)
+        let merged = nodePlatform().baseFetchConfigWithOverride("https://api.telegram.org", overrideConfig)
+        let emptyOverride = mergeBaseFetchConfigForRuntime("node", "https://api.telegram.org", BaseFetchConfig("", "", false, false, true))
 
         @Expect(deno.isEmpty, true)
         @Expect(https.agentKind, "https")
@@ -187,6 +190,9 @@ public class PlatformTest {
         @Expect(custom.isEmpty, true)
         @Expect(baseFetchConfig("https://api.telegram.org").summary(), "empty")
         @Expect(defaultPlatform().baseFetchConfig("ftp://example.test").summary(), "empty")
+        @Expect(merged.apiRoot, "https://api.telegram.org")
+        @Expect(merged.summary(), "custom-agent:keepAlive=false:compress=true")
+        @Expect(emptyOverride.summary(), "https:keepAlive=true:compress=true")
     }
 
     @TestCase
@@ -386,5 +392,21 @@ public class PlatformTest {
         @Expect(cjnative.defaultAdapter, "cangjie-native")
         @Expect(cjnative.baseFetchConfigContract, "stdx.net.http-client")
         @Expect(cjnative.byteStreamContract, "byte-source-stream")
+    }
+
+    @TestCase
+    public func platformPackageExportContractsTrackUpstreamConditionalExportsAsBoundary(): Unit {
+        let root = platformPackageExportContractFor(".")
+        let types = platformPackageExportContractFor("./types")
+        let web = platformPackageExportContractFor("./web")
+
+        @Expect(platformPackageExportContractCount(), 3)
+        @Expect(root.summary(), ".:./out/mod.js:./out/web.mjs:cjpm-single-static-root-no-conditional-export")
+        @Expect(root.browserTarget, "./out/web.mjs")
+        @Expect(root.typesTarget, "./out/mod.d.ts")
+        @Expect(types.defaultTarget, "./out/types.js")
+        @Expect(types.cangjieBoundary, "cangjie-no-type-only-runtime-split")
+        @Expect(web.defaultTarget, "./out/web.mjs")
+        @Expect(web.cangjieBoundary, "web-equivalent-profile-not-separate-package-entry")
     }
 }
