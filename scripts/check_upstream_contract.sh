@@ -524,10 +524,15 @@ printf 'upstream context api callsites=%s unique_targets=%s\n' \
 printf 'port context api callsites=%s unique_targets=%s\n' \
   "$(count_lines "$TMP_DIR/port_context_calls")" \
   "$(count_lines "$TMP_DIR/port_context_targets")"
+check_eq "upstream Context api unique targets" "$(count_lines "$TMP_DIR/upstream_context_targets")" "136"
+check_eq "port Context api unique targets" "$(count_lines "$TMP_DIR/port_context_targets")" "136"
 show_set_diff "Context api targets" "$TMP_DIR/upstream_context_targets" "$TMP_DIR/port_context_targets"
 comm -23 "$TMP_DIR/upstream_context_targets" "$TMP_DIR/port_context_targets" > "$TMP_DIR/context_missing_targets"
+comm -13 "$TMP_DIR/upstream_context_targets" "$TMP_DIR/port_context_targets" > "$TMP_DIR/context_extra_targets"
 context_missing_count="$(count_lines "$TMP_DIR/context_missing_targets")"
+context_extra_count="$(count_lines "$TMP_DIR/context_extra_targets")"
 hard_fail_if_nonzero "Context api targets missing" "$context_missing_count"
+hard_fail_if_nonzero "Context api targets extra" "$context_extra_count"
 
 section "G8.3 Composer 20 controls diff"
 perl -ne 'if (/export class Composer/) {$in=1; next} if ($in && /^}/) {$in=0} if ($in && /^    (?!constructor\b)([A-Za-z_]\w*)(?:<[^)]*>)?\(/) {print "$1\n"}' \
@@ -539,10 +544,44 @@ check_eq "upstream Composer controls" "$(count_lines "$TMP_DIR/upstream_composer
 printf 'port composer public methods=%s upstream_controls_implemented=%s\n' \
   "$(count_lines "$TMP_DIR/port_composer_controls")" \
   "$(count_lines "$TMP_DIR/implemented_composer_controls")"
+check_eq "port Composer implemented upstream controls" "$(count_lines "$TMP_DIR/implemented_composer_controls")" "20"
 show_set_diff "Composer controls" "$TMP_DIR/upstream_composer_controls" "$TMP_DIR/port_composer_controls"
 comm -23 "$TMP_DIR/upstream_composer_controls" "$TMP_DIR/port_composer_controls" > "$TMP_DIR/composer_missing_controls"
 composer_missing_count="$(count_lines "$TMP_DIR/composer_missing_controls")"
 hard_fail_if_nonzero "Composer controls missing" "$composer_missing_count"
+
+section "G8.3b Framework adapter diff"
+awk '
+  /export const adapters = \{/ { in_object = 1; next }
+  in_object && /^\};/ { exit }
+  in_object {
+    line = $0
+    sub(/^[[:space:]]*/, "", line)
+    sub(/,.*/, "", line)
+    if (match(line, /^"[^"]+"/)) {
+      print substr(line, RSTART + 1, RLENGTH - 2)
+    } else if (match(line, /^[A-Za-z_][A-Za-z0-9_]*/)) {
+      print substr(line, RSTART, RLENGTH)
+    }
+  }
+' "$GRAMMY_DIR/src/convenience/frameworks.ts" | sort -u > "$TMP_DIR/upstream_framework_adapters"
+extract_cj_string_array_func "public func upstreamFrameworkAdapterNames" "$REPO_DIR/src/convenience/frameworks.cj" | sort -u > "$TMP_DIR/port_upstream_framework_adapters"
+awk '
+  /FrameworkAdapterPublicShape\("/ {
+    line = $0
+    while (match(line, /FrameworkAdapterPublicShape\("[^"]+"/)) {
+      value = substr(line, RSTART, RLENGTH)
+      split(value, parts, "\"")
+      print parts[2]
+      line = substr(line, RSTART + RLENGTH)
+    }
+  }
+' "$REPO_DIR/src/convenience/frameworks.cj" | sort -u > "$TMP_DIR/port_framework_public_shapes"
+check_eq "upstream Framework adapters" "$(count_lines "$TMP_DIR/upstream_framework_adapters")" "21"
+check_eq "port upstream Framework adapter names" "$(count_lines "$TMP_DIR/port_upstream_framework_adapters")" "21"
+check_eq "port Framework public shape rows" "$(count_lines "$TMP_DIR/port_framework_public_shapes")" "21"
+assert_no_set_diff "Framework adapter names vs upstream" "$TMP_DIR/upstream_framework_adapters" "$TMP_DIR/port_upstream_framework_adapters"
+assert_no_set_diff "Framework public shape rows vs upstream" "$TMP_DIR/upstream_framework_adapters" "$TMP_DIR/port_framework_public_shapes"
 
 section "G8.4 Test count per file diff"
 find "$GRAMMY_DIR/test" -type f -name '*.ts' | sort | while IFS= read -r file; do
@@ -617,6 +656,9 @@ if [ -n "$ARTIFACT_DIR" ]; then
 else
   GRAMMY_DIR="$GRAMMY_DIR" sh "$SCRIPT_DIR/check_source_trace_matrix.sh"
 fi
+
+section "G9.1 Source evidence matrix"
+GRAMMY_DIR="$GRAMMY_DIR" sh "$SCRIPT_DIR/check_source_evidence_matrix.sh"
 
 section "G9.3 Upstream diff workflow"
 if [ -n "${GRAMMY4CJ_UPSTREAM_DIFF_BASE:-}" ] || [ -n "${GRAMMY4CJ_UPSTREAM_DIFF_HEAD:-}" ]; then

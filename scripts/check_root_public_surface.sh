@@ -6,6 +6,8 @@ REPO_DIR="$(CDPATH= cd "$SCRIPT_DIR/.." && pwd)"
 MOD="$REPO_DIR/src/mod.cj"
 MANIFEST="$REPO_DIR/src/architecture/root_public_export_manifest.tsv"
 EXPECTED_HEADER='export_name	module	category	upstream_anchor	note'
+EXPECTED_ROOT_EXPORTS="59"
+EXPECTED_MANIFEST_ROWS="59"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/grammy4cj-root-surface.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -100,6 +102,12 @@ if [ -f "$TMP_DIR/root_exports" ] && [ -f "$TMP_DIR/manifest_exports" ]; then
   manifest_count="$(wc -l < "$TMP_DIR/manifest_exports" | tr -d ' ')"
 
   printf 'root public exports=%s manifest rows=%s\n' "$root_count" "$manifest_count"
+  if [ "$root_count" != "$EXPECTED_ROOT_EXPORTS" ]; then
+    fail "root public export count drift expected=$EXPECTED_ROOT_EXPORTS actual=$root_count"
+  fi
+  if [ "$manifest_count" != "$EXPECTED_MANIFEST_ROWS" ]; then
+    fail "root public export manifest row count drift expected=$EXPECTED_MANIFEST_ROWS actual=$manifest_count"
+  fi
   if [ "$unclassified_count" != "0" ]; then
     printf 'unclassified root exports:\n'
     sed 's/^/  /' "$TMP_DIR/unclassified"
