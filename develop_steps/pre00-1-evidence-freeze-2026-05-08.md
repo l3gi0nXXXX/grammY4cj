@@ -35,3 +35,22 @@ Stage admission rule:
 
 - No GAP phase should begin coding unless its row set in `src/architecture/source_evidence_matrix.tsv` contains an upstream source anchor, a current implementation anchor, and a test anchor.
 - PRE-00.1 does not change runtime implementation code.
+
+## GAP-12 Final Gate Verification
+
+Date: 2026-05-08
+
+Scope:
+
+- Worktree: `/Users/l3gi0n/work/workspace_cangjie/grammY4cj-pre00-gap12-v3-20260508/gap12-platform-gates`
+- Branch: `pre00-gap12-v3-20260508/gap12-platform-gates`
+- Upstream grammY files read before verification: `src/platform.deno.ts`, `src/platform.node.ts`, `src/platform.web.ts`, `src/shim.node.ts`, `src/mod.ts`, `package.json`, `deno.jsonc`.
+
+Verified gates:
+
+- `source /Users/l3gi0n/cangjie100/envsetup.sh && cjpm clean && cjpm build -i && cjpm test`: passed, 557 tests passed, 0 failed.
+- `scripts/check_upstream_contract.sh --hard-fail`: passed.
+- `scripts/check_source_trace_matrix.sh`: passed, runtime rows 25, test rows 18, missing files 0.
+- `scripts/check_default_acceptance_matrix.sh`: passed, 10 rows, 3 package rows.
+- `scripts/check_formal_substitute_ledger.sh`: passed, 8 rows.
+- `scripts/check_platform_gates.sh`: passed.
