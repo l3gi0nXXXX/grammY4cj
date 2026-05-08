@@ -156,6 +156,22 @@ public class PayloadTest {
     }
 
     @TestCase
+    public func multipartPayloadDefersSingleUseRawUntilStreamDrain(): Unit {
+        let file = InputFile.fromStream("AA|BB", "clip.mp4")
+        let payload = Payload("")
+        payload.addFile("video", file)
+
+        let req = createFormDataPayload(payload, "boundary", "attach")
+
+        @Expect(file.consumed, false)
+        @Expect(req.body.contains("AA"), false)
+        let body = req.stream.drain()
+        @Expect(file.consumed, true)
+        @Expect(body.contains("name=\"attach0\";filename=clip.mp4"), true)
+        @Expect(body.contains("AABB\r\n--boundary--"), true)
+    }
+
+    @TestCase
     public func multipartPayloadPreservesRawChunkOrder(): Unit {
         let payload = Payload("")
         payload.addFile("document", InputFile.fromAsyncIterable("AA|BB", "chunks.bin"))
