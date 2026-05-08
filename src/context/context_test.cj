@@ -424,6 +424,22 @@ public class ContextHasTest {
     }
 
     @TestCase
+    public func filterQueryUsesSharedParserAndObjectMatcher(): Unit {
+        let chat = Chat(125, "private")
+        let user = User(458, false, "Lin", "lin")
+        let message = Message(45, chat, "visit https://example.test", user)
+        message.addEntity(MessageEntity("url", 6, 20))
+        let ctx = testContext(Update.withMessage(9, message))
+
+        @Expect(Context.has.filterQuery("::url").matches(ctx), true)
+        @Expect(ctx.hasFilter("message::email"), false)
+
+        let emptyMessageCtx = testContext(Update.withMessage(10, Message(46, chat, "")))
+        @Expect(Context.has.filterQuery(":text").matches(emptyMessageCtx), false)
+        @Expect(Context.has.filterQuery(":caption").matches(emptyMessageCtx), false)
+    }
+
+    @TestCase
     public func staticAndInstanceTriggerArraysCoverQueryKinds(): Unit {
         let chat = Chat(124, "group")
         let user = User(457, false, "Grace", "grace")

@@ -5,6 +5,8 @@ import std.regex.Regex
 
 import grammy4cj.core.Api
 import grammy4cj.core.Payload
+import grammy4cj.filter.FilterContextView
+import grammy4cj.filter.matchFilter
 import grammy4cj.types.BusinessConnection
 import grammy4cj.types.BusinessMessagesDeleted
 import grammy4cj.types.CallbackQuery
@@ -372,12 +374,7 @@ public class ContextPredicate {
 
     public func matches(ctx: Context): Bool {
         if (this.kind == "filter") {
-            for (query in this.values) {
-                if (matchesFilterQuery(ctx, query)) {
-                    return true
-                }
-            }
-            return false
+            return matchFilter(this.values, ctx)
         }
         if (this.kind == "text") {
             return matchesText(ctx, this.trigger)
@@ -531,7 +528,7 @@ public class ReactionContext {
     }
 }
 
-public class Context {
+public class Context <: FilterContextView {
     public static let has = ContextHas()
 
     public let update: Update
@@ -547,6 +544,14 @@ public class Context {
 
     public func updateId(): Int64 {
         this.update.updateId
+    }
+
+    public func filterUpdate(): Update {
+        this.update
+    }
+
+    public func filterBotUser(): UserFromGetMe {
+        this.me
     }
 
     public func botInfoUsername(): String {

@@ -1,7 +1,5 @@
 package grammy4cj.filter
 
-import grammy4cj.context.Context
-import grammy4cj.core.Api
 import grammy4cj.types.{Chat, ChatMemberUpdated, Message, MessageEntity, MessageReactionCountUpdated, MessageReactionUpdated, ReactionType, Update, User, UserFromGetMe}
 import std.collection.ArrayList
 import std.unittest.*
@@ -37,27 +35,45 @@ private func botInfo(): UserFromGetMe {
     UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot")
 }
 
-private func testContext(update: Update): Context {
-    Context(update, Api("fake-token"), botInfo())
+private class FilterTestContext <: FilterContextView {
+    private let update: Update
+    private let me: UserFromGetMe
+
+    public init(update: Update, me: UserFromGetMe) {
+        this.update = update
+        this.me = me
+    }
+
+    public func filterUpdate(): Update {
+        this.update
+    }
+
+    public func filterBotUser(): UserFromGetMe {
+        this.me
+    }
+}
+
+private func testContext(update: Update): FilterTestContext {
+    FilterTestContext(update, botInfo())
 }
 
 private func testChat(): Chat {
     Chat(10, "private")
 }
 
-private func messageContext(kind: String): Context {
+private func messageContext(kind: String): FilterTestContext {
     let update = Update(1, kind)
     update.message = Message(100, testChat(), "")
     testContext(update)
 }
 
-private func channelPostContext(kind: String): Context {
+private func channelPostContext(kind: String): FilterTestContext {
     let update = Update(1, kind)
     update.channelPost = Message(100, testChat(), "")
     testContext(update)
 }
 
-private func editedMessageContext(kind: String): Context {
+private func editedMessageContext(kind: String): FilterTestContext {
     let update = Update(1, kind)
     let message = Message(100, testChat(), "")
     message.caption = "caption"
@@ -65,7 +81,7 @@ private func editedMessageContext(kind: String): Context {
     testContext(update)
 }
 
-private func entityContext(kind: String, entityKind: String): Context {
+private func entityContext(kind: String, entityKind: String): FilterTestContext {
     let update = Update(1, kind)
     update.message = Message(100, testChat(), "").addEntity(MessageEntity(entityKind, 0, 3))
     testContext(update)
@@ -223,6 +239,24 @@ public class FilterQueryTest {
         @Expect(matchFilter("edited_message", ctx), false)
         @Expect(matchFilter("message:text", ctx), true)
         @Expect(matchFilter("edited_message:text", ctx), false)
+    }
+
+    @TestCase
+    public func objectMatcherUsesMessageFieldsWhenKindIsOnlyL1(): Unit {
+        let message = Message(101, testChat(), "")
+        let ctx = testContext(Update.withMessage(5, message))
+
+        @Expect(matchFilter(":text", ctx), false)
+        @Expect(matchFilter(":caption", ctx), false)
+
+        message.text = "hello"
+        @Expect(matchFilter(":text", ctx), true)
+        @Expect(matchFilter(":caption", ctx), false)
+
+        message.text = ""
+        message.caption = "caption"
+        @Expect(matchFilter(":text", ctx), false)
+        @Expect(matchFilter(":caption", ctx), true)
     }
 
     @TestCase

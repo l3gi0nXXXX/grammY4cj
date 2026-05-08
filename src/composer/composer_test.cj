@@ -333,6 +333,24 @@ public class ComposerMiddlewareTest {
     }
 
     @TestCase
+    public func onUsesSharedFilterShortcutParserForEntityQueries(): Unit {
+        let events = ArrayList<String>()
+        let composer = Composer()
+        composer.on("::url", eventMiddleware(events, "url"))
+
+        let chat = Chat(123, "private")
+        let user = User(456, false, "Ada", "ada")
+        let message = Message(47, chat, "visit https://example.test", user)
+        message.addEntity(MessageEntity("url", 6, 20))
+        let ctx = Context(Update.withMessage(85, message), Api("fake-token"), UserFromGetMe(42, true, "grammY4cj", "grammy4cj_bot"))
+
+        run(composer, ctx)
+
+        @Expect(events.size, 1)
+        @Expect(events[0], "url")
+    }
+
+    @TestCase
     public func branchRouteLazyAndErrorBoundaryRunSelectedMiddleware(): Unit {
         let events = ArrayList<String>()
         let composer = Composer()
