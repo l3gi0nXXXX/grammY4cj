@@ -900,15 +900,45 @@ public func telegramTypeApiMappingFor(methodName: String): TelegramTypeApiMappin
 public func telegramTypeBuilderMappingManifest(): Array<TelegramTypeBuilderMapping> {
     [
         TelegramTypeBuilderMapping("Keyboard", "textButton", "KeyboardButton.CommonButton", "text", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("Keyboard", "requestUsersButton", "KeyboardButton.RequestUsersButton", "text|request_users", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("Keyboard", "requestChatButton", "KeyboardButton.RequestChatButton", "text|request_chat", "style|icon_custom_emoji_id", ""),
         TelegramTypeBuilderMapping("Keyboard", "requestContactButton", "KeyboardButton.RequestContactButton", "text|request_contact", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("Keyboard", "requestLocationButton", "KeyboardButton.RequestLocationButton", "text|request_location", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("Keyboard", "requestPollButton", "KeyboardButton.RequestPollButton", "text|request_poll", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("Keyboard", "requestManagedBotButton", "KeyboardButton.RequestManagedBotButton", "text|request_managed_bot", "style|icon_custom_emoji_id", ""),
         TelegramTypeBuilderMapping("Keyboard", "webAppButton", "KeyboardButton.WebAppButton", "text|web_app", "style|icon_custom_emoji_id", ""),
         TelegramTypeBuilderMapping("InlineKeyboard", "urlButton", "InlineKeyboardButton.UrlButton", "text|url", "style|icon_custom_emoji_id", ""),
         TelegramTypeBuilderMapping("InlineKeyboard", "textButton", "InlineKeyboardButton.CallbackButton", "text|callback_data", "style|icon_custom_emoji_id", ""),
         TelegramTypeBuilderMapping("InlineKeyboard", "webAppButton", "InlineKeyboardButton.WebAppButton", "text|web_app", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "loginButton", "InlineKeyboardButton.LoginButton", "text|login_url", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "switchInlineButton", "InlineKeyboardButton.SwitchInlineButton", "text|switch_inline_query", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "switchInlineCurrentButton", "InlineKeyboardButton.SwitchInlineCurrentChatButton", "text|switch_inline_query_current_chat", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "switchInlineChosenButton", "InlineKeyboardButton.SwitchInlineChosenChatButton", "text|switch_inline_query_chosen_chat", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "copyTextButton", "InlineKeyboardButton.CopyTextButtonButton", "text|copy_text", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "gameButton", "InlineKeyboardButton.GameButton", "text|callback_game", "style|icon_custom_emoji_id", ""),
+        TelegramTypeBuilderMapping("InlineKeyboard", "payButton", "InlineKeyboardButton.PayButton", "text|pay", "style|icon_custom_emoji_id", ""),
         TelegramTypeBuilderMapping("InlineQueryResultBuilder", "article", "InlineQueryResultArticle", "type|id|title|input_message_content", "description|reply_markup|url|hide_url", ""),
         TelegramTypeBuilderMapping("InlineQueryResultBuilder", "audio", "InlineQueryResultAudio", "type|id|audio_url|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "audioCached", "InlineQueryResultCachedAudio", "type|id|audio_file_id", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "contact", "InlineQueryResultContact", "type|id|phone_number|first_name", "last_name|vcard|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "documentPdf", "InlineQueryResultDocument", "type|id|document_url|mime_type|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "documentZip", "InlineQueryResultDocument", "type|id|document_url|mime_type|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "documentCached", "InlineQueryResultCachedDocument", "type|id|document_file_id|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "game", "InlineQueryResultGame", "type|id|game_short_name", "reply_markup", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "gif", "InlineQueryResultGif", "type|id|gif_url|thumbnail_url", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "gifCached", "InlineQueryResultCachedGif", "type|id|gif_file_id", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "location", "InlineQueryResultLocation", "type|id|title|latitude|longitude", "horizontal_accuracy|live_period|heading|proximity_alert_radius|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "mpeg4gif", "InlineQueryResultMpeg4Gif", "type|id|mpeg4_url|thumbnail_url", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "mpeg4gifCached", "InlineQueryResultCachedMpeg4Gif", "type|id|mpeg4_file_id", "caption|parse_mode|reply_markup|input_message_content", ""),
         TelegramTypeBuilderMapping("InlineQueryResultBuilder", "photo", "InlineQueryResultPhoto", "type|id|photo_url|thumbnail_url", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "photoCached", "InlineQueryResultCachedPhoto", "type|id|photo_file_id", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "stickerCached", "InlineQueryResultCachedSticker", "type|id|sticker_file_id", "reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "venue", "InlineQueryResultVenue", "type|id|title|latitude|longitude|address", "foursquare_id|foursquare_type|google_place_id|google_place_type|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "videoHtml", "InlineQueryResultVideo", "type|id|video_url|mime_type|thumbnail_url|title|input_message_content", "caption|parse_mode|reply_markup", ""),
         TelegramTypeBuilderMapping("InlineQueryResultBuilder", "videoMp4", "InlineQueryResultVideo", "type|id|video_url|mime_type|thumbnail_url|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "videoCached", "InlineQueryResultCachedVideo", "type|id|video_file_id|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "voice", "InlineQueryResultVoice", "type|id|voice_url|title", "caption|parse_mode|reply_markup|input_message_content", ""),
+        TelegramTypeBuilderMapping("InlineQueryResultBuilder", "voiceCached", "InlineQueryResultCachedVoice", "type|id|voice_file_id|title", "caption|parse_mode|reply_markup|input_message_content", ""),
         TelegramTypeBuilderMapping("InputMediaBuilder", "photo", "InputMediaPhoto", "type|media", "caption|parse_mode|caption_entities|show_caption_above_media|has_spoiler", "media"),
         TelegramTypeBuilderMapping("InputMediaBuilder", "video", "InputMediaVideo", "type|media", "caption|parse_mode|thumbnail|cover|start_timestamp|supports_streaming", "media|thumbnail|cover"),
         TelegramTypeBuilderMapping("InputMediaBuilder", "animation", "InputMediaAnimation", "type|media", "caption|parse_mode|thumbnail|show_caption_above_media|has_spoiler", "media|thumbnail"),
@@ -919,6 +949,14 @@ public func telegramTypeBuilderMappingManifest(): Array<TelegramTypeBuilderMappi
 
 public func telegramTypeBuilderMappingCount(): Int64 {
     telegramTypeBuilderMappingManifest().size
+}
+
+public func telegramTypeBuilderMappingCompletenessGate(): Bool {
+    telegramTypeBuilderMappingCount() == 45 &&
+        !telegramTypeBuilderMappingFor("Keyboard", "requestManagedBotButton").returnTypeName.isEmpty() &&
+        !telegramTypeBuilderMappingFor("InlineKeyboard", "copyTextButton").returnTypeName.isEmpty() &&
+        !telegramTypeBuilderMappingFor("InlineQueryResultBuilder", "voiceCached").returnTypeName.isEmpty() &&
+        !telegramTypeBuilderMappingFor("InputMediaBuilder", "document").returnTypeName.isEmpty()
 }
 
 public func telegramTypeBuilderMappingFor(builderName: String, methodName: String): TelegramTypeBuilderMapping {
